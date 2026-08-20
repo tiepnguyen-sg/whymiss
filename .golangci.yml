@@ -1,0 +1,119 @@
+# golangci-lint v2 configuration.
+# Verify after editing:  golangci-lint config verify
+# Migrating from v1:     golangci-lint migrate
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - depguard        # I-6 / I-11 / I-14 — the invariant enforcer
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - contextcheck    # ctx propagation
+    - errorlint       # %w wrapping (I-15)
+    - noctx           # no HTTP without context (I-5)
+    - rowserrcheck
+    - sqlclosecheck
+    - gosec
+    - revive
+    - misspell
+    - unconvert
+    - wastedassign
+    - nilerr
+    - forbidigo
+
+  settings:
+    depguard:
+      rules:
+        # I-6: internal/domain is pure. Standard library only.
+        domain-purity:
+          files:
+            - "**/internal/domain/**"
+            - "!**/internal/domain/*_test.go"
+          allow:
+            - $gostd
+          deny:
+            - pkg: "github.com"
+              desc: "I-6: internal/domain must import the standard library only"
+            - pkg: "golang.org/x"
+              desc: "I-6: internal/domain must import the standard library only"
+
+        # I-6: internal/rca is pure. Standard library + internal/domain only.
+        rca-purity:
+          files:
+            - "**/internal/rca/**"
+            - "!**/internal/rca/*_test.go"
+            - "!**/internal/rca/rules/*_test.go"
+          allow:
+            - $gostd
+            - github.com/CHANGEME/whymiss/internal/domain
+          deny:
+            - pkg: "github.com"
+              desc: "I-6: internal/rca must be pure — stdlib + internal/domain only"
+
+        # I-11: only adapters may reach the network or the OS.
+        adapters-only:
+          files:
+            - "**/internal/timeline/**"
+            - "**/internal/report/**"
+          deny:
+            - pkg: "net/http"
+              desc: "I-11: outbound I/O belongs in internal/source/"
+            - pkg: "os/exec"
+              desc: "I-11: process execution belongs in internal/source/"
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    forbidigo:
+      forbid:
+        - pattern: "^print(ln)?$"
+        - pattern: "^fmt\\.Print.*$"
+          msg: "use log/slog, not fmt.Print (I-15)"
+        - pattern: "^log\\.(Fatal|Panic).*$"
+          msg: "library code must not exit or panic (I-15)"
+        - pattern: "^os\\.Exit$"
+          msg: "only cmd/ may exit (I-15)"
+
+    gosec:
+      excludes:
+        - G304  # file inclusion — we read operator-configured paths by design
+
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: error-strings
+        - name: error-naming
+        - name: indent-error-flow
+        - name: unexported-return
+
+  exclusions:
+    rules:
+      # cmd/ is the only place allowed to exit.
+      - path: "^cmd/"
+        linters: [forbidigo]
+      # Tests may construct fixtures loosely.
+      - path: "_test\\.go$"
+        linters: [gosec, errcheck]
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/CHANGEME/whymiss
