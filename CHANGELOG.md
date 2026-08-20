@@ -59,7 +59,25 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   (cause/sub-cause/confidence against the taxonomy) and `observations.jsonl`
   (decodes as sorted, valid `domain.Observation` values for the manifest's
   slot). `make corpus.validate`.
-- First real corpus scenario, `test/corpus/vc-frozen-lighthouse`: the
-  Lighthouse validator client's container frozen for a full duty window,
-  generated end-to-end against the live devnet. Labelled
-  `local.vc_disconnected`.
+- `Observer.PollAttestationPublished`: polls the beacon API's attestation pool
+  to detect when a validator's contribution first becomes visible, decoding
+  the same SSZ aggregation-bitlist format `CheckInclusion` already used —
+  closes the gap between "was it included" and "was it published on time",
+  needed to tell a slow signer apart from a disconnected one.
+- Two fixed bugs found generating corpus scenarios against a live devnet:
+  `dockerContainerID` returned Docker's truncated 12-character ID, which does
+  not match the full-ID cgroup paths under `/sys/fs/cgroup/docker/`; and
+  `hostNamespaceExec` double-quoted its payload for `nsenter`'s inner shell,
+  which let the *outer* (alpine helper) shell expand any `$(...)` in it against
+  its own empty filesystem view before nsenter ever switched namespaces —
+  single-quoting defers all expansion to the inner shell as intended.
+- Three real corpus scenarios, generated end-to-end against the live devnet,
+  covering three distinct causes: `test/corpus/vc-frozen-lighthouse`
+  (`local.vc_disconnected`); `test/corpus/el-disk-stall` (`local.el_slow`,
+  sub-cause `local.el_slow.disk_saturation` — cgroup-throttled EL disk writes
+  measurably delayed block processing to ~31s into a 12s slot, evidenced
+  directly, not inferred); and `test/corpus/proposer-missed-concurrent-vc-pause`
+  (`network.proposer_missed`) — a scenario built to test `local.vc_disconnected`
+  whose real result was a genuinely missing block from an unrelated validator,
+  relabelled to match the taxonomy's own rule precedence (R-100 before R-400)
+  rather than discarded, per docs/BUILD_PROMPT.md §8's "record what happened."

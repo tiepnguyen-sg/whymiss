@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // CgroupIOParams configures a disk-throttling fault via the cgroup v2 io
@@ -48,7 +49,27 @@ func (f *CgroupIOFault) Apply(ctx context.Context, enclave, target string) (func
 		return nil, err
 	}
 
-	dev, err := hostNamespaceExec(ctx, "findmnt -no MAJ:MIN --target /var/lib/docker")
+	// cgroup v2's io controller throttles whole-disk devices, not partitions —
+	// verified: writing io.max for /var/lib/docker's own device (a partition,
+	// major:minor 254:1 in this project's test environment) fails with
+	// "No such device", while its parent whole disk (254:0) accepts the write.
+	// `lsblk -no pkname` reports the parent when the target is a partition, and
+	// nothing when it is already a whole disk. `findmnt`'s SOURCE additionally
+	// appends a "[/subpath]" annotation for a bind mount into a subvolume (seen
+	// here as "/dev/vda1[/docker]"), which `${src%%[*}` strips before `basename`.
+	//
+	// One line, semicolon-separated rather than newline-separated: this string
+	// crosses two nested `sh -c "..."` layers (the alpine helper's, then
+	// nsenter's), and an embedded newline survives %q-quoting as the two literal
+	// characters backslash-n, not an actual line break — the inner shell would
+	// see one broken line instead of five statements.
+	const resolveWholeDiskDevice = `src=$(findmnt -no SOURCE --target /var/lib/docker); ` +
+		`src=${src%%[*}; ` +
+		`part=$(basename "$src"); ` +
+		`parent=$(lsblk -no pkname "/dev/$part"); ` +
+		`[ -z "$parent" ] && parent=$part; ` +
+		`cat "/sys/class/block/$parent/dev"`
+	dev, err := hostNamespaceExec(ctx, resolveWholeDiskDevice)
 	if err != nil {
 		return nil, fmt.Errorf("resolve docker storage device: %w", err)
 	}
@@ -94,9 +115,21 @@ func writeCgroupIOMax(ctx context.Context, containerID, limitLine string) error 
 // native Linux — via a short-lived privileged helper container. See
 // [CgroupIOFault] for why this is necessary.
 func hostNamespaceExec(ctx context.Context, script string) (string, error) {
+	// script must reach nsenter's inner shell byte-for-byte, including any `$`
+	// it contains — those are meant to expand inside the host mount namespace
+	// nsenter switches into, not in the alpine helper's own namespace one level
+	// out. Go's %q verb double-quotes it, and a double-quoted argument is still
+	// subject to $-expansion by the *outer* shell before nsenter ever runs,
+	// which silently expands $(...) and $var against the wrong (empty)
+	// filesystem view instead of passing them through literally. Single-quoting
+	// is what actually defers all expansion to the inner shell; script has no
+	// embedded single quotes today, so the standard POSIX escape for one
+	// (close, escaped quote, reopen) is here defensively, not because it is
+	// exercised yet.
+	quoted := "'" + strings.ReplaceAll(script, "'", `'\''`) + "'"
 	nsenterScript := fmt.Sprintf(
-		`apk add --no-cache util-linux >/dev/null 2>&1; nsenter -t 1 -m -u -n -i sh -c %q`,
-		script,
+		`apk add --no-cache util-linux >/dev/null 2>&1; nsenter -t 1 -m -u -n -i sh -c %s`,
+		quoted,
 	)
 	out, err := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"--privileged", "--pid=host", "alpine", "sh", "-c", nsenterScript,
@@ -104,5 +137,5 @@ func hostNamespaceExec(ctx context.Context, script string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("host-namespace exec %q: %w\n%s", script, err, out)
 	}
-	return string(out), nil
+	return strings.TrimSpace(string(out)), nil
 }

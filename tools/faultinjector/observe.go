@@ -211,6 +211,98 @@ func (o *Observer) PollBlockSeen(ctx context.Context, slot uint64, deadline time
 	}
 }
 
+// poolAttestation is the subset of the attestation-pool response this tool reads.
+// Same Electra-style, single-committee-per-attestation shape as blockAttestation
+// — see that type's doc comment for the scope this implies.
+type poolAttestation struct {
+	AggregationBits string `json:"aggregation_bits"`
+	Data            struct {
+		Slot  string `json:"slot"`
+		Index string `json:"index"`
+	} `json:"data"`
+}
+
+// PollAttestationPublished polls the beacon node's attestation pool
+// (GET /eth/v1/beacon/pool/attestations) for dutySlot until d's validator's bit
+// appears set in a matching attestation, or deadline passes.
+//
+// This is a proxy for "the validator client published its attestation", not a
+// direct measurement of it: the pool reflects what this beacon node has
+// received and aggregated, which lags true publish time by however long gossip
+// propagation and aggregation took. On this project's two-node devnet that lag
+// is small, but it is not zero, and a caller comparing this timestamp against
+// the attestation deadline should keep that slack in mind — this is the same
+// kind of honestly-stated coarseness ObsBlockSeen's doc comment describes for
+// [Observer].
+func (o *Observer) PollAttestationPublished(ctx context.Context, dutySlot uint64, d duty, deadline time.Time) (publishedAt time.Time, found bool, err error) {
+	const pollInterval = 500 * time.Millisecond
+
+	for {
+		ok, ferr := o.poolIncludesAttestation(ctx, dutySlot, d)
+		if ferr != nil {
+			return time.Time{}, false, ferr
+		}
+		if ok {
+			return time.Now().UTC(), true, nil
+		}
+		if !time.Now().Before(deadline) {
+			return time.Time{}, false, nil
+		}
+		select {
+		case <-ctx.Done():
+			return time.Time{}, false, ctx.Err()
+		case <-time.After(pollInterval):
+		}
+	}
+}
+
+func (o *Observer) poolIncludesAttestation(ctx context.Context, dutySlot uint64, d duty) (bool, error) {
+	url := fmt.Sprintf("%s/eth/v1/beacon/pool/attestations?slot=%d", o.BeaconAPI, dutySlot)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, fmt.Errorf("build attestation pool request for slot %d: %w", dutySlot, err)
+	}
+	httpResp, err := o.Client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("fetch attestation pool for slot %d: %w", dutySlot, err)
+	}
+	defer httpResp.Body.Close() //nolint:errcheck // read-only response body; nothing to act on if Close fails
+
+	// The pool only holds recent, not-yet-included attestations — once a slot
+	// ages out (its data pruned, or its epoch has moved on), the beacon node
+	// reports 410 Gone rather than an empty result. That is not a failure to
+	// report: it means the window for seeing this validator publish here has
+	// closed, the same as a 404 on a block that was never produced.
+	if httpResp.StatusCode == http.StatusGone || httpResp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("fetch attestation pool for slot %d: unexpected status %d", dutySlot, httpResp.StatusCode)
+	}
+
+	var resp struct {
+		Data []poolAttestation `json:"data"`
+	}
+	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
+		return false, fmt.Errorf("decode attestation pool for slot %d: %w", dutySlot, err)
+	}
+
+	wantIndexStr := strconv.FormatUint(d.CommitteeIndex, 10)
+	for _, att := range resp.Data {
+		if att.Data.Index != wantIndexStr {
+			continue
+		}
+		included, err := bitSet(att.AggregationBits, d.ValidatorCommitteeIndex)
+		if err != nil {
+			return false, fmt.Errorf("decode aggregation_bits for slot %d: %w", dutySlot, err)
+		}
+		if included {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // CheckInclusion looks for d's validator's attestation bit set in any block from
 // dutySlot+1 up to and including untilSlot, returning the slot and instant it was
 // found included.
@@ -370,6 +462,7 @@ func doJSON(client *http.Client, req *http.Request, out any) error {
 func buildObservations(
 	s Scenario, slot uint64, slotStart, dutyAt time.Time,
 	blockFound bool, blockRoot string, proposerIndex uint64, seenAt time.Time,
+	published bool, publishedAt time.Time,
 	included bool, includedInSlot uint64, includedAt time.Time,
 ) ([]domain.Observation, error) {
 	drafts := []domain.Observation{
@@ -396,6 +489,16 @@ func buildObservations(
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsBlockSeen,
 			At: seenAt, Source: domain.SourceBeaconAPI, Attrs: attrs,
+		})
+	}
+
+	if published {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsAttestationPublished,
+			At: publishedAt, Source: domain.SourceBeaconAPI,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
+			},
 		})
 	}
 

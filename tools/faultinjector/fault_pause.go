@@ -61,6 +61,7 @@ func (f *PauseFault) Apply(ctx context.Context, enclave, target string) (func(co
 func dockerContainerID(ctx context.Context, serviceName string) (string, error) {
 	out, err := exec.CommandContext(ctx, "docker", "ps",
 		"--filter", "name="+serviceName+"--",
+		"--no-trunc",
 		"--format", "{{.ID}}",
 	).Output()
 	if err != nil {
