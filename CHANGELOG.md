@@ -53,3 +53,7 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   aimed at a peer's container. Every value written to `observations.jsonl` is
   measured against the real beacon API during the run, never synthesized
   (docs/BUILD_PROMPT.md §8).
+- `tools/corpusctl` (task 1.6): validates a corpus scenario's `manifest.yaml`
+  (cause/sub-cause/confidence against the taxonomy) and `observations.jsonl`
+  (decodes as sorted, valid `domain.Observation` values for the manifest's
+  slot). `make corpus.validate`.
