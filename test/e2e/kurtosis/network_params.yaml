@@ -1,0 +1,61 @@
+# Kurtosis devnet for whymiss's fault-injection corpus (test/corpus) and e2e tests.
+#
+# BUILD_PROMPT §3 locks initial client support to Lighthouse and Prysm only — this
+# file provisions exactly one node of each, which is also the minimum needed to
+# prove internal/source/registry.go's client detection actually branches (I-11).
+#
+# Bring up with `make devnet.up`; do not invoke kurtosis directly (AGENTS.md: use
+# Makefile targets, not ad-hoc shell). See docs/BUILD_PROMPT.md task 1.5.
+participants:
+  - el_type: geth
+    cl_type: lighthouse
+    vc_type: lighthouse
+    use_separate_vc: true
+    count: 1
+
+  - el_type: geth
+    cl_type: prysm
+    vc_type: prysm
+    use_separate_vc: true
+    count: 1
+
+network_params:
+  # Must be the literal string "kurtosis" — the ethereum-package's dispatcher
+  # (participant_network.star) treats any other value as the name of a
+  # pre-existing public devnet and tries to fetch its genesis config from a
+  # remote repo instead of generating one locally. Any other value crashes
+  # (verified: "whymiss-devnet" fails calculate_devnet_url with an out-of-range
+  # index, because it doesn't match that lookup's "{category}-devnet-{number}"
+  # naming convention). The enclave name (--enclave flag, set in the Makefile)
+  # is whymiss's own identifier and is unaffected by this.
+  network: kurtosis
+  # Halved from the package default (128/node) to keep two-node finalization
+  # light enough for a laptop while comfortably clearing the minimum needed to
+  # finalize (Kurtosis's own minimal-devnet examples use similarly small counts).
+  num_validator_keys_per_node: 32
+  seconds_per_slot: 12
+  # A few seconds of slack over the 20s default: genesis coordination between two
+  # separately-launched client pairs is the step most likely to need it on a
+  # loaded dev machine.
+  genesis_delay: 30
+  # The package default enables Fulu (PeerDAS) from genesis, which then refuses
+  # to start unless a supernode is configured or every node has 128+ validators
+  # (verified: it fails fast with that exact message otherwise). PeerDAS has
+  # nothing to do with attestation/proposer duty timing, the only thing
+  # faultinjector's scenarios exercise, so it stays unscheduled — same sentinel
+  # the package itself uses for gloas_fork_epoch by default.
+  fulu_fork_epoch: 18446744073709551615
+  # BPO (blob parameter override) forks require Fulu; with Fulu unscheduled, every
+  # bpo_*_epoch must be explicitly disabled too, or genesis fails validation.
+  # bpo_3/4/5 are already unscheduled in the package default — only 1 and 2 need
+  # overriding here.
+  bpo_1_epoch: 18446744073709551615
+  bpo_2_epoch: 18446744073709551615
+
+# No MEV, no block explorer, no extra observability stack (dora/prometheus/
+# grafana) — whymiss's own promscrape adapter (Phase 2) is what will read
+# client metrics, not this devnet's tooling. Keep the footprint to what
+# faultinjector and the corpus generator actually need.
+mev_type: null
+additional_services: []
+wait_for_finalization: false

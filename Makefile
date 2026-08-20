@@ -83,14 +83,31 @@ check.egress:
 ci: fmt lint check test vuln build.all
 	@echo "CI PASSED"
 
+## devnet.up: start the Kurtosis Ethereum devnet faultinjector runs against
+devnet.up:
+	kurtosis run github.com/ethpandaops/ethereum-package \
+		--args-file test/e2e/kurtosis/network_params.yaml \
+		--enclave whymiss-devnet
+
+## devnet.down: tear down the devnet and free its resources
+devnet.down:
+	kurtosis enclave rm --force whymiss-devnet
+
+## devnet.info: print the devnet's service endpoints as JSON
+devnet.info:
+	kurtosis enclave inspect whymiss-devnet --full-uuids
+
 ## corpus.validate: validate every labelled failure scenario
 corpus.validate:
 	go run ./tools/corpusctl validate ./test/corpus
 
-## corpus.generate: generate one scenario (usage: make corpus.generate SCENARIO=el-disk-stall)
+## corpus.generate: generate one scenario against the running devnet
+## (usage: make corpus.generate SCENARIO=vc-frozen-lighthouse BEACON=cl-1-lighthouse-geth)
 corpus.generate:
-	@test -n "$(SCENARIO)" || (echo "usage: make corpus.generate SCENARIO=<id>" && exit 1)
-	go run ./tools/faultinjector run --scenario $(SCENARIO) --out ./test/corpus/$(SCENARIO)
+	@test -n "$(SCENARIO)" || (echo "usage: make corpus.generate SCENARIO=<id> BEACON=<cl-service-name>" && exit 1)
+	@test -n "$(BEACON)" || (echo "usage: make corpus.generate SCENARIO=<id> BEACON=<cl-service-name>" && exit 1)
+	go run ./tools/faultinjector run --scenario $(SCENARIO) --out ./test/corpus/$(SCENARIO) \
+		--beacon-api $$(kurtosis port print whymiss-devnet $(BEACON) http)
 
 ## eval: RCA accuracy report across the corpus (writes docs/evaluation.md)
 eval:
@@ -103,4 +120,5 @@ clean:
 
 .PHONY: help build build.all test test.golden lint fmt vuln check \
         check.purity check.isolation check.egress ci \
+        devnet.up devnet.down devnet.info \
         corpus.validate corpus.generate eval clean
