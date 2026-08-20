@@ -1,0 +1,16 @@
+id: el-disk-stall-severe
+description: >
+  The Lighthouse-paired execution client's disk write throughput is throttled
+  much harder than el-disk-stall — 64KB/s instead of 1MB/s — to see whether a
+  more severe saturation pushes the outcome from degraded toward missed.
+target: el-1-geth-lighthouse
+validator_index: 24
+duration: 20s
+fault:
+  kind: cgroup_io
+  cgroup_io:
+    write_bytes_per_sec: 65536
+expect:
+  cause: local.el_slow
+  sub_cause: local.el_slow.disk_saturation
+  confidence: medium

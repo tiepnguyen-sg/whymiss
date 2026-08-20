@@ -95,3 +95,21 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   nothing about measuring it runs through the paused link, so a locally-published
   attestation (~18s in) that was never observed included is a direct read, not
   one confounded by the tool's own polling path.
+- Two more bugs found generating scenarios against a fresh, previously-unused
+  host: `writeCgroupIOMax` hardcoded the cgroupfs driver's path convention
+  (`/sys/fs/cgroup/docker/<id>/`), which does not exist under the systemd
+  driver a stock Ubuntu host uses instead
+  (`/sys/fs/cgroup/system.slice/docker-<id>.scope/`) — now located with `find`
+  regardless of which driver is active; and `hostNamespaceExec` used
+  `CombinedOutput()`, which folded a `docker run` image-pull's progress lines
+  (stderr) into the command's actual result on a cache miss, corrupting a
+  device path — now `Output()`, stdout only, with stderr still attached to the
+  error path for diagnostics.
+- Four more real corpus scenarios: `test/corpus/el-disk-stall-prysm` and
+  `test/corpus/el-disk-stall-severe` (`local.el_slow.disk_saturation`, the
+  latter's README noting a real negative finding — a 16x harder throttle did
+  not produce a proportionally worse delay, suggesting the poll-based
+  measurement is not sensitive to throttle severity); `test/corpus/
+  peer-isolated-prysm` (`local.p2p_degraded`, this run landing on a degraded
+  rather than fully-missed outcome — inclusion delay 2 instead of 1 — real
+  variance in what isolation produces, not a different mechanism).

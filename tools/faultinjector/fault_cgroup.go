@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -100,9 +101,17 @@ func cgroupIOMaxLine(dev string, readBps, writeBps uint64) string {
 }
 
 func writeCgroupIOMax(ctx context.Context, containerID, limitLine string) error {
+	// Docker's cgroup path depends on which cgroup driver the daemon uses:
+	// cgroupfs puts a container at /sys/fs/cgroup/docker/<id>/ (seen on Docker
+	// Desktop's LinuxKit VM); systemd — the default on a stock Ubuntu host, and
+	// what this project's GCP verification VM actually runs — puts it at
+	// /sys/fs/cgroup/system.slice/docker-<id>.scope/ instead. Rather than
+	// hardcode either, `find` locates whichever one exists.
 	script := fmt.Sprintf(
-		`echo '%s' > /sys/fs/cgroup/docker/%s/io.max`,
-		limitLine, containerID,
+		`dir=$(find /sys/fs/cgroup -maxdepth 3 -name '*%s*' -type d 2>/dev/null | head -n1); `+
+			`[ -n "$dir" ] || { echo "no cgroup found for container %s" >&2; exit 1; }; `+
+			`echo '%s' > "$dir/io.max"`,
+		containerID, containerID, limitLine,
 	)
 	if _, err := hostNamespaceExec(ctx, script); err != nil {
 		return fmt.Errorf("write io.max for container %s: %w", containerID, err)
@@ -131,11 +140,23 @@ func hostNamespaceExec(ctx context.Context, script string) (string, error) {
 		`apk add --no-cache util-linux >/dev/null 2>&1; nsenter -t 1 -m -u -n -i sh -c %s`,
 		quoted,
 	)
-	out, err := exec.CommandContext(ctx, "docker", "run", "--rm",
+	// Output(), not CombinedOutput(): a cache miss on the alpine image makes
+	// `docker run` print pull-progress lines, and those go to stderr — mixing
+	// them into the captured result silently corrupted a device path here once
+	// already (verified on a fresh host where alpine had never been pulled).
+	// Stdout is script's actual output and nothing else; stderr is still folded
+	// into the error below when something fails, so diagnostics are not lost.
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"--privileged", "--pid=host", "alpine", "sh", "-c", nsenterScript,
-	).CombinedOutput()
+	)
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("host-namespace exec %q: %w\n%s", script, err, out)
+		stderr := ""
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			stderr = string(exitErr.Stderr)
+		}
+		return "", fmt.Errorf("host-namespace exec %q: %w\n%s", script, err, stderr)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

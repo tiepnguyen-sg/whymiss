@@ -1,0 +1,16 @@
+id: peer-isolated-prysm
+description: >
+  The Lighthouse node (Prysm's only peer on this two-node devnet) is paused
+  for the full duty window — the same fault as peer-isolated-lighthouse, in
+  the other direction.
+target: vc-2-geth-prysm
+validator_index: 40
+duration: 20s
+fault:
+  kind: peer_drop
+  peer_drop:
+    peer_target: cl-1-lighthouse-geth
+avoid_proposer_validators: [0, 31]
+expect:
+  cause: local.p2p_degraded
+  confidence: medium
