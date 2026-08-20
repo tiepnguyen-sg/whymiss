@@ -89,3 +89,9 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   polling of that same node's beacon API — so the ~18s gap recorded between
   slot start and block_seen is a real, unfabricated measurement, but not a
   clean read of gossip propagation delay alone.
+- `test/corpus/peer-isolated-lighthouse` (`local.p2p_degraded`): the `peer_drop`
+  fault applied to a validator whose only peer was paused. The cleanest
+  `local.p2p_degraded` evidence generated so far — unlike the `netem` scenarios,
+  nothing about measuring it runs through the paused link, so a locally-published
+  attestation (~18s in) that was never observed included is a direct read, not
+  one confounded by the tool's own polling path.
