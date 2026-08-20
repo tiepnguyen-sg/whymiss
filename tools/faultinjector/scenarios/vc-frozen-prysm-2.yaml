@@ -1,0 +1,15 @@
+id: vc-frozen-prysm-2
+description: >
+  A clean attempt at the same fault as vc-frozen-prysm (which landed on
+  network.proposer_missed instead) — the Prysm validator client's container
+  frozen for the full duty window, with a different validator this time.
+target: vc-2-geth-prysm
+validator_index: 33
+duration: 20s
+avoid_proposer_validators: [32, 63]
+fault:
+  kind: pause
+  pause: {}
+expect:
+  cause: local.vc_disconnected
+  confidence: high

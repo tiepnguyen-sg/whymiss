@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/CHANGEME/whymiss/internal/domain"
@@ -103,22 +104,55 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 		return fmt.Errorf("apply fault: %w", err)
 	}
 
-	waitUntil(ctx, time.Now().Add(s.Duration))
-
-	fmt.Println("faultinjector: reverting fault")
-	if err := revert(ctx); err != nil {
-		return fmt.Errorf("revert fault: %w", err)
-	}
+	// The fault stays active on its own clock (revertAt) while observation
+	// starts immediately, in parallel — not after revert returns. An earlier
+	// version waited for revert before polling at all, which meant no
+	// observation could ever be timestamped earlier than roughly
+	// slotStart+duration regardless of when the block or attestation actually
+	// appeared: every recorded "delay" was bounded below by how long the fault
+	// was held, not by anything the fault caused. Watching while the fault is
+	// still in effect is what makes "did this appear before or after revert"
+	// a real question the observations can answer.
+	revertAt := time.Now().Add(s.Duration)
+	revertDone := make(chan error, 1)
+	go func() {
+		waitUntil(ctx, revertAt)
+		fmt.Println("faultinjector: reverting fault")
+		revertDone <- revert(ctx)
+	}()
 
 	watchDeadline := slotStart.Add(3 * obs.SecondsPerSlot)
-	blockRoot, proposerIndex, seenAt, blockFound, err := obs.PollBlockSeen(ctx, dutySlot, watchDeadline)
-	if err != nil {
-		return fmt.Errorf("poll block: %w", err)
-	}
 
-	publishedAt, published, err := obs.PollAttestationPublished(ctx, dutySlot, d, watchDeadline)
-	if err != nil {
-		return fmt.Errorf("poll attestation publish: %w", err)
+	var (
+		blockRoot     string
+		proposerIndex uint64
+		seenAt        time.Time
+		blockFound    bool
+		blockErr      error
+		publishedAt   time.Time
+		published     bool
+		publishErr    error
+	)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		blockRoot, proposerIndex, seenAt, blockFound, blockErr = obs.PollBlockSeen(ctx, dutySlot, watchDeadline)
+	}()
+	go func() {
+		defer wg.Done()
+		publishedAt, published, publishErr = obs.PollAttestationPublished(ctx, dutySlot, d, watchDeadline)
+	}()
+	wg.Wait()
+
+	if err := <-revertDone; err != nil {
+		return fmt.Errorf("revert fault: %w", err)
+	}
+	if blockErr != nil {
+		return fmt.Errorf("poll block: %w", blockErr)
+	}
+	if publishErr != nil {
+		return fmt.Errorf("poll attestation publish: %w", publishErr)
 	}
 
 	var (

@@ -113,3 +113,25 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   peer-isolated-prysm` (`local.p2p_degraded`, this run landing on a degraded
   rather than fully-missed outcome — inclusion delay 2 instead of 1 — real
   variance in what isolation produces, not a different mechanism).
+- **A real bug that affects the timing evidence in every scenario generated
+  before this fix.** `RunScenario` held the fault open for `duration`, then
+  reverted, *then* started polling for the block and attestation — meaning
+  observation could never begin before roughly slotStart+duration, whatever
+  actually happened on chain in the meantime. Every "~18-31s into the slot"
+  offset recorded in earlier scenarios (`el-disk-stall`, `-prysm`, `-severe`;
+  `p2p-degraded-lighthouse`, `-prysm`) was bounded below by how long the fault
+  was held, not by anything the fault caused — the negative finding noted in
+  `el-disk-stall-severe`'s README ("throttle severity didn't change the delay")
+  now has a mundane explanation: the tool wasn't watching yet. Fixed by
+  reverting on its own goroutine while `PollBlockSeen` and
+  `PollAttestationPublished` run concurrently, watching from the moment the
+  fault is applied. Verified: a rerun of `el-disk-stall` after the fix recorded
+  `block_seen` at ~3.5s into the slot, not ~31s. The *binary* facts in the
+  affected scenarios (block found, included, published) are still genuine
+  on-chain observations and unaffected by this bug — only the exact timing
+  offsets they carry should be read with that caveat, which their READMEs did
+  not previously state as precisely as this.
+- Two more real corpus scenarios generated with the timing fix in place:
+  `test/corpus/vc-frozen-lighthouse-2` and `test/corpus/vc-frozen-prysm-2`
+  (`local.vc_disconnected`) — clean redundant examples, one per client,
+  neither confounded by the paused node's own proposer duty.
