@@ -1,0 +1,23 @@
+id: proposer-missed-concurrent-vc-pause
+description: |
+    Originally set up to test local.vc_disconnected (Prysm's validator client
+    container frozen for the duty window, avoiding a same-node proposer conflict).
+    The real result was more interesting than intended: validator 23 (Lighthouse
+    range, unrelated to the paused node) held the proposer duty for this slot and
+    never produced a canonical block — confirmed by direct query well after the
+    slot passed (persistent 404). Per docs/causes.md's rule ordering, R-100
+    (proposer absent) fires before R-400 (VC reachability) specifically because an
+    absent block exonerates every attester regardless of their own client health,
+    so network.proposer_missed is the honest label for what these observations
+    show, not the local.vc_disconnected this scenario was built to demonstrate.
+    Kept and relabeled rather than discarded — a corpus scenario records what
+    actually happened, not what was expected to happen.
+expect:
+    cause: network.proposer_missed
+    confidence: high
+slot: 494
+validator_index: 33
+fault_kind: pause
+fault_target: vc-2-geth-prysm
+duration: 20s
+generated_at: 2026-08-20T08:37:56.385793Z

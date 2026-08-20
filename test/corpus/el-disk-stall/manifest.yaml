@@ -1,0 +1,13 @@
+id: el-disk-stall
+description: |
+    The Lighthouse-paired execution client's disk write throughput is throttled to 1MB/s (cgroup v2 io.max) for the full duty window, simulating a saturated consumer SSD during Engine API calls.
+expect:
+    cause: local.el_slow
+    sub_cause: local.el_slow.disk_saturation
+    confidence: medium
+slot: 561
+validator_index: 24
+fault_kind: cgroup_io
+fault_target: el-1-geth-lighthouse
+duration: 20s
+generated_at: 2026-08-20T08:51:15.530884Z
