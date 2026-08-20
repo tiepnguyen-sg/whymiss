@@ -26,3 +26,10 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   validates; construction with no evidence fails (I-7). 100% statement coverage,
   including a test that fails the build if `docs/causes.md` and the coded cause
   taxonomy drift apart (ADR-0005).
+- `internal/clock` (task 1.4): NTP offset measurement over SNTP, degrading
+  honestly — a typed error, never a fabricated offset — when every configured
+  server fails within a bounded, jittered retry budget (I-5). `Tracker` remembers
+  the last successful reading so a later failure can still report "time of last
+  successful sync" (docs/causes.md, `local.host.clock_drift`). No server is built
+  in; a caller supplies whatever the operator configured (I-4). Zero new
+  dependencies.
