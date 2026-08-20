@@ -1,0 +1,53 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.test
+*.out
+coverage.*
+/profile.cov
+
+# Runtime state. whymiss owns a SQLite database with rolling retention (I-12);
+# it is operator data, never repo content.
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+/data/
+
+# Local operator config. The committed defaults live in docs/configuration.md;
+# a real deployment's config points at real endpoints and stays out of git.
+/whymiss.yaml
+/whymiss.local.yaml
+.env
+.env.*
+*.log
+
+# Validator keys and secrets must never enter this repo (I-2). Mirrors the deny
+# list in .claude/settings.json as defense in depth.
+*keystore*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# Agent tooling. The shared contracts (.claude/settings.json, .codex/config.toml)
+# ARE committed — only per-developer overrides and logs are ignored.
+.claude/settings.local.json
+.codex-log/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Nothing below internal/rca/testdata/ or test/corpus/ is ignored on purpose.
+# Golden files and corpus scenarios are reviewed like production code
+# (STRUCTURE.md: "test/corpus is not test scaffolding — it is an asset").
