@@ -57,3 +57,7 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   (cause/sub-cause/confidence against the taxonomy) and `observations.jsonl`
   (decodes as sorted, valid `domain.Observation` values for the manifest's
   slot). `make corpus.validate`.
+- First real corpus scenario, `test/corpus/vc-frozen-lighthouse`: the
+  Lighthouse validator client's container frozen for a full duty window,
+  generated end-to-end against the live devnet. Labelled
+  `local.vc_disconnected`.

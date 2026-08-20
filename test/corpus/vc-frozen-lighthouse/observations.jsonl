@@ -1,0 +1,3 @@
+{"slot":129,"kind":"duty_assigned","at":"2026-08-20T07:18:10.943209Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
+{"slot":129,"kind":"slot_start","at":"2026-08-20T07:24:20Z","clock_offset":0,"source":"derived"}
+{"slot":129,"kind":"block_seen","at":"2026-08-20T07:24:38.113927Z","clock_offset":0,"source":"beaconapi","attrs":{"proposer_index":"56"}}
