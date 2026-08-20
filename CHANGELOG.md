@@ -20,3 +20,9 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   `internal/domain` and `internal/rca`.
 - ADR-0001 through ADR-0005: language/runtime, storage, pure-engine architecture,
   dependency policy, and cause-taxonomy governance.
+- `internal/domain`: the frozen domain model (task 1.3) — `Observation`,
+  `Timeline`, `Verdict`, and their supporting types, per BUILD_PROMPT §6 as refined
+  by the `Outcome`/`RewardFlags` delta in `docs/causes.md` §2. Every constructor
+  validates; construction with no evidence fails (I-7). 100% statement coverage,
+  including a test that fails the build if `docs/causes.md` and the coded cause
+  taxonomy drift apart (ADR-0005).
