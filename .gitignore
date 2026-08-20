@@ -5,6 +5,14 @@
 *.so
 *.dylib
 
+# `go build ./tools/...` without -o drops a binary named after the package
+# straight into the repo root. Name every tool explicitly so one of these
+# never gets committed by accident.
+/faultinjector
+/corpusctl
+/eval
+/whymiss
+
 # Test and coverage artifacts
 *.test
 *.out

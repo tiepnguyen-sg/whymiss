@@ -88,6 +88,7 @@ linters:
     gosec:
       excludes:
         - G304  # file inclusion — we read operator-configured paths by design
+        - G703  # path traversal via taint — same operator-configured-path reasoning as G304
 
     revive:
       rules:
@@ -102,9 +103,20 @@ linters:
 
   exclusions:
     rules:
-      # cmd/ is the only place allowed to exit.
-      - path: "^cmd/"
+      # cmd/ is the only place allowed to exit. tools/ gets the same pass: each
+      # subdirectory there is its own standalone `package main` (faultinjector,
+      # corpusctl, eval), not library code anything else imports — I-15's "only
+      # main" reading applies to it the same way it applies to cmd/whymiss.
+      - path: "^(cmd|tools)/"
         linters: [forbidigo]
+      # tools/faultinjector's entire job is shelling out to docker/kurtosis with
+      # dynamic arguments (container ids, service names) discovered from the
+      # devnet or read from a scenario file — G204 fires on every such call by
+      # design, not by oversight. Scoped to this one tool, not internal/ or
+      # cmd/, where an unexpected subprocess launch would be worth flagging.
+      - path: "^tools/faultinjector/"
+        linters: [gosec]
+        text: "G204"
       # Tests may construct fixtures loosely.
       - path: "_test\\.go$"
         linters: [gosec, errcheck]
