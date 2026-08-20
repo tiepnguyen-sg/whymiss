@@ -1,0 +1,60 @@
+# lefthook — single Go binary, no Node/Python runtime.
+# Install:  lefthook install
+#
+# This is the layer that catches an agent before it commits, not after.
+# Agents run `git commit` the same way humans do, so hooks bind both.
+
+pre-commit:
+  parallel: true
+  commands:
+    fmt:
+      glob: "*.go"
+      run: gofumpt -l {staged_files} && test -z "$(gofumpt -l {staged_files})"
+      fail_text: "run: make fmt"
+
+    lint:
+      glob: "*.go"
+      run: golangci-lint run --new-from-rev=HEAD
+      fail_text: "run: make lint"
+
+    invariants:
+      glob: "*.go"
+      run: make check
+      fail_text: "invariant violation — see docs/BUILD_PROMPT.md §2"
+
+    no-todo:
+      glob: "*.go"
+      run: |
+        if grep -nE '(TODO|FIXME|XXX)' {staged_files}; then
+          echo "TODO markers are not permitted in merged code."
+          echo "Open an issue and reference it instead."
+          exit 1
+        fi
+
+    no-commented-code:
+      glob: "*.go"
+      run: |
+        if grep -nE '^\s*//\s*(func|if |for |return |var |type )' {staged_files}; then
+          echo "Commented-out code detected. Delete it; git remembers."
+          exit 1
+        fi
+
+    changelog:
+      run: |
+        if git diff --cached --name-only | grep -qE '^(internal|cmd)/' \
+           && ! git diff --cached --name-only | grep -q '^CHANGELOG.md$'; then
+          echo "Code changed but CHANGELOG.md was not updated (I-16)."
+          exit 1
+        fi
+
+commit-msg:
+  commands:
+    conventional:
+      run: |
+        head -1 {1} | grep -qE '^(feat|fix|docs|test|refactor|chore|perf|build|ci)(\([a-z0-9/-]+\))?!?: .{1,72}$' \
+          || { echo "Conventional Commits required, e.g. feat(rca): add el_slow rule"; exit 1; }
+
+pre-push:
+  commands:
+    test:
+      run: go test -race -count=1 ./...
