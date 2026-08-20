@@ -1,0 +1,13 @@
+id: el-disk-stall-prysm
+description: |
+    The Prysm-paired execution client's disk write throughput is throttled to 1MB/s (cgroup v2 io.max) for the full duty window — the same fault as el-disk-stall, on the other client.
+expect:
+    cause: local.el_slow
+    sub_cause: local.el_slow.disk_saturation
+    confidence: medium
+slot: 275
+validator_index: 40
+fault_kind: cgroup_io
+fault_target: el-2-geth-prysm
+duration: 20s
+generated_at: 2026-08-20T09:55:14.236095016Z

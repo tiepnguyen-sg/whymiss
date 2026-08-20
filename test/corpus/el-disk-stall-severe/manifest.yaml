@@ -1,0 +1,20 @@
+id: el-disk-stall-severe
+description: |
+    The Lighthouse-paired execution client's disk write throughput is throttled
+    much harder than el-disk-stall — 64KB/s instead of 1MB/s — to test whether a
+    more severe saturation pushes the outcome from degraded toward missed. It
+    did not: the recorded delay (~26.9s) landed close to el-disk-stall's (~31s)
+    and el-disk-stall-prysm's (~24.6s) regardless of the 16x harder throttle,
+    and all three still achieved the best possible inclusion delay. See
+    README.md for why this looks like a limit of the poll-based measurement
+    rather than a fact about the fault.
+expect:
+    cause: local.el_slow
+    sub_cause: local.el_slow.disk_saturation
+    confidence: medium
+slot: 291
+validator_index: 24
+fault_kind: cgroup_io
+fault_target: el-1-geth-lighthouse
+duration: 20s
+generated_at: 2026-08-20T09:58:16.929937236Z
