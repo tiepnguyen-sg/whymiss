@@ -1,0 +1,43 @@
+# Project-scoped Codex configuration: .codex/config.toml
+#
+# IMPORTANT — scope limits:
+# A set of keys is IGNORED when set at project scope and must live in your
+# user-level ~/.codex/config.toml instead. These include (non-exhaustive):
+#   model_provider, model_providers, profile, profiles, notify,
+#   openai_base_url, chatgpt_base_url, approval_policy, sandbox_mode,
+#   sandbox_workspace_write.*, otel.*
+#
+# Verify what Codex actually loaded:
+#   codex --print-instructions
+#   codex -c log_dir=./.codex-log   # then read ./.codex-log/codex-tui.log
+#
+# Codex stops loading instruction files once the accumulated total reaches
+# 32 KiB. Files nearest the working directory are loaded LAST and are therefore
+# truncated first. Keep AGENTS.md small and push detail into docs/.
+
+# Treat docs/ as reference material rather than instruction files.
+project_doc_max_bytes = 32768
+
+
+# ---------------------------------------------------------------------------
+# Put the following in ~/.codex/config.toml (USER scope), not here.
+# Copy-paste block:
+# ---------------------------------------------------------------------------
+#
+# # Let Codex fall back to CLAUDE.md if AGENTS.md is ever missing,
+# # so the two tools can never read different contracts.
+# project_doc_fallback_filenames = ["AGENTS.md", "CLAUDE.md"]
+# project_doc_max_bytes = 32768
+#
+# # Normal development posture: write inside the workspace, ask before leaving it,
+# # network off unless a task genuinely needs it.
+# sandbox_mode    = "workspace-write"
+# approval_policy = "on-request"
+#
+# [sandbox_workspace_write]
+# network_access = false
+#
+# [projects."/absolute/path/to/whymiss"]
+# trust_level = "trusted"
+#
+# ---------------------------------------------------------------------------
