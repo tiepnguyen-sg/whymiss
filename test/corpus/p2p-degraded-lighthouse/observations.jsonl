@@ -1,0 +1,5 @@
+{"slot":58,"kind":"duty_assigned","at":"2026-08-20T09:00:05.58113411Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
+{"slot":58,"kind":"slot_start","at":"2026-08-20T09:11:14Z","clock_offset":0,"source":"derived"}
+{"slot":58,"kind":"block_seen","at":"2026-08-20T09:11:32.187836623Z","clock_offset":0,"source":"beaconapi","attrs":{"proposer_index":"31"}}
+{"slot":58,"kind":"attestation_published","at":"2026-08-20T09:11:32.188874313Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
+{"slot":58,"kind":"attestation_included","at":"2026-08-20T09:11:32.189839513Z","clock_offset":0,"source":"beaconapi","attrs":{"inclusion_delay":"1","validator_index":"24"}}

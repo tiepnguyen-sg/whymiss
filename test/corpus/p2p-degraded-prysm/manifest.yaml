@@ -1,0 +1,12 @@
+id: p2p-degraded-prysm
+description: |
+    200ms of added latency (tc netem) on the Prysm consensus client's network path for the full duty window — the same fault as p2p-degraded-lighthouse, on the other client.
+expect:
+    cause: local.p2p_degraded
+    confidence: medium
+slot: 95
+validator_index: 40
+fault_kind: netem
+fault_target: cl-2-prysm-geth
+duration: 20s
+generated_at: 2026-08-20T09:19:14.371333784Z

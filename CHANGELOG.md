@@ -81,3 +81,11 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   whose real result was a genuinely missing block from an unrelated validator,
   relabelled to match the taxonomy's own rule precedence (R-100 before R-400)
   rather than discarded, per docs/BUILD_PROMPT.md §8's "record what happened."
+- Two more real corpus scenarios, `test/corpus/p2p-degraded-lighthouse` and
+  `test/corpus/p2p-degraded-prysm` (`local.p2p_degraded`), generated on a
+  native Linux host using the now-verified `netem` fault. Their READMEs note a
+  real measurement caveat found in the process: netem attached to a node's
+  host-side veth delays *all* traffic through it, including this tool's own
+  polling of that same node's beacon API — so the ~18s gap recorded between
+  slot start and block_seen is a real, unfabricated measurement, but not a
+  clean read of gossip propagation delay alone.

@@ -1,0 +1,12 @@
+id: p2p-degraded-lighthouse
+description: |
+    200ms of added latency (tc netem) on the Lighthouse consensus client's network path for the full duty window, simulating degraded peering / propagation.
+expect:
+    cause: local.p2p_degraded
+    confidence: medium
+slot: 58
+validator_index: 24
+fault_kind: netem
+fault_target: cl-1-lighthouse-geth
+duration: 20s
+generated_at: 2026-08-20T09:11:32.189855662Z
