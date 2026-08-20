@@ -36,3 +36,20 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
 - `cmd/whymiss/main.go`: a minimal stub so the binary builds and cross-compiles
   (I-13). The real CLI surface arrives in Phase 2 task 2.7 with the `cobra`
   dependency it needs.
+- ADR-0006: `gopkg.in/yaml.v3` for `manifest.yaml` and scenario files.
+- `test/e2e/kurtosis`: a two-participant devnet (Lighthouse+Geth, Prysm+Geth),
+  matching BUILD_PROMPT §3's initial client scope. `make devnet.up/down/info`.
+  See its README for hard-won configuration constraints (network name must be
+  the literal `"kurtosis"`; Fulu/BPO forks must be pushed out to avoid a
+  128-validator-per-node requirement unrelated to what whymiss tests).
+- `tools/faultinjector` (task 1.5): reproducibly injects a declared fault into
+  the running devnet and records what actually happens as a corpus scenario.
+  Two mechanisms verified against a live devnet — `pause` (`docker
+  pause`/`unpause`) and `cgroup_io` (cgroup v2 `io.max`, written from the
+  Docker host's own namespaces since a container's cgroup interface is
+  correctly read-only from inside). `netem` and `clock_skew` are scaffolded
+  but explicitly not implemented pending verification on a real Linux host —
+  see their doc comments; `peer_drop` reuses the verified pause mechanism
+  aimed at a peer's container. Every value written to `observations.jsonl` is
+  measured against the real beacon API during the run, never synthesized
+  (docs/BUILD_PROMPT.md §8).
