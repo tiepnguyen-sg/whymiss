@@ -12,7 +12,9 @@ module github.com/CHANGEME/whymiss
 // Bump this line, not gofumpt's version, when that requirement moves again.
 go 1.25
 
-// No dependencies yet, and none arrive without an ADR (I-14: fewer than 15 direct
-// dependencies at v1.0). The locked choices in BUILD_PROMPT §3 — cobra, koanf,
+// New dependencies require an ADR (I-14: fewer than 15 direct dependencies at
+// v1.0). The locked choices in BUILD_PROMPT §3 — cobra, koanf,
 // modernc.org/sqlite, client_golang — land in the phase that first needs them,
-// each with its ADR merged first.
+// each with its own ADR merged first.
+
+require gopkg.in/yaml.v3 v3.0.1 // ADR-0006: tools/faultinjector scenario files, test/corpus manifest.yaml
