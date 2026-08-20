@@ -55,13 +55,18 @@ docker run --rm --privileged --pid=host alpine sh -c \
 This also works unmodified on a native Linux host — it just has less to reach
 through there.
 
-**Network faults (tc netem) are not reliable this way on Docker Desktop for
-Mac.** Its networking is not a plain Linux bridge+veth topology, so
-host-side-veth-based `tc netem` (the standard technique for unprivileged Docker
-containers) could not be verified to actually delay traffic when prototyped here
-— see the `NetemFault` doc comment in `tools/faultinjector/fault_netem.go`. Expect
-this to work normally on a native Linux CI/dev machine; verify there before
-trusting a scenario generated with it.
+**Network faults (tc netem) do not work this way on Docker Desktop for Mac.**
+Its networking is not a plain Linux bridge+veth topology, so host-side-veth-based
+`tc netem` (the standard technique for unprivileged Docker containers) could not
+be made to actually delay traffic when prototyped there. It works cleanly on
+native Linux: verified end to end on a GCP `e2-standard-4` Ubuntu 22.04 VM —
+`hostVethFor` resolved the correct host veth from the container's own
+`eth0@if<N>` naming, and `tc qdisc add ... netem delay 300ms` measurably added
+~300ms of round-trip latency, reverting cleanly. Run
+`tools/faultinjector/fault_netem_verify_test.go`'s
+`TestNetemFaultAgainstRealDevnet` (root, `WHYMISS_NETEM_INTEGRATION=1`) to
+reproduce. `clock_skew` remains unimplemented for an unrelated, platform-
+independent reason — see `fault_clock.go`'s doc comment.
 
 ## Validator index ranges
 

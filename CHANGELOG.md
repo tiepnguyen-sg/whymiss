@@ -44,15 +44,17 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   128-validator-per-node requirement unrelated to what whymiss tests).
 - `tools/faultinjector` (task 1.5): reproducibly injects a declared fault into
   the running devnet and records what actually happens as a corpus scenario.
-  Two mechanisms verified against a live devnet — `pause` (`docker
-  pause`/`unpause`) and `cgroup_io` (cgroup v2 `io.max`, written from the
-  Docker host's own namespaces since a container's cgroup interface is
-  correctly read-only from inside). `netem` and `clock_skew` are scaffolded
-  but explicitly not implemented pending verification on a real Linux host —
-  see their doc comments; `peer_drop` reuses the verified pause mechanism
-  aimed at a peer's container. Every value written to `observations.jsonl` is
-  measured against the real beacon API during the run, never synthesized
-  (docs/BUILD_PROMPT.md §8).
+  Three mechanisms verified against a live devnet — `pause` (`docker
+  pause`/`unpause`), `cgroup_io` (cgroup v2 `io.max`, written from the Docker
+  host's own namespaces since a container's cgroup interface is correctly
+  read-only from inside), and `netem` (`tc netem` on a container's host-side
+  veth, verified end to end on a native Linux VM: ~300ms of measured added
+  latency, reverting cleanly). `clock_skew` remains unimplemented — libfaketime
+  needs LD_PRELOAD set at process launch, which cannot be attached to an
+  already-running client without restarting it; see its doc comment.
+  `peer_drop` reuses the verified pause mechanism aimed at a peer's container.
+  Every value written to `observations.jsonl` is measured against the real
+  beacon API during the run, never synthesized (docs/BUILD_PROMPT.md §8).
 - `tools/corpusctl` (task 1.6): validates a corpus scenario's `manifest.yaml`
   (cause/sub-cause/confidence against the taxonomy) and `observations.jsonl`
   (decodes as sorted, valid `domain.Observation` values for the manifest's
