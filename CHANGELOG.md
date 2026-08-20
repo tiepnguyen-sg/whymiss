@@ -33,3 +33,6 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   successful sync" (docs/causes.md, `local.host.clock_drift`). No server is built
   in; a caller supplies whatever the operator configured (I-4). Zero new
   dependencies.
+- `cmd/whymiss/main.go`: a minimal stub so the binary builds and cross-compiles
+  (I-13). The real CLI surface arrives in Phase 2 task 2.7 with the `cobra`
+  dependency it needs.
