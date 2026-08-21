@@ -45,7 +45,7 @@ vuln:
 	govulncheck ./...
 
 ## check: enforce invariants that lint cannot express
-check: check.purity check.isolation check.egress
+check: check.purity check.isolation check.egress check.nonroot
 
 # I-6: internal/rca must import only stdlib and internal/domain.
 # I-6: internal/domain must import only stdlib.
@@ -59,6 +59,7 @@ check.purity:
 	@! grep -rE '^\s*"?[a-z0-9.-]+\.[a-z]{2,}/' --include='*.go' internal/rca \
 		| grep -v '_test.go' \
 		| grep -v '$(MODULE)/internal/domain' \
+		| grep -v '$(MODULE)/internal/rca"' \
 		|| (echo "FAIL: internal/rca imports outside stdlib + internal/domain" && exit 1)
 	@echo "OK"
 
@@ -77,6 +78,24 @@ check.egress:
 	@! grep -rnE 'http\.(Get|Post|DefaultClient)' --include='*.go' internal cmd \
 		| grep -v '^internal/source/' \
 		|| (echo "FAIL: outbound HTTP outside internal/source/" && exit 1)
+	@echo "OK"
+
+# I-3: the binary must run without root and without any Linux capability
+# (BUILD_PROMPT §10.3 Phase 2 DoD: "runs as non-root, no capabilities,
+# verified in CI"). --help is enough: it exercises the binary starting up
+# and exiting cleanly without touching the network or the filesystem beyond
+# reading its own flags, so this check works with no beacon node or store
+# available, which is what CI has.
+check.nonroot: build
+	@echo ">> I-3 non-root, no capabilities"
+	@if [ "$$(id -u)" = "0" ]; then \
+		echo "FAIL: this check must not itself run as root — it proves the binary doesn't need to" && exit 1; \
+	fi
+	@if command -v getcap >/dev/null 2>&1; then \
+		caps=$$(getcap bin/$(BIN) 2>/dev/null); \
+		if [ -n "$$caps" ]; then echo "FAIL: binary carries Linux capabilities: $$caps" && exit 1; fi; \
+	fi
+	@./bin/$(BIN) --help >/dev/null
 	@echo "OK"
 
 ## ci: the gate. Every task must pass this before being declared done.
@@ -119,6 +138,6 @@ clean:
 	rm -rf bin/
 
 .PHONY: help build build.all test test.golden lint fmt vuln check \
-        check.purity check.isolation check.egress ci \
+        check.purity check.isolation check.egress check.nonroot ci \
         devnet.up devnet.down devnet.info \
         corpus.validate corpus.generate eval clean

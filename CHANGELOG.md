@@ -338,3 +338,207 @@ this pass.
   parsing has no test yet — no reorg occurred during the capture session,
   and hand-writing a substitute payload would violate the same rule; noted
   in `stream_test.go` rather than papered over.
+- `internal/source/promscrape` (task 2.2): scrapes an execution client's
+  Engine API call durations (`newPayload`/`forkchoiceUpdated`), normalised
+  into `domain.MetricSample`. Test data reuses the real geth metrics sample
+  already captured for `tools/faultinjector`.
+- `internal/source/promscrape`'s CL side: peer count, normalised across
+  clients into one `cl_peer_count` metric despite genuinely different
+  underlying metrics — captured live against the devnet, Lighthouse
+  exposes an unlabelled `libp2p_peers` gauge, Prysm exposes
+  `connected_libp2p_peers{agent="..."}` split per peer-client-type and
+  needing a sum across labels to get the total. The real captures only
+  ever had one peer connected, so the sum-across-multiple-labels path
+  (`SamplePrysmPeerCount`'s whole reason to scan every matching line) has
+  no test with more than one label — noted in `peers_test.go` rather than
+  exercised with an invented second line, same discipline as
+  `stream_test.go`'s `chain_reorg` gap above.
+- `internal/source/hostmetrics` (task 2.3): disk I/O and memory pressure
+  via the host-wide PSI files (`/proc/pressure/*`), CPU steal via
+  `/proc/stat` deltas between successive samples. Both degrade to a clear
+  error rather than a fabricated zero when the file is absent (I-3) — true
+  on any non-Linux host, verified directly since this was written and
+  tested on macOS. Clock drift stays `internal/clock`'s job (task 1.4), not
+  duplicated here.
+- `internal/source/registry.go` (task 2.4): `DetectConsensusClient` maps a
+  node's self-reported version string to `ConsensusLighthouse`/
+  `ConsensusPrysm`/`ConsensusUnknown`, tested against the real
+  `"Lighthouse/v8.2.2-e423a66/x86_64-linux"` value captured for the
+  beaconapi work. Prysm's detection arm follows the public naming
+  convention but is unverified — no real Prysm response has been captured
+  in this project yet — and the doc comment says so rather than implying
+  confidence this package doesn't have.
+- `internal/timeline` (task 2.6): `Assembler` collects observations,
+  samples, and duties from however many adapters are producing them and
+  builds a `domain.Timeline` with deterministic ordering — sorted by
+  timestamp with a fixed, multi-field tie-break rather than arrival order,
+  which is not reproducible across runs when adapters run on separate
+  goroutines. `Replay` (task 2.8) rebuilds a `Timeline` from a corpus
+  scenario's `observations.jsonl`, tested against `test/corpus/vc-slow-cpu`
+  — real, already-committed data, including a test asserting replaying the
+  same file twice produces byte-identical output (BUILD_PROMPT.md §10.3's
+  explicit requirement).
+- `internal/store` (task 2.5): SQLite via `modernc.org/sqlite` (ADR-0007),
+  WAL mode, `synchronous=NORMAL`, forward-only migrations tracked in
+  `PRAGMA user_version`, retention by both age and byte count via
+  `PRAGMA page_count`/`page_size` followed by `VACUUM` to actually shrink
+  the file. Two real bugs a test caught before this shipped: timestamps
+  were stored via `time.RFC3339Nano`, whose trailing-zero-trimming produces
+  strings of different lengths for different sub-second precisions — since
+  `ORDER BY` on a SQLite TEXT column is byte-wise, a 0ms observation could
+  sort *after* a 600ms one recorded earlier, because `.` (0x2E) sorts
+  before `Z` (0x5A); fixed with a fixed-width layout instead. Also a test
+  fixture bug (an attribute set on a kind that doesn't permit it), caught
+  by `domain.NewObservation`'s own validation doing its job.
+- `internal/app` (composition root, first populated this pass) and
+  `cmd/whymiss` (task 2.7, ADR-0008 for `spf13/cobra`): `whymiss watch`
+  runs the collector daemon — streams `head`/`chain_reorg` events, samples
+  host pressure on a timer, prunes on a timer, all persisted to SQLite —
+  and `whymiss timeline <slot> --format json` reads it back through
+  `internal/timeline.Assembler`. Per-duty tracking (polling a specific
+  validator's block/attestation/inclusion, which needs to know which
+  validator to watch) is not yet wired into `watch`'s loop — that needs a
+  config surface (`koanf`, still unused) this pass didn't add, since
+  nothing yet requires multi-source config. `whymiss <slot>` and `doctor`
+  stay unimplemented placeholders per AGENTS.md's fixed CLI surface —
+  `<slot>` needs the RCA engine (Phase 3), `doctor` is Phase 4.
+- Three of Phase 2's DoD checkboxes (BUILD_PROMPT.md §10.3), closed after
+  an honest look found they weren't actually done despite every individual
+  task above having code and tests:
+  - `TestReplay_ByteIdenticalAcrossRuns` now replays every scenario under
+    `test/corpus/` (11, read from the directory rather than hardcoded, so a
+    newly added scenario is automatically covered), not just one. The DoD
+    line says "every corpus scenario," and one was not that.
+  - `docs/configuration.md`: every `whymiss watch`/`timeline` flag, its
+    default, and a safe range with the reasoning behind it (e.g.
+    `--retention-max-bytes`'s 100MiB–10GiB range is sized against a
+    Raspberry Pi 5's typical disk budget, I-12).
+  - `make check.nonroot`: builds the binary, refuses to run itself as root
+    (so the check can't accidentally pass by running as root itself),
+    checks it carries no Linux capabilities via `getcap` where available,
+    and runs `--help` to prove it starts and exits cleanly. Wired into
+    `make check`, so `make ci` now enforces I-3 for `cmd/whymiss` itself,
+    not just documents the intent.
+- **A real bug unit tests could not have caught, found by actually running
+  `whymiss watch` against a live devnet:** the collector never produced a
+  `slot_start` observation — the SSE stream only carries `head`/
+  `chain_reorg` events, and nothing else in the loop derived one. Every
+  unit test for `GetTimeline`/`Assembler` had hand-assembled its input
+  observations and always happened to include one, so this was invisible
+  until `whymiss timeline <slot>` was run against data `watch` had actually
+  collected, where it failed for every slot with "no slot_start
+  observation recorded." Fixed with a `runSlotClock` goroutine that writes
+  a derived `slot_start` for every slot as it begins, computed from
+  genesis + the slot schedule (the same source `tools/faultinjector`
+  already used). Verified end to end against the live devnet afterward:
+  `slot_start` at `09:06:16.000000000Z`, `head_updated` at
+  `09:06:16.05497891Z` for the same slot — 55ms apart, a real block arrival
+  offset — and `whymiss timeline 4029 --format json` returned the complete,
+  correctly ordered timeline for it.
+- Closed the last of Phase 2's DoD gaps that didn't need the 72-hour soak
+  (that one's still open — see below): "adding a hypothetical third client
+  would touch only internal/source/" was asserted in `docs/architecture.md`
+  but not actually true yet, because task 2.4's "adapter selection" half
+  had never been built — only "detection" had. `internal/app` calling
+  `promscrape.SampleLighthousePeerCount` directly (the only way to actually
+  *use* the CL peer-count work from CHANGELOG's earlier entry) would have
+  put a client name in `internal/app`, failing `make check.isolation`
+  itself. Fixed with `internal/source/peers.go`'s `SamplePeerCount`
+  dispatcher — the actual "adapter selection" — and wired it into `whymiss
+  watch` (`--cl-metrics-api`, `--peer-sample-interval`) so it's exercised,
+  not just present. `docs/architecture.md` §5 now walks the exact files a
+  third client (Teku, as the example) would touch, and states plainly that
+  `internal/app` doesn't change — true now, checked by `make
+  check.isolation` on every CI run, not merely written down.
+- **Still open**: the 72-hour Hoodi testnet soak (RSS/disk/goroutine-leak
+  ceilings, `goleak`) — needs real testnet infrastructure and wall-clock
+  time this pass didn't have. Everything else in BUILD_PROMPT.md §10.3's
+  Phase 2 DoD is closed.
+
+## Phase 3 — The RCA engine
+
+### Added
+
+- `internal/rca` (tasks 3.1–3.4): the pure `Analyze(Timeline, Config) Verdict`
+  engine (ADR-0003) — twelve ordered, first-match-wins rules (R-010 through
+  R-999, `internal/rca/rules`), one file per rule, each with a written
+  position justification in `rules/order.go`. `Config`/`DefaultConfig`
+  carry every `thresholds.*` value from `docs/causes.md` §5 verbatim.
+  `deriveOutcome` (`outcome.go`) computes `Outcome`/`RewardFlags` from the
+  timeline before any cause rule runs — a documented simplification where
+  the closed observation vocabulary has no independent checkpoint-
+  correctness signal, so `TimelySource`/`TimelyTarget` are treated as
+  earned whenever the attestation was included at all.
+- `internal/report` (task 3.5): `JSON` (indented, `domain.Verdict`'s own
+  tags) and `Markdown` renderers. Markdown output is verified readable —
+  it's what's pasted into this README's sample report.
+- `whymiss <slot>` (task 3.6, `cmd/whymiss/root.go`): wired to
+  `internal/app.Explain` (`GetTimeline` + `rca.Analyze`), with
+  `--format markdown|json`. No longer a placeholder error.
+- `internal/rca/golden_test.go` (task 3.7): replays every `test/corpus/*`
+  scenario and asserts `Analyze`'s cause/sub_cause matches `manifest.yaml`.
+  All 11 scenarios pass. Full unit coverage added alongside it: one
+  `_test.go` per rule, `engine_test.go` (first-match-wins, the no-panic
+  safe-fallback path on a malformed rule draft, the no-duty short-circuit),
+  `outcome_test.go`.
+- `tools/eval` + `docs/evaluation.md` (task 3.8): walks `test/corpus`,
+  runs each scenario through `Analyze`, and reports top-1 accuracy plus
+  per-cause precision/recall as a committed Markdown table. Current
+  measured result: **11/11 (100%) top-1 accuracy, 0 false-`high`
+  verdicts** — see the caveat below on what this number does and doesn't
+  cover.
+- `internal/rca/determinism_test.go` (task 3.9): re-analyzes one real
+  corpus timeline 1,000 times and asserts byte-identical JSON output.
+- Three genuine correctness bugs found by reasoning through the real
+  corpus data before the golden test ever ran, each because a rule's
+  first-draft condition was broader than the evidence actually justified:
+  R-010 (`local` data-completeness) originally fired on any block-seen
+  absence paired with attestation activity, which would have wrongly
+  pre-empted a scenario where a validator client legitimately attests to a
+  stale head its own node hasn't seen the block for yet; R-100
+  (`network.proposer_missed`) and R-400 (`local.vc_disconnected`) had the
+  same shape of bug in the opposite direction. All three fixed by requiring
+  the *specific* combination of absent observations the taxonomy actually
+  describes, not just one of them — documented in each rule's own doc
+  comment.
+- A fourth bug the golden test *did* catch: `Stages.Dominant` treated a
+  single known stage (propagation, when `attestation_published` was never
+  captured — this build's most common real shape) as trivially "100%
+  dominant," which isn't a claim about where the time went, just an
+  artifact of having nothing else to compare it to. This silently made
+  `local.vc_disconnected` and `local.cl_slow` unreachable for several real
+  scenarios, since `local.p2p_degraded` (R-200, ordered earlier) matched
+  first every time. Fixed in two parts: `Stages.Dominant` now requires at
+  least two known stages before comparing shares at all; R-200 gained a
+  second, absolute-duration path for the single-stage case (propagation
+  alone exceeding the attestation deadline) plus an explicit deferral to
+  R-400 when there's no attestation activity whatsoever, since that's a
+  stronger signal than propagation timing either way. A related ordering
+  bug in R-310 (`local.cl_slow`) — its generic "no engine_call evidence"
+  fallback was pre-empting R-410's (`local.vc_slow`) far more specific
+  timing evidence — was fixed the same way: R-310 now defers when R-410's
+  exact match condition is also present.
+
+### Known gaps — not attempted this pass
+
+- **Task 3.10, corpus growth to ≥50 scenarios, not done.** The measured
+  100%/0-false-high numbers above are real but only cover the 11 scenarios
+  that existed going into this phase, across 6 of the taxonomy's causes.
+  `local.el_slow` (any sub-cause) and `network.late_block` have zero corpus
+  coverage — `network.late_block` structurally can't be exercised until
+  Phase 5's baseline exists (R-110 is written and unit-tested against
+  synthetic timelines, just never hit by the real corpus).
+  BUILD_PROMPT.md §11.3's "adversarial and ambiguous cases that should
+  yield `unknown`" is likewise untested against real data for the same
+  reason — no such scenario exists in the corpus yet.
+- Several rules are deliberately simpler than `docs/causes.md`'s literal
+  formula, documented as such in each rule's own comment rather than
+  hidden: R-300/R-310 use "any `engine_call` evidence exists at all" as
+  the EL/CL elimination signal rather than the documented "Engine API
+  accounts for ≥/< half the validation stage" split (no rolling-p99
+  baseline is computed anywhere in this codebase yet to make that split
+  meaningful); R-410 checks `block_seen`/`attestation_published` directly
+  against the deadline rather than requiring "signing stage dominant,"
+  since `head_updated` — the observation the real Signing/Validation split
+  depends on — is never populated by any collector in this build
+  (`ComputeStages`'s doc comment covers the degraded fallback this forces).

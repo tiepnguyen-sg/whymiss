@@ -48,6 +48,24 @@ linters:
               desc: "I-6: internal/domain must import the standard library only"
 
         # I-6: internal/rca is pure. Standard library + internal/domain only.
+        #
+        # No `deny` list here on purpose: depguard v2 evaluates deny before
+        # allow, so a broad `deny: pkg: "github.com"` would also catch this
+        # module's own import path (github.com/CHANGEME/whymiss/...) and
+        # silently block internal/domain even though it's in `allow` —
+        # verified by reproducing it (internal/domain's import was rejected
+        # with both listed) and confirming the fix (removing `deny` still
+        # correctly rejects an unrelated package like net/http, since a
+        # non-empty `allow` list is implicitly exclusive in depguard v2).
+        #
+        # internal/rca is allow-listed (alongside internal/domain) so that
+        # internal/rca/rules — where ADR-0003/docs/causes.md §6 says the
+        # ordered rule list lives — can import the rca.Rule interface and
+        # rca.Config it implements against. This is one-directional by
+        # construction (internal/rca itself never imports internal/rca/rules
+        # — see rca.SetOrder's doc comment for how the ordered list still
+        # reaches Analyze without that import), so it doesn't create a cycle
+        # or let anything outside this tree in.
         rca-purity:
           files:
             - "**/internal/rca/**"
@@ -56,9 +74,7 @@ linters:
           allow:
             - $gostd
             - github.com/CHANGEME/whymiss/internal/domain
-          deny:
-            - pkg: "github.com"
-              desc: "I-6: internal/rca must be pure — stdlib + internal/domain only"
+            - github.com/CHANGEME/whymiss/internal/rca
 
         # I-11: only adapters may reach the network or the OS.
         adapters-only:
