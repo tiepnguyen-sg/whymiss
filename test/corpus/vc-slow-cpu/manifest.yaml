@@ -1,0 +1,12 @@
+id: vc-slow-cpu
+description: |
+    The Lighthouse validator client's CPU is capped to 1% of one core (cgroup v2 cpu.max, much more aggressive than el-slow-cpu/cl-slow-cpu since BLS signing is cheap enough that a looser quota might never queue) for the full duty window — unlike vc-frozen-lighthouse's pause, the process keeps running and should eventually publish, just late, isolating local.vc_slow (published late, head received on time) from local.vc_disconnected (never published at all).
+expect:
+    cause: local.vc_slow
+    confidence: medium
+slot: 1959
+validator_index: 24
+fault_kind: cgroup_cpu
+fault_target: vc-1-geth-lighthouse
+duration: 35s
+generated_at: 2026-08-21T02:12:49.170531951Z

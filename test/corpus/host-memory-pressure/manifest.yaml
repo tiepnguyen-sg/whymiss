@@ -1,0 +1,12 @@
+id: host-memory-pressure
+description: |
+    The Lighthouse-paired execution client's cgroup v2 memory.high is capped to 128MB for the full duty window — well under geth's normal working set for this devnet, forcing sustained reclaim. memory.high throttles and reclaims rather than OOM-killing the process (unlike memory.max), which is what docs/causes.md's local.host.memory_pressure rule measures via PSI.
+expect:
+    cause: local.host.memory_pressure
+    confidence: medium
+slot: 2001
+validator_index: 24
+fault_kind: cgroup_mem
+fault_target: el-1-geth-lighthouse
+duration: 25s
+generated_at: 2026-08-21T02:21:16.523540482Z
