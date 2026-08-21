@@ -1,0 +1,18 @@
+# TYPE engine_getblobs_available gauge
+engine_getblobs_available 0
+# TYPE rpc_duration_engine_exchangeCapabilities_success_count counter
+rpc_duration_engine_exchangeCapabilities_success_count 1
+# TYPE rpc_duration_engine_exchangeCapabilities_success summary
+rpc_duration_engine_exchangeCapabilities_success {quantile="0.5"} 189720
+rpc_duration_engine_exchangeCapabilities_success {quantile="0.75"} 189720
+# TYPE rpc_duration_engine_forkchoiceUpdatedV3_success_count counter
+rpc_duration_engine_forkchoiceUpdatedV3_success_count 2
+# TYPE rpc_duration_engine_forkchoiceUpdatedV3_success summary
+rpc_duration_engine_forkchoiceUpdatedV3_success {quantile="0.5"} 2.22248e+06
+rpc_duration_engine_forkchoiceUpdatedV3_success {quantile="0.75"} 3.79379e+06
+rpc_duration_engine_forkchoiceUpdatedV3_success {quantile="0.95"} 3.79379e+06
+# TYPE rpc_duration_engine_newPayloadV4_success_count counter
+rpc_duration_engine_newPayloadV4_success_count 1
+# TYPE rpc_duration_engine_newPayloadV4_success summary
+rpc_duration_engine_newPayloadV4_success {quantile="0.5"} 2.12666e+06
+rpc_duration_engine_newPayloadV4_success {quantile="0.75"} 2.12666e+06

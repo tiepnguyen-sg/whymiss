@@ -1,0 +1,2498 @@
+# HELP aggregate_attestations_t1 Captures times of attestation aggregation in milliseconds during the first interval per slot
+# TYPE aggregate_attestations_t1 histogram
+aggregate_attestations_t1_bucket{le="10"} 4
+aggregate_attestations_t1_bucket{le="20"} 4
+aggregate_attestations_t1_bucket{le="50"} 4
+aggregate_attestations_t1_bucket{le="100"} 4
+aggregate_attestations_t1_bucket{le="200"} 4
+aggregate_attestations_t1_bucket{le="300"} 4
+aggregate_attestations_t1_bucket{le="500"} 4
+aggregate_attestations_t1_bucket{le="1000"} 4
+aggregate_attestations_t1_bucket{le="+Inf"} 4
+aggregate_attestations_t1_sum 0
+aggregate_attestations_t1_count 4
+# HELP aggregate_attestations_t2 Captures times of attestation aggregation in milliseconds during the second interval per slot
+# TYPE aggregate_attestations_t2 histogram
+aggregate_attestations_t2_bucket{le="10"} 4
+aggregate_attestations_t2_bucket{le="40"} 4
+aggregate_attestations_t2_bucket{le="100"} 4
+aggregate_attestations_t2_bucket{le="200"} 4
+aggregate_attestations_t2_bucket{le="600"} 4
+aggregate_attestations_t2_bucket{le="+Inf"} 4
+aggregate_attestations_t2_sum 0
+aggregate_attestations_t2_count 4
+# HELP aggregated_attestations_in_pool_total The number of aggregated attestations in the pool.
+# TYPE aggregated_attestations_in_pool_total gauge
+aggregated_attestations_in_pool_total 0
+# HELP attestation_inclusion_delay_slots The number of slots between att.Slot and block.Slot
+# TYPE attestation_inclusion_delay_slots histogram
+attestation_inclusion_delay_slots_bucket{le="1"} 0
+attestation_inclusion_delay_slots_bucket{le="2"} 0
+attestation_inclusion_delay_slots_bucket{le="3"} 0
+attestation_inclusion_delay_slots_bucket{le="4"} 0
+attestation_inclusion_delay_slots_bucket{le="6"} 0
+attestation_inclusion_delay_slots_bucket{le="32"} 0
+attestation_inclusion_delay_slots_bucket{le="64"} 0
+attestation_inclusion_delay_slots_bucket{le="+Inf"} 0
+attestation_inclusion_delay_slots_sum 0
+attestation_inclusion_delay_slots_count 0
+# HELP attestation_saved_by_seen_aggregated_cache_total The number of times an attestation was found only in the seen aggregated cache and not in the regular caches.
+# TYPE attestation_saved_by_seen_aggregated_cache_total counter
+attestation_saved_by_seen_aggregated_cache_total 0
+# HELP attestation_too_early_total Increased when an attestation is considered too early
+# TYPE attestation_too_early_total counter
+attestation_too_early_total 0
+# HELP attestation_too_late_total Increased when an attestation is considered too late
+# TYPE attestation_too_late_total counter
+attestation_too_late_total 0
+# HELP attestations_in_pool_total The number of attestations in the pool.
+# TYPE attestations_in_pool_total gauge
+attestations_in_pool_total 0
+# HELP attester_slashings_included_total Number of attester slashings included in blocks
+# TYPE attester_slashings_included_total counter
+attester_slashings_included_total 0
+# HELP backfill_batch_blobs_download_ms BlobSidecar download time, in ms.
+# TYPE backfill_batch_blobs_download_ms histogram
+backfill_batch_blobs_download_ms_bucket{le="100"} 0
+backfill_batch_blobs_download_ms_bucket{le="300"} 0
+backfill_batch_blobs_download_ms_bucket{le="1000"} 0
+backfill_batch_blobs_download_ms_bucket{le="2000"} 0
+backfill_batch_blobs_download_ms_bucket{le="4000"} 0
+backfill_batch_blobs_download_ms_bucket{le="8000"} 0
+backfill_batch_blobs_download_ms_bucket{le="+Inf"} 0
+backfill_batch_blobs_download_ms_sum 0
+backfill_batch_blobs_download_ms_count 0
+# HELP backfill_batch_blocks_download_ms BeaconBlock download time, in ms.
+# TYPE backfill_batch_blocks_download_ms histogram
+backfill_batch_blocks_download_ms_bucket{le="100"} 0
+backfill_batch_blocks_download_ms_bucket{le="300"} 0
+backfill_batch_blocks_download_ms_bucket{le="1000"} 0
+backfill_batch_blocks_download_ms_bucket{le="2000"} 0
+backfill_batch_blocks_download_ms_bucket{le="4000"} 0
+backfill_batch_blocks_download_ms_bucket{le="8000"} 0
+backfill_batch_blocks_download_ms_bucket{le="+Inf"} 0
+backfill_batch_blocks_download_ms_sum 0
+backfill_batch_blocks_download_ms_count 0
+# HELP backfill_batch_columns_download_ms DataColumnSidecars download time, in ms.
+# TYPE backfill_batch_columns_download_ms histogram
+backfill_batch_columns_download_ms_bucket{le="100"} 0
+backfill_batch_columns_download_ms_bucket{le="300"} 0
+backfill_batch_columns_download_ms_bucket{le="1000"} 0
+backfill_batch_columns_download_ms_bucket{le="2000"} 0
+backfill_batch_columns_download_ms_bucket{le="4000"} 0
+backfill_batch_columns_download_ms_bucket{le="8000"} 0
+backfill_batch_columns_download_ms_bucket{le="+Inf"} 0
+backfill_batch_columns_download_ms_sum 0
+backfill_batch_columns_download_ms_count 0
+# HELP backfill_batch_columns_verify_ms DataColumnSidecars verification time, in ms.
+# TYPE backfill_batch_columns_verify_ms histogram
+backfill_batch_columns_verify_ms_bucket{le="3"} 0
+backfill_batch_columns_verify_ms_bucket{le="5"} 0
+backfill_batch_columns_verify_ms_bucket{le="10"} 0
+backfill_batch_columns_verify_ms_bucket{le="20"} 0
+backfill_batch_columns_verify_ms_bucket{le="100"} 0
+backfill_batch_columns_verify_ms_bucket{le="200"} 0
+backfill_batch_columns_verify_ms_bucket{le="+Inf"} 0
+backfill_batch_columns_verify_ms_sum 0
+backfill_batch_columns_verify_ms_count 0
+# HELP backfill_batch_roundtrip_ms Total time to import batch, from first scheduled to imported.
+# TYPE backfill_batch_roundtrip_ms histogram
+backfill_batch_roundtrip_ms_bucket{le="1000"} 0
+backfill_batch_roundtrip_ms_bucket{le="2000"} 0
+backfill_batch_roundtrip_ms_bucket{le="4000"} 0
+backfill_batch_roundtrip_ms_bucket{le="6000"} 0
+backfill_batch_roundtrip_ms_bucket{le="10000"} 0
+backfill_batch_roundtrip_ms_bucket{le="+Inf"} 0
+backfill_batch_roundtrip_ms_sum 0
+backfill_batch_roundtrip_ms_count 0
+# HELP backfill_batch_verify_ms BeaconBlock verification time, in ms.
+# TYPE backfill_batch_verify_ms histogram
+backfill_batch_verify_ms_bucket{le="100"} 0
+backfill_batch_verify_ms_bucket{le="300"} 0
+backfill_batch_verify_ms_bucket{le="1000"} 0
+backfill_batch_verify_ms_bucket{le="2000"} 0
+backfill_batch_verify_ms_bucket{le="4000"} 0
+backfill_batch_verify_ms_bucket{le="8000"} 0
+backfill_batch_verify_ms_bucket{le="+Inf"} 0
+backfill_batch_verify_ms_sum 0
+backfill_batch_verify_ms_count 0
+# HELP backfill_batch_waiting_ms Time batch waited for a suitable peer in ms.
+# TYPE backfill_batch_waiting_ms histogram
+backfill_batch_waiting_ms_bucket{le="50"} 0
+backfill_batch_waiting_ms_bucket{le="100"} 0
+backfill_batch_waiting_ms_bucket{le="300"} 0
+backfill_batch_waiting_ms_bucket{le="1000"} 0
+backfill_batch_waiting_ms_bucket{le="2000"} 0
+backfill_batch_waiting_ms_bucket{le="+Inf"} 0
+backfill_batch_waiting_ms_sum 0
+backfill_batch_waiting_ms_count 0
+# HELP backfill_batches_imported Number of backfill batches downloaded and imported.
+# TYPE backfill_batches_imported counter
+backfill_batches_imported 0
+# HELP backfill_blobs_download_count Number of BlobSidecar values downloaded from peers for backfill.
+# TYPE backfill_blobs_download_count counter
+backfill_blobs_download_count 0
+# HELP backfill_blobs_downloaded_bytes BlobSidecar bytes downloaded from peers for backfill.
+# TYPE backfill_blobs_downloaded_bytes counter
+backfill_blobs_downloaded_bytes 0
+# HELP backfill_blocks_download_count Number of BeaconBlock values downloaded from peers for backfill.
+# TYPE backfill_blocks_download_count counter
+backfill_blocks_download_count 0
+# HELP backfill_blocks_downloaded_bytes BeaconBlock bytes downloaded from peers for backfill.
+# TYPE backfill_blocks_downloaded_bytes counter
+backfill_blocks_downloaded_bytes 0
+# HELP backfill_data_column_sidecar_downloaded_bytes DataColumnSidecar bytes downloaded from peers for backfill.
+# TYPE backfill_data_column_sidecar_downloaded_bytes counter
+backfill_data_column_sidecar_downloaded_bytes 0
+# HELP backfill_earliest_wip_slot Earliest slot that has been assigned to a worker.
+# TYPE backfill_earliest_wip_slot gauge
+backfill_earliest_wip_slot 0
+# HELP backfill_importable_batches_waiting Number of batches that are ready to be imported once they can be connected to the existing chain.
+# TYPE backfill_importable_batches_waiting gauge
+backfill_importable_batches_waiting 0
+# HELP backfill_remaining_batches Backfill remaining batches.
+# TYPE backfill_remaining_batches gauge
+backfill_remaining_batches 0
+# HELP bcnode_disk_beaconchain_bytes_total Total hard disk space used by the beaconchain database, in bytes.
+# TYPE bcnode_disk_beaconchain_bytes_total gauge
+bcnode_disk_beaconchain_bytes_total 4.5047808e+07
+# HELP beacon_clock_time_slot The current slot based on the genesis time and current clock
+# TYPE beacon_clock_time_slot gauge
+beacon_clock_time_slot 0
+# HELP beacon_current_active_validators Current total active validators
+# TYPE beacon_current_active_validators gauge
+beacon_current_active_validators 0
+# HELP beacon_current_justified_epoch Current justified epoch of the processed state
+# TYPE beacon_current_justified_epoch gauge
+beacon_current_justified_epoch 0
+# HELP beacon_current_justified_root Current justified root of the processed state
+# TYPE beacon_current_justified_root gauge
+beacon_current_justified_root 0
+# HELP beacon_data_availability_reconstructed_columns_total Count the number of reconstructed data columns.
+# TYPE beacon_data_availability_reconstructed_columns_total counter
+beacon_data_availability_reconstructed_columns_total 0
+# HELP beacon_data_availability_reconstruction_time_milliseconds Captures the time taken to reconstruct data columns.
+# TYPE beacon_data_availability_reconstruction_time_milliseconds histogram
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="100"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="250"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="500"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="750"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="1000"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="1500"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="2000"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="4000"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="8000"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="12000"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="16000"} 0
+beacon_data_availability_reconstruction_time_milliseconds_bucket{le="+Inf"} 0
+beacon_data_availability_reconstruction_time_milliseconds_sum 0
+beacon_data_availability_reconstruction_time_milliseconds_count 0
+# HELP beacon_data_column_sidecar_computation_milliseconds Captures the time taken to compute data column sidecars from blobs.
+# TYPE beacon_data_column_sidecar_computation_milliseconds histogram
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="25"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="50"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="100"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="250"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="500"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="750"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="1000"} 0
+beacon_data_column_sidecar_computation_milliseconds_bucket{le="+Inf"} 0
+beacon_data_column_sidecar_computation_milliseconds_sum 0
+beacon_data_column_sidecar_computation_milliseconds_count 0
+# HELP beacon_data_column_sidecar_gossip_verification_milliseconds Captures the time taken to verify data column sidecars.
+# TYPE beacon_data_column_sidecar_gossip_verification_milliseconds histogram
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="2"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="5"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="10"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="25"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="50"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="75"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="100"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="250"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="500"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="1000"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="2000"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_bucket{le="+Inf"} 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_sum 0
+beacon_data_column_sidecar_gossip_verification_milliseconds_count 0
+# HELP beacon_data_column_sidecar_inclusion_proof_verification_milliseconds Captures the time taken to verify data column sidecar inclusion proof.
+# TYPE beacon_data_column_sidecar_inclusion_proof_verification_milliseconds histogram
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="5"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="10"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="50"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="100"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="150"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="250"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="500"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="1000"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="2000"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_bucket{le="+Inf"} 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_sum 0
+beacon_data_column_sidecar_inclusion_proof_verification_milliseconds_count 0
+# HELP beacon_data_column_sidecar_processing_requests_total Count the number of data column sidecars submitted for verification
+# TYPE beacon_data_column_sidecar_processing_requests_total counter
+beacon_data_column_sidecar_processing_requests_total 0
+# HELP beacon_data_column_sidecar_processing_successes_total Count the number of data column sidecars verified for gossip
+# TYPE beacon_data_column_sidecar_processing_successes_total counter
+beacon_data_column_sidecar_processing_successes_total 0
+# HELP beacon_engine_getBlobsV3_complete_responses_total Total number of complete engine_getBlobsV3 successful responses received
+# TYPE beacon_engine_getBlobsV3_complete_responses_total counter
+beacon_engine_getBlobsV3_complete_responses_total 0
+# HELP beacon_engine_getBlobsV3_empty_responses_total Total number of engine_getBlobsV3 responses received with no included blobs
+# TYPE beacon_engine_getBlobsV3_empty_responses_total counter
+beacon_engine_getBlobsV3_empty_responses_total 0
+# HELP beacon_engine_getBlobsV3_partial_responses_total Total number of engine_getBlobsV3 partial responses received
+# TYPE beacon_engine_getBlobsV3_partial_responses_total counter
+beacon_engine_getBlobsV3_partial_responses_total 0
+# HELP beacon_engine_getBlobsV3_request_duration_seconds Duration of engine_getBlobsV3 requests in seconds
+# TYPE beacon_engine_getBlobsV3_request_duration_seconds histogram
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.005"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.01"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.025"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.05"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.1"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.25"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="0.5"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="1"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="2.5"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="5"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="10"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_bucket{le="+Inf"} 0
+beacon_engine_getBlobsV3_request_duration_seconds_sum 0
+beacon_engine_getBlobsV3_request_duration_seconds_count 0
+# HELP beacon_engine_getBlobsV3_requests_total Total number of engine_getBlobsV3 requests sent
+# TYPE beacon_engine_getBlobsV3_requests_total counter
+beacon_engine_getBlobsV3_requests_total 0
+# HELP beacon_engine_hasBlobs_request_duration_seconds Duration of engine_hasBlobs requests in seconds
+# TYPE beacon_engine_hasBlobs_request_duration_seconds histogram
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.005"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.01"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.025"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.05"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.1"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.25"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="0.5"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="1"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="2.5"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="5"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="10"} 0
+beacon_engine_hasBlobs_request_duration_seconds_bucket{le="+Inf"} 0
+beacon_engine_hasBlobs_request_duration_seconds_sum 0
+beacon_engine_hasBlobs_request_duration_seconds_count 0
+# HELP beacon_engine_hasBlobs_requests_total Total number of engine_hasBlobs requests sent
+# TYPE beacon_engine_hasBlobs_requests_total counter
+beacon_engine_hasBlobs_requests_total 0
+# HELP beacon_execution_payload_envelope_invalid_total Count the number of execution payload envelopes that failed processing.
+# TYPE beacon_execution_payload_envelope_invalid_total counter
+beacon_execution_payload_envelope_invalid_total 0
+# HELP beacon_execution_payload_envelope_processing_duration_seconds Captures end-to-end processing time for execution payload envelopes.
+# TYPE beacon_execution_payload_envelope_processing_duration_seconds histogram
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.005"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.01"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.025"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.05"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.1"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.25"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="0.5"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="1"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="2.5"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="5"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="10"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_bucket{le="+Inf"} 0
+beacon_execution_payload_envelope_processing_duration_seconds_sum 0
+beacon_execution_payload_envelope_processing_duration_seconds_count 0
+# HELP beacon_execution_payload_envelope_valid_total Count the number of execution payload envelopes that were processed successfully.
+# TYPE beacon_execution_payload_envelope_valid_total counter
+beacon_execution_payload_envelope_valid_total 0
+# HELP beacon_failed_reorg_attempts_first_threshold Count the number of times a proposer served by this beacon attempted a late block reorg but desisted in the first threshold
+# TYPE beacon_failed_reorg_attempts_first_threshold counter
+beacon_failed_reorg_attempts_first_threshold 0
+# HELP beacon_failed_reorg_attempts_second_threshold Count the number of times a proposer served by this beacon attempted a late block reorg but desisted in the second threshold
+# TYPE beacon_failed_reorg_attempts_second_threshold counter
+beacon_failed_reorg_attempts_second_threshold 0
+# HELP beacon_finalized_epoch Last finalized epoch of the processed state
+# TYPE beacon_finalized_epoch gauge
+beacon_finalized_epoch 0
+# HELP beacon_finalized_root Last finalized root of the processed state
+# TYPE beacon_finalized_root gauge
+beacon_finalized_root 0
+# HELP beacon_goroutine_count Goroutine count sampled once per slot.
+# TYPE beacon_goroutine_count gauge
+beacon_goroutine_count{kind="average"} 78
+beacon_goroutine_count{kind="instant"} 158
+beacon_goroutine_count{kind="limit"} 5000
+# HELP beacon_head_slot Slot of the head block of the beacon chain
+# TYPE beacon_head_slot gauge
+beacon_head_slot 0
+# HELP beacon_late_block_attempted_reorgs Count the number of times a proposer served by this beacon has attempted a late block reorg
+# TYPE beacon_late_block_attempted_reorgs counter
+beacon_late_block_attempted_reorgs 0
+# HELP beacon_late_payload_task_triggered_total Count the number of times late payload tasks fired.
+# TYPE beacon_late_payload_task_triggered_total counter
+beacon_late_payload_task_triggered_total 0
+# HELP beacon_partial_data_column_sidecar_computation_milliseconds Captures the time taken to compute partial data column sidecars from blobs.
+# TYPE beacon_partial_data_column_sidecar_computation_milliseconds histogram
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="25"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="50"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="100"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="250"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="500"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="750"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="1000"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_bucket{le="+Inf"} 0
+beacon_partial_data_column_sidecar_computation_milliseconds_sum 0
+beacon_partial_data_column_sidecar_computation_milliseconds_count 0
+# HELP beacon_prev_epoch_active_gwei The total amount of ether, in gwei, that was active for voting of previous epoch
+# TYPE beacon_prev_epoch_active_gwei gauge
+beacon_prev_epoch_active_gwei 0
+# HELP beacon_prev_epoch_head_gwei The total amount of ether, in gwei, that has been used in voting attestation head of previous epoch
+# TYPE beacon_prev_epoch_head_gwei gauge
+beacon_prev_epoch_head_gwei 0
+# HELP beacon_prev_epoch_source_gwei The total amount of ether, in gwei, that has been used in voting attestation source of previous epoch
+# TYPE beacon_prev_epoch_source_gwei gauge
+beacon_prev_epoch_source_gwei 0
+# HELP beacon_prev_epoch_target_gwei The total amount of ether, in gwei, that has been used in voting attestation target of previous epoch
+# TYPE beacon_prev_epoch_target_gwei gauge
+beacon_prev_epoch_target_gwei 0
+# HELP beacon_previous_justified_epoch Previous justified epoch of the processed state
+# TYPE beacon_previous_justified_epoch gauge
+beacon_previous_justified_epoch 0
+# HELP beacon_previous_justified_root Previous justified root of the processed state
+# TYPE beacon_previous_justified_root gauge
+beacon_previous_justified_root 0
+# HELP beacon_processed_deposits_total Total number of deposits processed
+# TYPE beacon_processed_deposits_total gauge
+beacon_processed_deposits_total 0
+# HELP beacon_reorgs_total Count the number of times beacon chain has a reorg
+# TYPE beacon_reorgs_total counter
+beacon_reorgs_total 1
+# HELP beacon_slot Latest slot of the beacon chain state
+# TYPE beacon_slot gauge
+beacon_slot 0
+# HELP beacon_state_count Count the number of active beacon state objects.
+# TYPE beacon_state_count gauge
+beacon_state_count 9
+# HELP beacondb_all_deposits_eip4881 The number of total deposits in memory
+# TYPE beacondb_all_deposits_eip4881 counter
+beacondb_all_deposits_eip4881 0
+# HELP beacondb_pending_deposits_eip4881 The number of pending deposits in memory
+# TYPE beacondb_pending_deposits_eip4881 gauge
+beacondb_pending_deposits_eip4881 0
+# HELP blob_disk_bytes Approximate number of bytes occupied by blobs in storage
+# TYPE blob_disk_bytes gauge
+blob_disk_bytes 0
+# HELP blob_disk_count Approximate number of blob files in storage
+# TYPE blob_disk_count gauge
+blob_disk_count 0
+# HELP blob_existed_in_db_total Count the number of times blobs have been found in the database.
+# TYPE blob_existed_in_db_total counter
+blob_existed_in_db_total 0
+# HELP blob_pruned Number of BlobSidecar files pruned.
+# TYPE blob_pruned counter
+blob_pruned 0
+# HELP blob_recovered_from_el_total Count the number of times blobs have been recovered from the execution layer.
+# TYPE blob_recovered_from_el_total counter
+blob_recovered_from_el_total 0
+# HELP blob_storage_get_latency Latency of BlobSidecar storage get operations in milliseconds
+# TYPE blob_storage_get_latency histogram
+blob_storage_get_latency_bucket{le="3"} 0
+blob_storage_get_latency_bucket{le="5"} 0
+blob_storage_get_latency_bucket{le="7"} 0
+blob_storage_get_latency_bucket{le="9"} 0
+blob_storage_get_latency_bucket{le="11"} 0
+blob_storage_get_latency_bucket{le="13"} 0
+blob_storage_get_latency_bucket{le="+Inf"} 0
+blob_storage_get_latency_sum 0
+blob_storage_get_latency_count 0
+# HELP blob_storage_save_latency Latency of BlobSidecar storage save operations in milliseconds
+# TYPE blob_storage_save_latency histogram
+blob_storage_save_latency_bucket{le="3"} 0
+blob_storage_save_latency_bucket{le="5"} 0
+blob_storage_save_latency_bucket{le="7"} 0
+blob_storage_save_latency_bucket{le="9"} 0
+blob_storage_save_latency_bucket{le="11"} 0
+blob_storage_save_latency_bucket{le="13"} 0
+blob_storage_save_latency_bucket{le="+Inf"} 0
+blob_storage_save_latency_sum 0
+blob_storage_save_latency_count 0
+# HELP blob_written Number of BlobSidecar files written
+# TYPE blob_written counter
+blob_written 0
+# HELP block_arrival_latency_milliseconds Captures blocks propagation time. Blocks arrival in milliseconds distribution
+# TYPE block_arrival_latency_milliseconds histogram
+block_arrival_latency_milliseconds_bucket{le="100"} 0
+block_arrival_latency_milliseconds_bucket{le="250"} 0
+block_arrival_latency_milliseconds_bucket{le="500"} 1
+block_arrival_latency_milliseconds_bucket{le="750"} 1
+block_arrival_latency_milliseconds_bucket{le="1000"} 1
+block_arrival_latency_milliseconds_bucket{le="1500"} 1
+block_arrival_latency_milliseconds_bucket{le="2000"} 1
+block_arrival_latency_milliseconds_bucket{le="4000"} 1
+block_arrival_latency_milliseconds_bucket{le="8000"} 1
+block_arrival_latency_milliseconds_bucket{le="12000"} 1
+block_arrival_latency_milliseconds_bucket{le="16000"} 1
+block_arrival_latency_milliseconds_bucket{le="20000"} 1
+block_arrival_latency_milliseconds_bucket{le="24000"} 1
+block_arrival_latency_milliseconds_bucket{le="+Inf"} 1
+block_arrival_latency_milliseconds_sum 451
+block_arrival_latency_milliseconds_count 1
+# HELP block_arrival_latency_milliseconds_gauge Captures blocks propagation time. Blocks arrival in milliseconds
+# TYPE block_arrival_latency_milliseconds_gauge gauge
+block_arrival_latency_milliseconds_gauge 451
+# HELP bls_to_exec_message_pool_total The number of saved bls to exec messages in the operation pool.
+# TYPE bls_to_exec_message_pool_total gauge
+bls_to_exec_message_pool_total 0
+# HELP bolt_bucket_buckets Number of buckets within a bucket, including the top bucket.
+# TYPE bolt_bucket_buckets gauge
+bolt_bucket_buckets{bucket="block-root-validator-hashes",database="boltDB"} 1
+bolt_bucket_buckets{bucket="chain-metadata",database="boltDB"} 1
+bolt_bucket_buckets{bucket="check-point",database="boltDB"} 1
+bolt_bucket_buckets{bucket="custody",database="boltDB"} 1
+bolt_bucket_buckets{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 1
+bolt_bucket_buckets{bucket="execution-payload-envelopes",database="boltDB"} 1
+bolt_bucket_buckets{bucket="fee-recipient",database="boltDB"} 1
+bolt_bucket_buckets{bucket="hot-state-snapshots",database="boltDB"} 1
+bolt_bucket_buckets{bucket="light-client-bootstrap",database="boltDB"} 1
+bolt_bucket_buckets{bucket="light-client-sync-committee",database="boltDB"} 1
+bolt_bucket_buckets{bucket="light-client-updates",database="boltDB"} 1
+bolt_bucket_buckets{bucket="migrations",database="boltDB"} 1
+bolt_bucket_buckets{bucket="powchain",database="boltDB"} 1
+bolt_bucket_buckets{bucket="registration",database="boltDB"} 1
+bolt_bucket_buckets{bucket="state",database="boltDB"} 1
+bolt_bucket_buckets{bucket="state-diff",database="boltDB"} 1
+bolt_bucket_buckets{bucket="state-slot-indices",database="boltDB"} 1
+bolt_bucket_buckets{bucket="state-validators",database="boltDB"} 1
+# HELP bolt_bucket_depth Number of levels in B+ tree for a bucket.
+# TYPE bolt_bucket_depth gauge
+bolt_bucket_depth{bucket="block-root-validator-hashes",database="boltDB"} 1
+bolt_bucket_depth{bucket="chain-metadata",database="boltDB"} 1
+bolt_bucket_depth{bucket="check-point",database="boltDB"} 1
+bolt_bucket_depth{bucket="custody",database="boltDB"} 1
+bolt_bucket_depth{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 1
+bolt_bucket_depth{bucket="execution-payload-envelopes",database="boltDB"} 1
+bolt_bucket_depth{bucket="fee-recipient",database="boltDB"} 1
+bolt_bucket_depth{bucket="hot-state-snapshots",database="boltDB"} 1
+bolt_bucket_depth{bucket="light-client-bootstrap",database="boltDB"} 1
+bolt_bucket_depth{bucket="light-client-sync-committee",database="boltDB"} 1
+bolt_bucket_depth{bucket="light-client-updates",database="boltDB"} 1
+bolt_bucket_depth{bucket="migrations",database="boltDB"} 1
+bolt_bucket_depth{bucket="powchain",database="boltDB"} 1
+bolt_bucket_depth{bucket="registration",database="boltDB"} 1
+bolt_bucket_depth{bucket="state",database="boltDB"} 2
+bolt_bucket_depth{bucket="state-diff",database="boltDB"} 1
+bolt_bucket_depth{bucket="state-slot-indices",database="boltDB"} 2
+bolt_bucket_depth{bucket="state-validators",database="boltDB"} 1
+# HELP bolt_bucket_inlined_buckets Number of inlined buckets for a bucket.
+# TYPE bolt_bucket_inlined_buckets gauge
+bolt_bucket_inlined_buckets{bucket="block-root-validator-hashes",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="chain-metadata",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="check-point",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="custody",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="execution-payload-envelopes",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="fee-recipient",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="hot-state-snapshots",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="light-client-bootstrap",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="light-client-sync-committee",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="light-client-updates",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="migrations",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="powchain",database="boltDB"} 0
+bolt_bucket_inlined_buckets{bucket="registration",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="state",database="boltDB"} 0
+bolt_bucket_inlined_buckets{bucket="state-diff",database="boltDB"} 1
+bolt_bucket_inlined_buckets{bucket="state-slot-indices",database="boltDB"} 0
+bolt_bucket_inlined_buckets{bucket="state-validators",database="boltDB"} 1
+# HELP bolt_bucket_inlined_buckets_in_use_bytes Number of bytes in use for inlined buckets.
+# TYPE bolt_bucket_inlined_buckets_in_use_bytes gauge
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="block-root-validator-hashes",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="chain-metadata",database="boltDB"} 154
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="check-point",database="boltDB"} 243
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="custody",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="execution-payload-envelopes",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="fee-recipient",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="hot-state-snapshots",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="light-client-bootstrap",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="light-client-sync-committee",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="light-client-updates",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="migrations",database="boltDB"} 92
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="powchain",database="boltDB"} 0
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="registration",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="state",database="boltDB"} 0
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="state-diff",database="boltDB"} 16
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="state-slot-indices",database="boltDB"} 0
+bolt_bucket_inlined_buckets_in_use_bytes{bucket="state-validators",database="boltDB"} 16
+# HELP bolt_bucket_keys Number of key/value pairs in a bucket.
+# TYPE bolt_bucket_keys gauge
+bolt_bucket_keys{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_keys{bucket="chain-metadata",database="boltDB"} 3
+bolt_bucket_keys{bucket="check-point",database="boltDB"} 3
+bolt_bucket_keys{bucket="custody",database="boltDB"} 0
+bolt_bucket_keys{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_keys{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_keys{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_keys{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_keys{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_keys{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_keys{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_keys{bucket="migrations",database="boltDB"} 2
+bolt_bucket_keys{bucket="powchain",database="boltDB"} 1
+bolt_bucket_keys{bucket="registration",database="boltDB"} 0
+bolt_bucket_keys{bucket="state",database="boltDB"} 92
+bolt_bucket_keys{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_keys{bucket="state-slot-indices",database="boltDB"} 92
+bolt_bucket_keys{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_logical_branch_pages Number of logical branch pages for a bucket.
+# TYPE bolt_bucket_logical_branch_pages gauge
+bolt_bucket_logical_branch_pages{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="check-point",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="custody",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="migrations",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="powchain",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="registration",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="state",database="boltDB"} 1
+bolt_bucket_logical_branch_pages{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_logical_branch_pages{bucket="state-slot-indices",database="boltDB"} 1
+bolt_bucket_logical_branch_pages{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_logical_leaf_pages Number of logical leaf pages for a bucket.
+# TYPE bolt_bucket_logical_leaf_pages gauge
+bolt_bucket_logical_leaf_pages{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="check-point",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="custody",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="migrations",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="powchain",database="boltDB"} 1
+bolt_bucket_logical_leaf_pages{bucket="registration",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="state",database="boltDB"} 33
+bolt_bucket_logical_leaf_pages{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_logical_leaf_pages{bucket="state-slot-indices",database="boltDB"} 2
+bolt_bucket_logical_leaf_pages{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_physical_branch_overflow_pages Number of physical branch overflow pages for a bucket.
+# TYPE bolt_bucket_physical_branch_overflow_pages gauge
+bolt_bucket_physical_branch_overflow_pages{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="check-point",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="custody",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="migrations",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="powchain",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="registration",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="state",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="state-slot-indices",database="boltDB"} 0
+bolt_bucket_physical_branch_overflow_pages{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_physical_branch_pages_allocated_bytes Number of bytes allocated in physical branch pages for a bucket.
+# TYPE bolt_bucket_physical_branch_pages_allocated_bytes gauge
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="check-point",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="custody",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="migrations",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="powchain",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="registration",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="state",database="boltDB"} 4096
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="state-slot-indices",database="boltDB"} 4096
+bolt_bucket_physical_branch_pages_allocated_bytes{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_physical_branch_pages_in_use_bytes Number of bytes in use in physical branch pages for a bucket.
+# TYPE bolt_bucket_physical_branch_pages_in_use_bytes gauge
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="check-point",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="custody",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="migrations",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="powchain",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="registration",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="state",database="boltDB"} 1600
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="state-slot-indices",database="boltDB"} 64
+bolt_bucket_physical_branch_pages_in_use_bytes{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_physical_leaf_overflow_pages Number of physical leaf overflow pages for a bucket.
+# TYPE bolt_bucket_physical_leaf_overflow_pages gauge
+bolt_bucket_physical_leaf_overflow_pages{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="check-point",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="custody",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="migrations",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="powchain",database="boltDB"} 716
+bolt_bucket_physical_leaf_overflow_pages{bucket="registration",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="state",database="boltDB"} 5677
+bolt_bucket_physical_leaf_overflow_pages{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="state-slot-indices",database="boltDB"} 0
+bolt_bucket_physical_leaf_overflow_pages{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_physical_leaf_pages_allocated_bytes Number of bytes allocated in physical leaf pages for a bucket.
+# TYPE bolt_bucket_physical_leaf_pages_allocated_bytes gauge
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="check-point",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="custody",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="migrations",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="powchain",database="boltDB"} 2.936832e+06
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="registration",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="state",database="boltDB"} 2.338816e+07
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="state-slot-indices",database="boltDB"} 8192
+bolt_bucket_physical_leaf_pages_allocated_bytes{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_bucket_physical_leaf_pages_in_use_bytes Number of bytes in use in physical leaf pages for a bucket.
+# TYPE bolt_bucket_physical_leaf_pages_in_use_bytes gauge
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="block-root-validator-hashes",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="chain-metadata",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="check-point",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="custody",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="execution-payload-envelope-block-hash-index",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="execution-payload-envelopes",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="fee-recipient",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="hot-state-snapshots",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="light-client-bootstrap",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="light-client-sync-committee",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="light-client-updates",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="migrations",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="powchain",database="boltDB"} 2.932997e+06
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="registration",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="state",database="boltDB"} 2.3324543e+07
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="state-diff",database="boltDB"} 0
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="state-slot-indices",database="boltDB"} 5184
+bolt_bucket_physical_leaf_pages_in_use_bytes{bucket="state-validators",database="boltDB"} 0
+# HELP bolt_db_freelist_free_page_allocated_bytes Number of bytes allocated in free pages on the freelist.
+# TYPE bolt_db_freelist_free_page_allocated_bytes gauge
+bolt_db_freelist_free_page_allocated_bytes{database="boltDB"} 1.1476992e+07
+# HELP bolt_db_freelist_free_pages Number of free pages on the freelist.
+# TYPE bolt_db_freelist_free_pages gauge
+bolt_db_freelist_free_pages{database="boltDB"} 2792
+# HELP bolt_db_freelist_in_use_bytes Number of bytes in use by the freelist.
+# TYPE bolt_db_freelist_in_use_bytes gauge
+bolt_db_freelist_in_use_bytes{database="boltDB"} 22432
+# HELP bolt_db_freelist_pending_pages Number of pending pages on the freelist.
+# TYPE bolt_db_freelist_pending_pages gauge
+bolt_db_freelist_pending_pages{database="boltDB"} 10
+# HELP bolt_db_open_read_tx Number of currently open read-only transactions for the database.
+# TYPE bolt_db_open_read_tx gauge
+bolt_db_open_read_tx{database="boltDB"} 0
+# HELP bolt_db_read_tx_total Total number of started read transactions for the database.
+# TYPE bolt_db_read_tx_total counter
+bolt_db_read_tx_total{database="boltDB"} 432
+# HELP bolt_tx_cursors_total Total number of cursors created by transactions
+# TYPE bolt_tx_cursors_total counter
+bolt_tx_cursors_total{database="boltDB"} 1201
+# HELP bolt_tx_node_rebalance_seconds_total Total amount of time in seconds spent rebalancing nodes by transactions
+# TYPE bolt_tx_node_rebalance_seconds_total counter
+bolt_tx_node_rebalance_seconds_total{database="boltDB"} 0
+# HELP bolt_tx_node_rebalances_total Total number of node rebalances by transactions.
+# TYPE bolt_tx_node_rebalances_total counter
+bolt_tx_node_rebalances_total{database="boltDB"} 0
+# HELP bolt_tx_nodes_allocated_total Total number of nodes allocated by transactions.
+# TYPE bolt_tx_nodes_allocated_total counter
+bolt_tx_nodes_allocated_total{database="boltDB"} 8
+# HELP bolt_tx_nodes_dereferenced_total Total number of nodes dereferenced by transactions.
+# TYPE bolt_tx_nodes_dereferenced_total counter
+bolt_tx_nodes_dereferenced_total{database="boltDB"} 0
+# HELP bolt_tx_nodes_spilled_seconds_total Total amount of time in seconds spent spilling nodes by transactions.
+# TYPE bolt_tx_nodes_spilled_seconds_total counter
+bolt_tx_nodes_spilled_seconds_total{database="boltDB"} 0.000647626
+# HELP bolt_tx_nodes_spilled_total Total number of nodes spilled by transactions.
+# TYPE bolt_tx_nodes_spilled_total counter
+bolt_tx_nodes_spilled_total{database="boltDB"} 7
+# HELP bolt_tx_nodes_split_total Total number of nodes split by transactions.
+# TYPE bolt_tx_nodes_split_total counter
+bolt_tx_nodes_split_total{database="boltDB"} 0
+# HELP bolt_tx_pages_allocated_bytes_total Total number of bytes allocated for transaction pages.
+# TYPE bolt_tx_pages_allocated_bytes_total counter
+bolt_tx_pages_allocated_bytes_total{database="boltDB"} 3.137536e+06
+# HELP bolt_tx_pages_allocated_total Total number of transaction page allocations.
+# TYPE bolt_tx_pages_allocated_total counter
+bolt_tx_pages_allocated_total{database="boltDB"} 766
+# HELP bolt_tx_write_seconds_total Total amount of time in seconds spent writing to disk by transactions.
+# TYPE bolt_tx_write_seconds_total counter
+bolt_tx_write_seconds_total{database="boltDB"} 0.028755697
+# HELP bolt_tx_writes_total Total number of writes to disk performed by transactions.
+# TYPE bolt_tx_writes_total counter
+bolt_tx_writes_total{database="boltDB"} 23
+# HELP builder_deposits_processed_total The number of builder-related deposit requests processed.
+# TYPE builder_deposits_processed_total counter
+builder_deposits_processed_total 0
+# HELP builder_exits_processed_total The number of processed builder exits.
+# TYPE builder_exits_processed_total counter
+builder_exits_processed_total 0
+# HELP builder_get_payload_miss_count The number of get payload misses for validator requests to builder
+# TYPE builder_get_payload_miss_count counter
+builder_get_payload_miss_count 0
+# HELP builder_pending_payments_processed_total The number of builder pending payments promoted into the builder pending withdrawal queue.
+# TYPE builder_pending_payments_processed_total counter
+builder_pending_payments_processed_total 0
+# HELP builder_value_gwei Builder payload value in gwei
+# TYPE builder_value_gwei gauge
+builder_value_gwei 0
+# HELP cells_and_proofs_from_structured_computation_milliseconds Captures the time taken to compute cells and proofs from structured computation.
+# TYPE cells_and_proofs_from_structured_computation_milliseconds histogram
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="10"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="20"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="30"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="40"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="50"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="100"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="200"} 0
+cells_and_proofs_from_structured_computation_milliseconds_bucket{le="+Inf"} 0
+cells_and_proofs_from_structured_computation_milliseconds_sum 0
+cells_and_proofs_from_structured_computation_milliseconds_count 0
+# HELP chain_service_processing_milliseconds Total time to call a chain service in ReceiveBlock()
+# TYPE chain_service_processing_milliseconds summary
+chain_service_processing_milliseconds_sum 0
+chain_service_processing_milliseconds_count 0
+# HELP check_point_state_cache_evicted_total The number of entries evicted from the check point state cache.
+# TYPE check_point_state_cache_evicted_total counter
+check_point_state_cache_evicted_total 0
+# HELP check_point_state_cache_hit The number of check point state requests that are present in the cache.
+# TYPE check_point_state_cache_hit counter
+check_point_state_cache_hit 0
+# HELP check_point_state_cache_miss The number of check point state requests that aren't present in the cache.
+# TYPE check_point_state_cache_miss counter
+check_point_state_cache_miss 0
+# HELP check_point_state_cache_size The number of entries in the check point state cache.
+# TYPE check_point_state_cache_size gauge
+check_point_state_cache_size 0
+# HELP commitment_count_max_21 The number of blob KZG commitments per block.
+# TYPE commitment_count_max_21 histogram
+commitment_count_max_21_bucket{le="1"} 0
+commitment_count_max_21_bucket{le="3"} 0
+commitment_count_max_21_bucket{le="5"} 0
+commitment_count_max_21_bucket{le="7"} 0
+commitment_count_max_21_bucket{le="9"} 0
+commitment_count_max_21_bucket{le="11"} 0
+commitment_count_max_21_bucket{le="13"} 0
+commitment_count_max_21_bucket{le="15"} 0
+commitment_count_max_21_bucket{le="17"} 0
+commitment_count_max_21_bucket{le="19"} 0
+commitment_count_max_21_bucket{le="21"} 0
+commitment_count_max_21_bucket{le="+Inf"} 0
+commitment_count_max_21_sum 0
+commitment_count_max_21_count 0
+# HELP committee_cache_hit The number of committee requests that are present in the cache.
+# TYPE committee_cache_hit counter
+committee_cache_hit 770
+# HELP committee_cache_in_progress_hit The number of committee requests that are present in the cache.
+# TYPE committee_cache_in_progress_hit counter
+committee_cache_in_progress_hit 0
+# HELP committee_cache_miss The number of committee requests that aren't present in the cache.
+# TYPE committee_cache_miss counter
+committee_cache_miss 3
+# HELP connected_libp2p_peers Tracks the total number of connected libp2p peers by agent string
+# TYPE connected_libp2p_peers gauge
+connected_libp2p_peers{agent="lighthouse"} 1
+# HELP connected_libp2p_peers_average_scores Tracks the overall p2p scores of connected libp2p peers by agent string
+# TYPE connected_libp2p_peers_average_scores gauge
+connected_libp2p_peers_average_scores{agent="lighthouse"} 0.3
+# HELP consolidation_request_count Count the number of consolidation requests
+# TYPE consolidation_request_count counter
+consolidation_request_count 0
+# HELP current_eth1_data_deposit_count The current eth1 deposit count in the last processed state eth1data field.
+# TYPE current_eth1_data_deposit_count gauge
+current_eth1_data_deposit_count 0
+# HELP da_waited_time_milliseconds Total time spent waiting for a data availability check in ReceiveBlock()
+# TYPE da_waited_time_milliseconds summary
+da_waited_time_milliseconds_sum 0
+da_waited_time_milliseconds_count 0
+# HELP data_column_batch_store_count Number of data columns stored in a batch
+# TYPE data_column_batch_store_count summary
+data_column_batch_store_count_sum 0
+data_column_batch_store_count_count 0
+# HELP data_column_disk_count Approximate number of data columns in storage
+# TYPE data_column_disk_count gauge
+data_column_disk_count 0
+# HELP data_column_file_sync_latency Latency of sync operations when saving data columns in milliseconds
+# TYPE data_column_file_sync_latency summary
+data_column_file_sync_latency_sum 0
+data_column_file_sync_latency_count 0
+# HELP data_column_prune_latency Latency of data column prune operations in milliseconds
+# TYPE data_column_prune_latency summary
+data_column_prune_latency_sum 0
+data_column_prune_latency_count 2
+# HELP data_column_pruned Number of DataColumnSidecar pruned.
+# TYPE data_column_pruned counter
+data_column_pruned 0
+# HELP data_column_storage_get_latency Latency of DataColumnSidecar storage get operations in milliseconds
+# TYPE data_column_storage_get_latency histogram
+data_column_storage_get_latency_bucket{le="3"} 0
+data_column_storage_get_latency_bucket{le="5"} 0
+data_column_storage_get_latency_bucket{le="7"} 0
+data_column_storage_get_latency_bucket{le="9"} 0
+data_column_storage_get_latency_bucket{le="11"} 0
+data_column_storage_get_latency_bucket{le="13"} 0
+data_column_storage_get_latency_bucket{le="+Inf"} 0
+data_column_storage_get_latency_sum 0
+data_column_storage_get_latency_count 0
+# HELP data_column_storage_save_latency Latency of DataColumnSidecar storage save operations in milliseconds
+# TYPE data_column_storage_save_latency histogram
+data_column_storage_save_latency_bucket{le="10"} 0
+data_column_storage_save_latency_bucket{le="20"} 0
+data_column_storage_save_latency_bucket{le="30"} 0
+data_column_storage_save_latency_bucket{le="50"} 0
+data_column_storage_save_latency_bucket{le="100"} 0
+data_column_storage_save_latency_bucket{le="200"} 0
+data_column_storage_save_latency_bucket{le="500"} 0
+data_column_storage_save_latency_bucket{le="+Inf"} 0
+data_column_storage_save_latency_sum 0
+data_column_storage_save_latency_count 0
+# HELP data_column_written Number of DataColumnSidecar written
+# TYPE data_column_written counter
+data_column_written 0
+# HELP data_columns_recovered_from_el_attempts Count the number of data columns recovery attempts from the execution layer.
+# TYPE data_columns_recovered_from_el_attempts counter
+data_columns_recovered_from_el_attempts 0
+# HELP data_columns_recovered_from_el_total Count the number of times data columns have been recovered from the execution layer.
+# TYPE data_columns_recovered_from_el_total counter
+data_columns_recovered_from_el_total 0
+# HELP db_beacon_state_reading_milliseconds Milliseconds it takes to read a beacon state from the DB
+# TYPE db_beacon_state_reading_milliseconds summary
+db_beacon_state_reading_milliseconds_sum 68
+db_beacon_state_reading_milliseconds_count 2
+# HELP db_beacon_state_saving_milliseconds Milliseconds it takes to save a beacon state to the DB
+# TYPE db_beacon_state_saving_milliseconds summary
+db_beacon_state_saving_milliseconds_sum 0
+db_beacon_state_saving_milliseconds_count 0
+# HELP doublylinkedtree_attestation_processed_count The number of times an attestation is processed for fork choice.
+# TYPE doublylinkedtree_attestation_processed_count counter
+doublylinkedtree_attestation_processed_count 0
+# HELP doublylinkedtree_block_processed_count The number of times a block is processed for fork choice.
+# TYPE doublylinkedtree_block_processed_count counter
+doublylinkedtree_block_processed_count 33
+# HELP doublylinkedtree_head_changed_count The number of times head changes.
+# TYPE doublylinkedtree_head_changed_count counter
+doublylinkedtree_head_changed_count 1
+# HELP doublylinkedtree_head_requested_count The number of times someone called head.
+# TYPE doublylinkedtree_head_requested_count counter
+doublylinkedtree_head_requested_count 2
+# HELP doublylinkedtree_head_slot The slot number of the current head.
+# TYPE doublylinkedtree_head_slot gauge
+doublylinkedtree_head_slot 2944
+# HELP doublylinkedtree_node_count The number of nodes in the doubly linked tree based store structure.
+# TYPE doublylinkedtree_node_count gauge
+doublylinkedtree_node_count 33
+# HELP doublylinkedtree_pruned_count The number of times pruning happened.
+# TYPE doublylinkedtree_pruned_count counter
+doublylinkedtree_pruned_count 0
+# HELP execution_internal_error_count The number of errors that occurred due to internal error
+# TYPE execution_internal_error_count counter
+execution_internal_error_count 0
+# HELP execution_invalid_forkchoice_state_count The number of errors that occurred due to invalid forkchoice state
+# TYPE execution_invalid_forkchoice_state_count counter
+execution_invalid_forkchoice_state_count 0
+# HELP execution_invalid_params_count The number of errors that occurred due to invalid params
+# TYPE execution_invalid_params_count counter
+execution_invalid_params_count 0
+# HELP execution_invalid_payload_attributes_count The number of errors that occurred due to invalid payload attributes
+# TYPE execution_invalid_payload_attributes_count counter
+execution_invalid_payload_attributes_count 0
+# HELP execution_invalid_request_count The number of errors that occurred due to invalid request
+# TYPE execution_invalid_request_count counter
+execution_invalid_request_count 0
+# HELP execution_method_not_found_count The number of errors that occurred due to method not found
+# TYPE execution_method_not_found_count counter
+execution_method_not_found_count 0
+# HELP execution_parse_error_count The number of errors that occurred while parsing execution payload
+# TYPE execution_parse_error_count counter
+execution_parse_error_count 0
+# HELP execution_payload_bodies_count The number of requested payload bodies is too large
+# TYPE execution_payload_bodies_count counter
+execution_payload_bodies_count 0
+# HELP execution_server_error_count The number of errors that occurred due to server error
+# TYPE execution_server_error_count counter
+execution_server_error_count 0
+# HELP execution_unknown_payload_count The number of errors that occurred due to unknown payload
+# TYPE execution_unknown_payload_count counter
+execution_unknown_payload_count 0
+# HELP expired_aggregated_atts_total The number of expired and deleted aggregated attestations in the pool.
+# TYPE expired_aggregated_atts_total counter
+expired_aggregated_atts_total 0
+# HELP expired_atts_total The number of expired and deleted attestations in the pool.
+# TYPE expired_atts_total counter
+expired_atts_total 0
+# HELP expired_block_atts_total The number of expired and deleted block attestations in the pool.
+# TYPE expired_block_atts_total counter
+expired_block_atts_total 0
+# HELP expired_unaggregated_atts_total The number of expired and deleted unaggregated attestations in the pool.
+# TYPE expired_unaggregated_atts_total counter
+expired_unaggregated_atts_total 0
+# HELP field_trie_copy_total Total number of CopyTrie calls by field and source mode (owned/overlay).
+# TYPE field_trie_copy_total counter
+field_trie_copy_total{field="balances",mode="owned"} 26
+field_trie_copy_total{field="blockRoots",mode="overlay"} 11
+field_trie_copy_total{field="blockRoots",mode="owned"} 15
+field_trie_copy_total{field="eth1DataVotes",mode="overlay"} 11
+field_trie_copy_total{field="eth1DataVotes",mode="owned"} 15
+field_trie_copy_total{field="randaoMixes",mode="overlay"} 11
+field_trie_copy_total{field="randaoMixes",mode="owned"} 15
+field_trie_copy_total{field="stateRoots",mode="overlay"} 11
+field_trie_copy_total{field="stateRoots",mode="owned"} 15
+field_trie_copy_total{field="validators",mode="owned"} 26
+# HELP field_trie_count Total number of live field trie data allocations by field and mode (owned/overlay).
+# TYPE field_trie_count gauge
+field_trie_count{field="balances",mode="owned"} 3
+field_trie_count{field="blockRoots",mode="overlay"} 3
+field_trie_count{field="blockRoots",mode="owned"} 1
+field_trie_count{field="eth1DataVotes",mode="overlay"} 1
+field_trie_count{field="eth1DataVotes",mode="owned"} 1
+field_trie_count{field="randaoMixes",mode="overlay"} 2
+field_trie_count{field="randaoMixes",mode="owned"} 1
+field_trie_count{field="stateRoots",mode="overlay"} 3
+field_trie_count{field="stateRoots",mode="owned"} 1
+# HELP field_trie_entries Total number of entries in field tries, by field and component (nodes/overrides).
+# TYPE field_trie_entries gauge
+field_trie_entries{component="nodes",field="balances"} 195
+field_trie_entries{component="nodes",field="blockRoots"} 16383
+field_trie_entries{component="nodes",field="eth1DataVotes"} 1906
+field_trie_entries{component="nodes",field="randaoMixes"} 131071
+field_trie_entries{component="nodes",field="stateRoots"} 16383
+field_trie_entries{component="overrides",field="blockRoots"} 1981
+field_trie_entries{component="overrides",field="eth1DataVotes"} 12
+field_trie_entries{component="overrides",field="randaoMixes"} 93
+field_trie_entries{component="overrides",field="stateRoots"} 1981
+# HELP field_trie_fork_total Total number of copy-on-write forks triggered by RecomputeTrie on a shared trie.
+# TYPE field_trie_fork_total counter
+field_trie_fork_total{field="blockRoots",mode="overlay"} 3
+field_trie_fork_total{field="blockRoots",mode="owned"} 2
+field_trie_fork_total{field="eth1DataVotes",mode="owned"} 2
+field_trie_fork_total{field="randaoMixes",mode="overlay"} 2
+field_trie_fork_total{field="randaoMixes",mode="owned"} 2
+field_trie_fork_total{field="stateRoots",mode="overlay"} 3
+field_trie_fork_total{field="stateRoots",mode="owned"} 2
+# HELP field_trie_leaf_overrides Number of leaf-level (level 0) override entries in overlay field tries.
+# TYPE field_trie_leaf_overrides gauge
+field_trie_leaf_overrides{field="blockRoots"} 968
+field_trie_leaf_overrides{field="eth1DataVotes"} 1
+field_trie_leaf_overrides{field="randaoMixes"} 32
+field_trie_leaf_overrides{field="stateRoots"} 968
+# HELP field_trie_recompute_indices Distribution of the number of changed indices per RecomputeTrie call.
+# TYPE field_trie_recompute_indices summary
+field_trie_recompute_indices_sum{field="balances"} 7680
+field_trie_recompute_indices_count{field="balances"} 120
+field_trie_recompute_indices_sum{field="blockRoots"} 3011
+field_trie_recompute_indices_count{field="blockRoots"} 3011
+field_trie_recompute_indices_sum{field="eth1DataVotes"} 122
+field_trie_recompute_indices_count{field="eth1DataVotes"} 122
+field_trie_recompute_indices_sum{field="randaoMixes"} 212
+field_trie_recompute_indices_count{field="randaoMixes"} 212
+field_trie_recompute_indices_sum{field="stateRoots"} 3011
+field_trie_recompute_indices_count{field="stateRoots"} 3011
+# HELP forkchoice_payload_empty_node_count The number of empty payload nodes currently tracked in forkchoice.
+# TYPE forkchoice_payload_empty_node_count gauge
+forkchoice_payload_empty_node_count 33
+# HELP forkchoice_payload_full_node_count The number of full payload nodes currently tracked in forkchoice.
+# TYPE forkchoice_payload_full_node_count gauge
+forkchoice_payload_full_node_count 33
+# HELP forkchoice_payload_inserted_count The number of payloads inserted into forkchoice.
+# TYPE forkchoice_payload_inserted_count counter
+forkchoice_payload_inserted_count 0
+# HELP forkchoice_ptc_vote_count The number of PTC votes recorded by forkchoice.
+# TYPE forkchoice_ptc_vote_count counter
+forkchoice_ptc_vote_count 0
+# HELP forkchoice_updated_invalid_node_count Count the number of invalid nodes after forkchoiceUpdated EE call
+# TYPE forkchoice_updated_invalid_node_count counter
+forkchoice_updated_invalid_node_count 0
+# HELP forkchoice_updated_optimistic_node_count Count the number of optimistic nodes after forkchoiceUpdated EE call
+# TYPE forkchoice_updated_optimistic_node_count counter
+forkchoice_updated_optimistic_node_count 0
+# HELP forkchoice_updated_v1_latency_milliseconds Captures RPC latency for forkchoiceUpdatedV1 in milliseconds
+# TYPE forkchoice_updated_v1_latency_milliseconds histogram
+forkchoice_updated_v1_latency_milliseconds_bucket{le="25"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="50"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="100"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="200"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="500"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="1000"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="2000"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="4000"} 1
+forkchoice_updated_v1_latency_milliseconds_bucket{le="+Inf"} 1
+forkchoice_updated_v1_latency_milliseconds_sum 1
+forkchoice_updated_v1_latency_milliseconds_count 1
+# HELP forkchoice_updated_valid_node_count Count the number of valid nodes after forkchoiceUpdated EE call
+# TYPE forkchoice_updated_valid_node_count counter
+forkchoice_updated_valid_node_count 0
+# HELP get_blobs_v2_latency_milliseconds Captures RPC latency for getBlobsV2 in milliseconds
+# TYPE get_blobs_v2_latency_milliseconds histogram
+get_blobs_v2_latency_milliseconds_bucket{le="25"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="50"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="100"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="200"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="500"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="1000"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="2000"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="4000"} 0
+get_blobs_v2_latency_milliseconds_bucket{le="+Inf"} 0
+get_blobs_v2_latency_milliseconds_sum 0
+get_blobs_v2_latency_milliseconds_count 0
+# HELP get_header_latency_milliseconds Captures RPC latency for get header in milliseconds
+# TYPE get_header_latency_milliseconds histogram
+get_header_latency_milliseconds_bucket{le="1"} 0
+get_header_latency_milliseconds_bucket{le="2"} 0
+get_header_latency_milliseconds_bucket{le="5"} 0
+get_header_latency_milliseconds_bucket{le="10"} 0
+get_header_latency_milliseconds_bucket{le="20"} 0
+get_header_latency_milliseconds_bucket{le="50"} 0
+get_header_latency_milliseconds_bucket{le="100"} 0
+get_header_latency_milliseconds_bucket{le="200"} 0
+get_header_latency_milliseconds_bucket{le="500"} 0
+get_header_latency_milliseconds_bucket{le="1000"} 0
+get_header_latency_milliseconds_bucket{le="+Inf"} 0
+get_header_latency_milliseconds_sum 0
+get_header_latency_milliseconds_count 0
+# HELP get_payload_v1_latency_milliseconds Captures RPC latency for getPayloadV1 in milliseconds
+# TYPE get_payload_v1_latency_milliseconds histogram
+get_payload_v1_latency_milliseconds_bucket{le="25"} 0
+get_payload_v1_latency_milliseconds_bucket{le="50"} 0
+get_payload_v1_latency_milliseconds_bucket{le="100"} 0
+get_payload_v1_latency_milliseconds_bucket{le="200"} 0
+get_payload_v1_latency_milliseconds_bucket{le="500"} 0
+get_payload_v1_latency_milliseconds_bucket{le="1000"} 0
+get_payload_v1_latency_milliseconds_bucket{le="2000"} 0
+get_payload_v1_latency_milliseconds_bucket{le="4000"} 0
+get_payload_v1_latency_milliseconds_bucket{le="+Inf"} 0
+get_payload_v1_latency_milliseconds_sum 0
+get_payload_v1_latency_milliseconds_count 0
+# HELP gloas_active_builders_balance_gwei The total balance in gwei held by active builders currently tracked in the beacon state.
+# TYPE gloas_active_builders_balance_gwei gauge
+gloas_active_builders_balance_gwei 0
+# HELP gloas_active_builders_count The number of active builders currently tracked in the beacon state.
+# TYPE gloas_active_builders_count gauge
+gloas_active_builders_count 0
+# HELP gloas_builder_pending_withdrawals_count The number of builder pending withdrawals currently stored in the beacon state.
+# TYPE gloas_builder_pending_withdrawals_count gauge
+gloas_builder_pending_withdrawals_count 0
+# HELP gloas_builder_pending_withdrawals_gwei The total gwei amount currently stored in builder pending withdrawals.
+# TYPE gloas_builder_pending_withdrawals_gwei gauge
+gloas_builder_pending_withdrawals_gwei 0
+# HELP gloas_execution_payload_availability_ratio The fraction of execution payload availability bits currently set in the beacon state.
+# TYPE gloas_execution_payload_availability_ratio gauge
+gloas_execution_payload_availability_ratio 0
+# HELP gloas_payload_expected_withdrawals_count The number of expected withdrawals currently cached for the next payload.
+# TYPE gloas_payload_expected_withdrawals_count gauge
+gloas_payload_expected_withdrawals_count 0
+# HELP go_gc_duration_seconds A summary of the wall-time pause (stop-the-world) duration in garbage collection cycles.
+# TYPE go_gc_duration_seconds summary
+go_gc_duration_seconds{quantile="0"} 6.8527e-05
+go_gc_duration_seconds{quantile="0.25"} 0.00010224
+go_gc_duration_seconds{quantile="0.5"} 0.000319098
+go_gc_duration_seconds{quantile="0.75"} 0.003040079
+go_gc_duration_seconds{quantile="1"} 0.006840825
+go_gc_duration_seconds_sum 0.026668011
+go_gc_duration_seconds_count 18
+# HELP go_gc_gogc_percent Heap size target percentage configured by the user, otherwise 100. This value is set by the GOGC environment variable, and the runtime/debug.SetGCPercent function. Sourced from /gc/gogc:percent.
+# TYPE go_gc_gogc_percent gauge
+go_gc_gogc_percent 100
+# HELP go_gc_gomemlimit_bytes Go runtime memory limit configured by the user, otherwise math.MaxInt64. This value is set by the GOMEMLIMIT environment variable, and the runtime/debug.SetMemoryLimit function. Sourced from /gc/gomemlimit:bytes.
+# TYPE go_gc_gomemlimit_bytes gauge
+go_gc_gomemlimit_bytes 9.223372036854776e+18
+# HELP go_goroutines Number of goroutines that currently exist.
+# TYPE go_goroutines gauge
+go_goroutines 165
+# HELP go_info Information about the Go environment.
+# TYPE go_info gauge
+go_info{version="go1.26.5"} 1
+# HELP go_maxprocs The result of runtime.GOMAXPROCS(0)
+# TYPE go_maxprocs gauge
+go_maxprocs 4
+# HELP go_memstats_alloc_bytes Number of bytes allocated in heap and currently in use. Equals to /memory/classes/heap/objects:bytes.
+# TYPE go_memstats_alloc_bytes gauge
+go_memstats_alloc_bytes 3.9776816e+07
+# HELP go_memstats_alloc_bytes_total Total number of bytes allocated in heap until now, even if released already. Equals to /gc/heap/allocs:bytes.
+# TYPE go_memstats_alloc_bytes_total counter
+go_memstats_alloc_bytes_total 4.24453072e+08
+# HELP go_memstats_buck_hash_sys_bytes Number of bytes used by the profiling bucket hash table. Equals to /memory/classes/profiling/buckets:bytes.
+# TYPE go_memstats_buck_hash_sys_bytes gauge
+go_memstats_buck_hash_sys_bytes 1.557057e+06
+# HELP go_memstats_frees_total Total number of heap objects frees. Equals to /gc/heap/frees:objects + /gc/heap/tiny/allocs:objects.
+# TYPE go_memstats_frees_total counter
+go_memstats_frees_total 3.515579e+06
+# HELP go_memstats_gc_sys_bytes Number of bytes used for garbage collection system metadata. Equals to /memory/classes/metadata/other:bytes.
+# TYPE go_memstats_gc_sys_bytes gauge
+go_memstats_gc_sys_bytes 4.76392e+06
+# HELP go_memstats_heap_alloc_bytes Number of heap bytes allocated and currently in use, same as go_memstats_alloc_bytes. Equals to /memory/classes/heap/objects:bytes.
+# TYPE go_memstats_heap_alloc_bytes gauge
+go_memstats_heap_alloc_bytes 3.9776816e+07
+# HELP go_memstats_heap_idle_bytes Number of heap bytes waiting to be used. Equals to /memory/classes/heap/released:bytes + /memory/classes/heap/free:bytes.
+# TYPE go_memstats_heap_idle_bytes gauge
+go_memstats_heap_idle_bytes 5.9645952e+07
+# HELP go_memstats_heap_inuse_bytes Number of heap bytes that are in use. Equals to /memory/classes/heap/objects:bytes + /memory/classes/heap/unused:bytes
+# TYPE go_memstats_heap_inuse_bytes gauge
+go_memstats_heap_inuse_bytes 4.7931392e+07
+# HELP go_memstats_heap_objects Number of currently allocated objects. Equals to /gc/heap/objects:objects.
+# TYPE go_memstats_heap_objects gauge
+go_memstats_heap_objects 64167
+# HELP go_memstats_heap_released_bytes Number of heap bytes released to OS. Equals to /memory/classes/heap/released:bytes.
+# TYPE go_memstats_heap_released_bytes gauge
+go_memstats_heap_released_bytes 1.6760832e+07
+# HELP go_memstats_heap_sys_bytes Number of heap bytes obtained from system. Equals to /memory/classes/heap/objects:bytes + /memory/classes/heap/unused:bytes + /memory/classes/heap/released:bytes + /memory/classes/heap/free:bytes.
+# TYPE go_memstats_heap_sys_bytes gauge
+go_memstats_heap_sys_bytes 1.07577344e+08
+# HELP go_memstats_last_gc_time_seconds Number of seconds since 1970 of last garbage collection.
+# TYPE go_memstats_last_gc_time_seconds gauge
+go_memstats_last_gc_time_seconds 1.7873017620061517e+09
+# HELP go_memstats_mallocs_total Total number of heap objects allocated, both live and gc-ed. Semantically a counter version for go_memstats_heap_objects gauge. Equals to /gc/heap/allocs:objects + /gc/heap/tiny/allocs:objects.
+# TYPE go_memstats_mallocs_total counter
+go_memstats_mallocs_total 3.579746e+06
+# HELP go_memstats_mcache_inuse_bytes Number of bytes in use by mcache structures. Equals to /memory/classes/metadata/mcache/inuse:bytes.
+# TYPE go_memstats_mcache_inuse_bytes gauge
+go_memstats_mcache_inuse_bytes 9184
+# HELP go_memstats_mcache_sys_bytes Number of bytes used for mcache structures obtained from system. Equals to /memory/classes/metadata/mcache/inuse:bytes + /memory/classes/metadata/mcache/free:bytes.
+# TYPE go_memstats_mcache_sys_bytes gauge
+go_memstats_mcache_sys_bytes 16072
+# HELP go_memstats_mspan_inuse_bytes Number of bytes in use by mspan structures. Equals to /memory/classes/metadata/mspan/inuse:bytes.
+# TYPE go_memstats_mspan_inuse_bytes gauge
+go_memstats_mspan_inuse_bytes 340800
+# HELP go_memstats_mspan_sys_bytes Number of bytes used for mspan structures obtained from system. Equals to /memory/classes/metadata/mspan/inuse:bytes + /memory/classes/metadata/mspan/free:bytes.
+# TYPE go_memstats_mspan_sys_bytes gauge
+go_memstats_mspan_sys_bytes 734400
+# HELP go_memstats_next_gc_bytes Number of heap bytes when next garbage collection will take place. Equals to /gc/heap/goal:bytes.
+# TYPE go_memstats_next_gc_bytes gauge
+go_memstats_next_gc_bytes 7.9777882e+07
+# HELP go_memstats_other_sys_bytes Number of bytes used for other system allocations. Equals to /memory/classes/other:bytes.
+# TYPE go_memstats_other_sys_bytes gauge
+go_memstats_other_sys_bytes 922191
+# HELP go_memstats_stack_inuse_bytes Number of bytes obtained from system for stack allocator in non-CGO environments. Equals to /memory/classes/heap/stacks:bytes.
+# TYPE go_memstats_stack_inuse_bytes gauge
+go_memstats_stack_inuse_bytes 1.47456e+06
+# HELP go_memstats_stack_sys_bytes Number of bytes obtained from system for stack allocator. Equals to /memory/classes/heap/stacks:bytes + /memory/classes/os-stacks:bytes.
+# TYPE go_memstats_stack_sys_bytes gauge
+go_memstats_stack_sys_bytes 1.47456e+06
+# HELP go_memstats_sys_bytes Number of bytes obtained from system. Equals to /memory/classes/total:byte.
+# TYPE go_memstats_sys_bytes gauge
+go_memstats_sys_bytes 1.17045544e+08
+# HELP go_sched_gomaxprocs_threads The current runtime.GOMAXPROCS setting, or the number of operating system threads that can execute user-level Go code simultaneously. Sourced from /sched/gomaxprocs:threads.
+# TYPE go_sched_gomaxprocs_threads gauge
+go_sched_gomaxprocs_threads 4
+# HELP go_threads Number of OS threads created.
+# TYPE go_threads gauge
+go_threads 10
+# HELP gossip_aggregate_attestation_verification_milliseconds Time to verify gossiped attestations
+# TYPE gossip_aggregate_attestation_verification_milliseconds summary
+gossip_aggregate_attestation_verification_milliseconds_sum 0
+gossip_aggregate_attestation_verification_milliseconds_count 0
+# HELP gossip_attestation_bad_block_total Increased when a gossip attestation references a bad block
+# TYPE gossip_attestation_bad_block_total counter
+gossip_attestation_bad_block_total 0
+# HELP gossip_attestation_bad_lmd_consistency_total Increased when a gossip attestation has bad LMD GHOST consistency
+# TYPE gossip_attestation_bad_lmd_consistency_total counter
+gossip_attestation_bad_lmd_consistency_total 0
+# HELP gossip_attestation_bad_selection_proof_total Increased when a gossip attestation has a bad selection proof
+# TYPE gossip_attestation_bad_selection_proof_total counter
+gossip_attestation_bad_selection_proof_total 0
+# HELP gossip_attestation_bad_signature_batch_total Increased when a gossip attestation has a bad signature batch
+# TYPE gossip_attestation_bad_signature_batch_total counter
+gossip_attestation_bad_signature_batch_total 0
+# HELP gossip_attestation_verification_milliseconds Time to verify gossiped attestations
+# TYPE gossip_attestation_verification_milliseconds summary
+gossip_attestation_verification_milliseconds_sum 0
+gossip_attestation_verification_milliseconds_count 0
+# HELP gossip_blob_sidecar_arrival_milliseconds Time for gossiped blob sidecars to arrive
+# TYPE gossip_blob_sidecar_arrival_milliseconds summary
+gossip_blob_sidecar_arrival_milliseconds_sum 0
+gossip_blob_sidecar_arrival_milliseconds_count 0
+# HELP gossip_blob_sidecar_verification_milliseconds Time to verify gossiped blob sidecars
+# TYPE gossip_blob_sidecar_verification_milliseconds summary
+gossip_blob_sidecar_verification_milliseconds_sum 0
+gossip_blob_sidecar_verification_milliseconds_count 0
+# HELP gossip_block_arrival_milliseconds Time for gossiped blocks to arrive
+# TYPE gossip_block_arrival_milliseconds summary
+gossip_block_arrival_milliseconds_sum 0
+gossip_block_arrival_milliseconds_count 0
+# HELP gossip_block_verification_milliseconds Time to verify gossiped blocks
+# TYPE gossip_block_verification_milliseconds summary
+gossip_block_verification_milliseconds_sum 0
+gossip_block_verification_milliseconds_count 0
+# HELP gossip_data_column_sidecar_arrival_milliseconds Time for gossiped data column sidecars to arrive
+# TYPE gossip_data_column_sidecar_arrival_milliseconds summary
+gossip_data_column_sidecar_arrival_milliseconds_sum 0
+gossip_data_column_sidecar_arrival_milliseconds_count 0
+# HELP gossip_ignored_pre_justified_block_total Count of blocks ignored because their canonical parent is before the justified checkpoint.
+# TYPE gossip_ignored_pre_justified_block_total counter
+gossip_ignored_pre_justified_block_total 0
+# HELP gossip_ignored_pre_justified_data_column_total Count of data column sidecars ignored because their canonical parent is before the justified checkpoint.
+# TYPE gossip_ignored_pre_justified_data_column_total counter
+gossip_ignored_pre_justified_data_column_total 0
+# HELP gossip_missing_parent_blob_sidecar_total The number of blob sidecars that were dropped due to missing parent block
+# TYPE gossip_missing_parent_blob_sidecar_total counter
+gossip_missing_parent_blob_sidecar_total 0
+# HELP gossip_pending_attestations_total increased when receiving a new pending attestation
+# TYPE gossip_pending_attestations_total counter
+gossip_pending_attestations_total 0
+# HELP grpc_server_handled_total Total number of RPCs completed on the server, regardless of success or failure.
+# TYPE grpc_server_handled_total counter
+grpc_server_handled_total{grpc_code="Unavailable",grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary"} 25
+# HELP grpc_server_handling_seconds Histogram of response latency (seconds) of gRPC that had been application-level handled by the server.
+# TYPE grpc_server_handling_seconds histogram
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.005"} 23
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.01"} 23
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.025"} 23
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.05"} 23
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.1"} 23
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.25"} 25
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="0.5"} 25
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="1"} 25
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="2.5"} 25
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="5"} 25
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="10"} 25
+grpc_server_handling_seconds_bucket{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary",le="+Inf"} 25
+grpc_server_handling_seconds_sum{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary"} 0.44242859200000006
+grpc_server_handling_seconds_count{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary"} 25
+# HELP grpc_server_msg_received_total Total number of RPC stream messages received on the server.
+# TYPE grpc_server_msg_received_total counter
+grpc_server_msg_received_total{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary"} 25
+# HELP grpc_server_started_total Total number of RPCs started on the server.
+# TYPE grpc_server_started_total counter
+grpc_server_started_total{grpc_method="GetHealth",grpc_service="ethereum.eth.v1alpha1.Node",grpc_type="unary"} 25
+# HELP head_finalized_epoch Last finalized epoch of the head state
+# TYPE head_finalized_epoch gauge
+head_finalized_epoch 0
+# HELP head_finalized_root Last finalized root of the head state
+# TYPE head_finalized_root gauge
+head_finalized_root 0
+# HELP head_state_defragmentation_milliseconds Milliseconds it takes to defragment the head state
+# TYPE head_state_defragmentation_milliseconds summary
+head_state_defragmentation_milliseconds_sum 0
+head_state_defragmentation_milliseconds_count 0
+# HELP hot_state_cache_hit The total number of cache hits on the hot state cache.
+# TYPE hot_state_cache_hit counter
+hot_state_cache_hit 0
+# HELP hot_state_cache_miss The total number of cache misses on the hot state cache.
+# TYPE hot_state_cache_miss counter
+hot_state_cache_miss 6
+# HELP libp2p_autonat_next_probe_timestamp Time of next probe
+# TYPE libp2p_autonat_next_probe_timestamp gauge
+libp2p_autonat_next_probe_timestamp 1.787301788e+09
+# HELP libp2p_autonat_reachability_status Current node reachability
+# TYPE libp2p_autonat_reachability_status gauge
+libp2p_autonat_reachability_status 0
+# HELP libp2p_autonat_reachability_status_confidence Node reachability status confidence
+# TYPE libp2p_autonat_reachability_status_confidence gauge
+libp2p_autonat_reachability_status_confidence 0
+# HELP libp2p_eventbus_events_emitted_total Events Emitted
+# TYPE libp2p_eventbus_events_emitted_total counter
+libp2p_eventbus_events_emitted_total{event="EvtLocalAddressesUpdated"} 1
+libp2p_eventbus_events_emitted_total{event="EvtLocalProtocolsUpdated"} 15
+libp2p_eventbus_events_emitted_total{event="EvtPeerConnectednessChanged"} 1
+libp2p_eventbus_events_emitted_total{event="EvtPeerIdentificationCompleted"} 1
+libp2p_eventbus_events_emitted_total{event="EvtPeerIdentificationFailed"} 1
+# HELP libp2p_eventbus_subscriber_event_queued Event Queued for subscriber
+# TYPE libp2p_eventbus_subscriber_event_queued counter
+libp2p_eventbus_subscriber_event_queued{subscriber_name="autonat"} 1
+libp2p_eventbus_subscriber_event_queued{subscriber_name="external/com_github_libp2p_go_libp2p_pubsub/gossipsub.go-L708"} 2
+libp2p_eventbus_subscriber_event_queued{subscriber_name="external/com_github_libp2p_go_libp2p_pubsub/peer_notify.go-L16"} 1
+libp2p_eventbus_subscriber_event_queued{subscriber_name="identify (loop)"} 13
+libp2p_eventbus_subscriber_event_queued{subscriber_name="observed-addrs-manager"} 1
+libp2p_eventbus_subscriber_event_queued{subscriber_name="pstoremanager"} 1
+# HELP libp2p_eventbus_subscriber_queue_full Subscriber Queue completely full
+# TYPE libp2p_eventbus_subscriber_queue_full gauge
+libp2p_eventbus_subscriber_queue_full{subscriber_name="autonat"} 0
+libp2p_eventbus_subscriber_queue_full{subscriber_name="external/com_github_libp2p_go_libp2p_pubsub/gossipsub.go-L708"} 0
+libp2p_eventbus_subscriber_queue_full{subscriber_name="external/com_github_libp2p_go_libp2p_pubsub/peer_notify.go-L16"} 0
+libp2p_eventbus_subscriber_queue_full{subscriber_name="identify (loop)"} 0
+libp2p_eventbus_subscriber_queue_full{subscriber_name="observed-addrs-manager"} 0
+libp2p_eventbus_subscriber_queue_full{subscriber_name="pstoremanager"} 0
+# HELP libp2p_eventbus_subscriber_queue_length Subscriber queue length
+# TYPE libp2p_eventbus_subscriber_queue_length gauge
+libp2p_eventbus_subscriber_queue_length{subscriber_name="autonat"} 1
+libp2p_eventbus_subscriber_queue_length{subscriber_name="external/com_github_libp2p_go_libp2p_pubsub/gossipsub.go-L708"} 1
+libp2p_eventbus_subscriber_queue_length{subscriber_name="external/com_github_libp2p_go_libp2p_pubsub/peer_notify.go-L16"} 1
+libp2p_eventbus_subscriber_queue_length{subscriber_name="identify (loop)"} 7
+libp2p_eventbus_subscriber_queue_length{subscriber_name="observed-addrs-manager"} 1
+libp2p_eventbus_subscriber_queue_length{subscriber_name="pstoremanager"} 1
+# HELP libp2p_eventbus_subscribers_total Number of subscribers for an event type
+# TYPE libp2p_eventbus_subscribers_total gauge
+libp2p_eventbus_subscribers_total{event="EvtAutoRelayAddrsUpdated"} 1
+libp2p_eventbus_subscribers_total{event="EvtLocalAddressesUpdated"} 2
+libp2p_eventbus_subscribers_total{event="EvtLocalProtocolsUpdated"} 1
+libp2p_eventbus_subscribers_total{event="EvtLocalReachabilityChanged"} 1
+libp2p_eventbus_subscribers_total{event="EvtPeerConnectednessChanged"} 2
+libp2p_eventbus_subscribers_total{event="EvtPeerIdentificationCompleted"} 4
+libp2p_eventbus_subscribers_total{event="EvtPeerProtocolsUpdated"} 1
+# HELP libp2p_identify_addrs_count Address Count
+# TYPE libp2p_identify_addrs_count gauge
+libp2p_identify_addrs_count 2
+# HELP libp2p_identify_addrs_received Number of addrs received
+# TYPE libp2p_identify_addrs_received histogram
+libp2p_identify_addrs_received_bucket{le="1"} 0
+libp2p_identify_addrs_received_bucket{le="2"} 0
+libp2p_identify_addrs_received_bucket{le="3"} 0
+libp2p_identify_addrs_received_bucket{le="4"} 1
+libp2p_identify_addrs_received_bucket{le="5"} 1
+libp2p_identify_addrs_received_bucket{le="6"} 1
+libp2p_identify_addrs_received_bucket{le="7"} 1
+libp2p_identify_addrs_received_bucket{le="8"} 1
+libp2p_identify_addrs_received_bucket{le="9"} 1
+libp2p_identify_addrs_received_bucket{le="10"} 1
+libp2p_identify_addrs_received_bucket{le="11"} 1
+libp2p_identify_addrs_received_bucket{le="12"} 1
+libp2p_identify_addrs_received_bucket{le="13"} 1
+libp2p_identify_addrs_received_bucket{le="14"} 1
+libp2p_identify_addrs_received_bucket{le="15"} 1
+libp2p_identify_addrs_received_bucket{le="16"} 1
+libp2p_identify_addrs_received_bucket{le="17"} 1
+libp2p_identify_addrs_received_bucket{le="18"} 1
+libp2p_identify_addrs_received_bucket{le="19"} 1
+libp2p_identify_addrs_received_bucket{le="20"} 1
+libp2p_identify_addrs_received_bucket{le="25"} 1
+libp2p_identify_addrs_received_bucket{le="30"} 1
+libp2p_identify_addrs_received_bucket{le="35"} 1
+libp2p_identify_addrs_received_bucket{le="40"} 1
+libp2p_identify_addrs_received_bucket{le="45"} 1
+libp2p_identify_addrs_received_bucket{le="50"} 1
+libp2p_identify_addrs_received_bucket{le="55"} 1
+libp2p_identify_addrs_received_bucket{le="60"} 1
+libp2p_identify_addrs_received_bucket{le="65"} 1
+libp2p_identify_addrs_received_bucket{le="70"} 1
+libp2p_identify_addrs_received_bucket{le="75"} 1
+libp2p_identify_addrs_received_bucket{le="80"} 1
+libp2p_identify_addrs_received_bucket{le="85"} 1
+libp2p_identify_addrs_received_bucket{le="90"} 1
+libp2p_identify_addrs_received_bucket{le="95"} 1
+libp2p_identify_addrs_received_bucket{le="100"} 1
+libp2p_identify_addrs_received_bucket{le="+Inf"} 1
+libp2p_identify_addrs_received_sum 4
+libp2p_identify_addrs_received_count 1
+# HELP libp2p_identify_conn_push_support_total Identify Connection Push Support
+# TYPE libp2p_identify_conn_push_support_total counter
+libp2p_identify_conn_push_support_total{support="supported"} 1
+# HELP libp2p_identify_identify_pushes_triggered_total Pushes Triggered
+# TYPE libp2p_identify_identify_pushes_triggered_total counter
+libp2p_identify_identify_pushes_triggered_total{trigger="protocols_updated"} 2
+# HELP libp2p_identify_identify_total Identify
+# TYPE libp2p_identify_identify_total counter
+libp2p_identify_identify_total{dir="inbound"} 1
+libp2p_identify_identify_total{dir="outbound"} 1
+# HELP libp2p_identify_protocols_count Protocols Count
+# TYPE libp2p_identify_protocols_count gauge
+libp2p_identify_protocols_count 15
+# HELP libp2p_identify_protocols_received Number of Protocols received
+# TYPE libp2p_identify_protocols_received histogram
+libp2p_identify_protocols_received_bucket{le="1"} 0
+libp2p_identify_protocols_received_bucket{le="2"} 0
+libp2p_identify_protocols_received_bucket{le="3"} 0
+libp2p_identify_protocols_received_bucket{le="4"} 0
+libp2p_identify_protocols_received_bucket{le="5"} 0
+libp2p_identify_protocols_received_bucket{le="6"} 0
+libp2p_identify_protocols_received_bucket{le="7"} 0
+libp2p_identify_protocols_received_bucket{le="8"} 0
+libp2p_identify_protocols_received_bucket{le="9"} 0
+libp2p_identify_protocols_received_bucket{le="10"} 0
+libp2p_identify_protocols_received_bucket{le="11"} 0
+libp2p_identify_protocols_received_bucket{le="12"} 0
+libp2p_identify_protocols_received_bucket{le="13"} 0
+libp2p_identify_protocols_received_bucket{le="14"} 0
+libp2p_identify_protocols_received_bucket{le="15"} 0
+libp2p_identify_protocols_received_bucket{le="16"} 0
+libp2p_identify_protocols_received_bucket{le="17"} 0
+libp2p_identify_protocols_received_bucket{le="18"} 0
+libp2p_identify_protocols_received_bucket{le="19"} 0
+libp2p_identify_protocols_received_bucket{le="20"} 0
+libp2p_identify_protocols_received_bucket{le="25"} 1
+libp2p_identify_protocols_received_bucket{le="30"} 1
+libp2p_identify_protocols_received_bucket{le="35"} 1
+libp2p_identify_protocols_received_bucket{le="40"} 1
+libp2p_identify_protocols_received_bucket{le="45"} 1
+libp2p_identify_protocols_received_bucket{le="50"} 1
+libp2p_identify_protocols_received_bucket{le="55"} 1
+libp2p_identify_protocols_received_bucket{le="60"} 1
+libp2p_identify_protocols_received_bucket{le="65"} 1
+libp2p_identify_protocols_received_bucket{le="70"} 1
+libp2p_identify_protocols_received_bucket{le="75"} 1
+libp2p_identify_protocols_received_bucket{le="80"} 1
+libp2p_identify_protocols_received_bucket{le="85"} 1
+libp2p_identify_protocols_received_bucket{le="90"} 1
+libp2p_identify_protocols_received_bucket{le="95"} 1
+libp2p_identify_protocols_received_bucket{le="100"} 1
+libp2p_identify_protocols_received_bucket{le="+Inf"} 1
+libp2p_identify_protocols_received_sum 22
+libp2p_identify_protocols_received_count 1
+# HELP libp2p_rcmgr_conn_memory How many conns have reserved this bucket of memory, as reported to the Resource Manager
+# TYPE libp2p_rcmgr_conn_memory histogram
+libp2p_rcmgr_conn_memory_bucket{le="1024"} 0
+libp2p_rcmgr_conn_memory_bucket{le="4096"} 0
+libp2p_rcmgr_conn_memory_bucket{le="32768"} 0
+libp2p_rcmgr_conn_memory_bucket{le="1.048576e+06"} 0
+libp2p_rcmgr_conn_memory_bucket{le="3.3554432e+07"} 0
+libp2p_rcmgr_conn_memory_bucket{le="2.68435456e+08"} 0
+libp2p_rcmgr_conn_memory_bucket{le="5.36870912e+08"} 0
+libp2p_rcmgr_conn_memory_bucket{le="1.073741824e+09"} 0
+libp2p_rcmgr_conn_memory_bucket{le="2.147483648e+09"} 0
+libp2p_rcmgr_conn_memory_bucket{le="4.294967296e+09"} 0
+libp2p_rcmgr_conn_memory_bucket{le="+Inf"} 0
+libp2p_rcmgr_conn_memory_sum 0
+libp2p_rcmgr_conn_memory_count 0
+# HELP libp2p_rcmgr_connections Number of Connections
+# TYPE libp2p_rcmgr_connections gauge
+libp2p_rcmgr_connections{dir="inbound",scope="system"} 0
+libp2p_rcmgr_connections{dir="inbound",scope="transient"} 0
+libp2p_rcmgr_connections{dir="outbound",scope="system"} 1
+libp2p_rcmgr_connections{dir="outbound",scope="transient"} 0
+# HELP libp2p_rcmgr_fds Number of file descriptors reserved as reported to the Resource Manager
+# TYPE libp2p_rcmgr_fds gauge
+libp2p_rcmgr_fds{scope="system"} 0
+libp2p_rcmgr_fds{scope="transient"} 0
+# HELP libp2p_rcmgr_limit Resource manager limits
+# TYPE libp2p_rcmgr_limit gauge
+libp2p_rcmgr_limit{resource="conns",scope="system"} 377
+libp2p_rcmgr_limit{resource="conns",scope="transient"} 126
+libp2p_rcmgr_limit{resource="conns_inbound",scope="system"} 188
+libp2p_rcmgr_limit{resource="conns_inbound",scope="transient"} 63
+libp2p_rcmgr_limit{resource="conns_outbound",scope="system"} 377
+libp2p_rcmgr_limit{resource="conns_outbound",scope="transient"} 126
+libp2p_rcmgr_limit{resource="fd",scope="system"} 262144
+libp2p_rcmgr_limit{resource="fd",scope="transient"} 65536
+libp2p_rcmgr_limit{resource="memory",scope="system"} 2.229272576e+09
+libp2p_rcmgr_limit{resource="memory",scope="transient"} 2.95436288e+08
+libp2p_rcmgr_limit{resource="streams",scope="system"} 6044
+libp2p_rcmgr_limit{resource="streams",scope="transient"} 755
+libp2p_rcmgr_limit{resource="streams_inbound",scope="system"} 3022
+libp2p_rcmgr_limit{resource="streams_inbound",scope="transient"} 377
+libp2p_rcmgr_limit{resource="streams_outbound",scope="system"} 6044
+libp2p_rcmgr_limit{resource="streams_outbound",scope="transient"} 755
+# HELP libp2p_rcmgr_memory Amount of memory reserved as reported to the Resource Manager
+# TYPE libp2p_rcmgr_memory gauge
+libp2p_rcmgr_memory{protocol="",scope="system"} 0
+libp2p_rcmgr_memory{protocol="/ipfs/id/1.0.0",scope="protocol"} 0
+# HELP libp2p_rcmgr_peer_connections Number of connections this peer has
+# TYPE libp2p_rcmgr_peer_connections histogram
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="1"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="2"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="3"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="4"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="5"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="6"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="7"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="8"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="9"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="10"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="16"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="32"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="64"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="128"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="256"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="inbound",le="+Inf"} 1
+libp2p_rcmgr_peer_connections_sum{dir="inbound"} 1
+libp2p_rcmgr_peer_connections_count{dir="inbound"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="1"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="2"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="3"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="4"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="5"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="6"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="7"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="8"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="9"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="10"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="16"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="32"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="64"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="128"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="256"} 1
+libp2p_rcmgr_peer_connections_bucket{dir="outbound",le="+Inf"} 1
+libp2p_rcmgr_peer_connections_sum{dir="outbound"} 1
+libp2p_rcmgr_peer_connections_count{dir="outbound"} 1
+# HELP libp2p_rcmgr_peer_memory How many peers have reserved this bucket of memory, as reported to the Resource Manager
+# TYPE libp2p_rcmgr_peer_memory histogram
+libp2p_rcmgr_peer_memory_bucket{le="1024"} 0
+libp2p_rcmgr_peer_memory_bucket{le="4096"} 0
+libp2p_rcmgr_peer_memory_bucket{le="32768"} 1
+libp2p_rcmgr_peer_memory_bucket{le="1.048576e+06"} 1
+libp2p_rcmgr_peer_memory_bucket{le="3.3554432e+07"} 1
+libp2p_rcmgr_peer_memory_bucket{le="2.68435456e+08"} 1
+libp2p_rcmgr_peer_memory_bucket{le="5.36870912e+08"} 1
+libp2p_rcmgr_peer_memory_bucket{le="1.073741824e+09"} 1
+libp2p_rcmgr_peer_memory_bucket{le="2.147483648e+09"} 1
+libp2p_rcmgr_peer_memory_bucket{le="4.294967296e+09"} 1
+libp2p_rcmgr_peer_memory_bucket{le="+Inf"} 1
+libp2p_rcmgr_peer_memory_sum 8192
+libp2p_rcmgr_peer_memory_count 1
+# HELP libp2p_rcmgr_peer_streams Number of streams this peer has
+# TYPE libp2p_rcmgr_peer_streams histogram
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="1"} 5
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="2"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="3"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="4"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="5"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="6"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="7"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="8"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="9"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="10"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="16"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="32"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="64"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="128"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="256"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="inbound",le="+Inf"} 10
+libp2p_rcmgr_peer_streams_sum{dir="inbound"} 15
+libp2p_rcmgr_peer_streams_count{dir="inbound"} 10
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="1"} 18
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="2"} 37
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="3"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="4"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="5"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="6"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="7"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="8"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="9"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="10"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="16"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="32"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="64"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="128"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="256"} 39
+libp2p_rcmgr_peer_streams_bucket{dir="outbound",le="+Inf"} 39
+libp2p_rcmgr_peer_streams_sum{dir="outbound"} 62
+libp2p_rcmgr_peer_streams_count{dir="outbound"} 39
+# HELP libp2p_rcmgr_previous_conn_memory How many conns have previously reserved this bucket of memory, as reported to the Resource Manager
+# TYPE libp2p_rcmgr_previous_conn_memory histogram
+libp2p_rcmgr_previous_conn_memory_bucket{le="1024"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="4096"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="32768"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="1.048576e+06"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="3.3554432e+07"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="2.68435456e+08"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="5.36870912e+08"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="1.073741824e+09"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="2.147483648e+09"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="4.294967296e+09"} 0
+libp2p_rcmgr_previous_conn_memory_bucket{le="+Inf"} 0
+libp2p_rcmgr_previous_conn_memory_sum 0
+libp2p_rcmgr_previous_conn_memory_count 0
+# HELP libp2p_rcmgr_previous_peer_connections Number of connections this peer previously had. This is used to get the current connection number per peer histogram by subtracting this from the peer_connections histogram
+# TYPE libp2p_rcmgr_previous_peer_connections histogram
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="1"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="2"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="3"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="4"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="5"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="6"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="7"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="8"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="9"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="10"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="16"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="32"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="64"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="128"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="256"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="inbound",le="+Inf"} 1
+libp2p_rcmgr_previous_peer_connections_sum{dir="inbound"} 1
+libp2p_rcmgr_previous_peer_connections_count{dir="inbound"} 1
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="1"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="2"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="3"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="4"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="5"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="6"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="7"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="8"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="9"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="10"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="16"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="32"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="64"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="128"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="256"} 0
+libp2p_rcmgr_previous_peer_connections_bucket{dir="outbound",le="+Inf"} 0
+libp2p_rcmgr_previous_peer_connections_sum{dir="outbound"} 0
+libp2p_rcmgr_previous_peer_connections_count{dir="outbound"} 0
+# HELP libp2p_rcmgr_previous_peer_memory How many peers have previously reserved this bucket of memory, as reported to the Resource Manager
+# TYPE libp2p_rcmgr_previous_peer_memory histogram
+libp2p_rcmgr_previous_peer_memory_bucket{le="1024"} 0
+libp2p_rcmgr_previous_peer_memory_bucket{le="4096"} 0
+libp2p_rcmgr_previous_peer_memory_bucket{le="32768"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="1.048576e+06"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="3.3554432e+07"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="2.68435456e+08"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="5.36870912e+08"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="1.073741824e+09"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="2.147483648e+09"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="4.294967296e+09"} 1
+libp2p_rcmgr_previous_peer_memory_bucket{le="+Inf"} 1
+libp2p_rcmgr_previous_peer_memory_sum 8192
+libp2p_rcmgr_previous_peer_memory_count 1
+# HELP libp2p_rcmgr_previous_peer_streams Number of streams this peer has
+# TYPE libp2p_rcmgr_previous_peer_streams histogram
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="1"} 5
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="2"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="3"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="4"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="5"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="6"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="7"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="8"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="9"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="10"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="16"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="32"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="64"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="128"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="256"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="inbound",le="+Inf"} 9
+libp2p_rcmgr_previous_peer_streams_sum{dir="inbound"} 13
+libp2p_rcmgr_previous_peer_streams_count{dir="inbound"} 9
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="1"} 17
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="2"} 36
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="3"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="4"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="5"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="6"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="7"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="8"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="9"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="10"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="16"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="32"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="64"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="128"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="256"} 38
+libp2p_rcmgr_previous_peer_streams_bucket{dir="outbound",le="+Inf"} 38
+libp2p_rcmgr_previous_peer_streams_sum{dir="outbound"} 61
+libp2p_rcmgr_previous_peer_streams_count{dir="outbound"} 38
+# HELP libp2p_rcmgr_streams Number of Streams
+# TYPE libp2p_rcmgr_streams gauge
+libp2p_rcmgr_streams{dir="inbound",protocol="",scope="system"} 2
+libp2p_rcmgr_streams{dir="inbound",protocol="",scope="transient"} 0
+libp2p_rcmgr_streams{dir="inbound",protocol="/eth2/beacon_chain/req/metadata/2/ssz_snappy",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="inbound",protocol="/eth2/beacon_chain/req/ping/1/ssz_snappy",scope="protocol"} 1
+libp2p_rcmgr_streams{dir="inbound",protocol="/ipfs/id/1.0.0",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="inbound",protocol="/meshsub/1.3.0",scope="protocol"} 1
+libp2p_rcmgr_streams{dir="outbound",protocol="",scope="system"} 1
+libp2p_rcmgr_streams{dir="outbound",protocol="",scope="transient"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/eth2/beacon_chain/req/beacon_blocks_by_range/2/ssz_snappy",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/eth2/beacon_chain/req/beacon_blocks_by_root/2/ssz_snappy",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/eth2/beacon_chain/req/metadata/2/ssz_snappy",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/eth2/beacon_chain/req/ping/1/ssz_snappy",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/eth2/beacon_chain/req/status/1/ssz_snappy",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/ipfs/id/1.0.0",scope="protocol"} 0
+libp2p_rcmgr_streams{dir="outbound",protocol="/meshsub/1.3.0",scope="protocol"} 1
+# HELP libp2p_swarm_connection_duration_seconds Duration of a Connection
+# TYPE libp2p_swarm_connection_duration_seconds histogram
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.0625"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.125"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.25"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.5"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="1"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="2"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="4"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="8"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="16"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="32"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="64"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="128"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="256"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="512"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="1024"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="2048"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="4096"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="8192"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="16384"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="32768"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="65536"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="131072"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="262144"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="524288"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="1.048576e+06"} 1
+libp2p_swarm_connection_duration_seconds_bucket{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="+Inf"} 1
+libp2p_swarm_connection_duration_seconds_sum{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 0.00023722
+libp2p_swarm_connection_duration_seconds_count{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 1
+# HELP libp2p_swarm_connections_closed_total Connections Closed
+# TYPE libp2p_swarm_connections_closed_total counter
+libp2p_swarm_connections_closed_total{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 1
+# HELP libp2p_swarm_connections_opened_total Connections Opened
+# TYPE libp2p_swarm_connections_opened_total counter
+libp2p_swarm_connections_opened_total{dir="inbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 1
+libp2p_swarm_connections_opened_total{dir="outbound",early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 1
+# HELP libp2p_swarm_dial_latency_seconds time taken to establish connection with the peer
+# TYPE libp2p_swarm_dial_latency_seconds histogram
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.001"} 0
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.01"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.05"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.1"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.2"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.3"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.4"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.5"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="0.75"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="1"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="2"} 1
+libp2p_swarm_dial_latency_seconds_bucket{num_dials="1",outcome="success",le="+Inf"} 1
+libp2p_swarm_dial_latency_seconds_sum{num_dials="1",outcome="success"} 0.009905377
+libp2p_swarm_dial_latency_seconds_count{num_dials="1",outcome="success"} 1
+# HELP libp2p_swarm_dial_ranking_delay_seconds delay introduced by the dial ranking logic
+# TYPE libp2p_swarm_dial_ranking_delay_seconds histogram
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.001"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.01"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.05"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.1"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.2"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.3"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.4"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.5"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="0.75"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="1"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="2"} 1
+libp2p_swarm_dial_ranking_delay_seconds_bucket{le="+Inf"} 1
+libp2p_swarm_dial_ranking_delay_seconds_sum 3.95e-06
+libp2p_swarm_dial_ranking_delay_seconds_count 1
+# HELP libp2p_swarm_dials_per_peer_total Number of addresses dialed per peer
+# TYPE libp2p_swarm_dials_per_peer_total counter
+libp2p_swarm_dials_per_peer_total{num_dials="1",outcome="success"} 1
+# HELP libp2p_swarm_handshake_latency_seconds Duration of the libp2p Handshake
+# TYPE libp2p_swarm_handshake_latency_seconds histogram
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.001"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.0013000000000000002"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.0016900000000000003"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.0021970000000000006"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.0028561000000000007"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.003712930000000001"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.004826809000000001"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.006274851700000002"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.008157307210000003"} 0
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.010604499373000004"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.013785849184900006"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.01792160394037001"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.02329808512248101"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.030287510659225317"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.03937376385699291"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.05118589301409079"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.06654166091831802"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.08650415919381343"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.11245540695195747"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.14619202903754472"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.19004963774880815"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.2470645290734506"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.3211838877954858"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.41753905413413156"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.542800770374371"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.7056410014866824"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="0.9173333019326871"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="1.1925332925124934"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="1.5502932802662415"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="2.015381264346114"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="2.6199956436499483"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="3.405994336744933"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="4.427792637768413"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="5.7561304290989375"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="7.482969557828619"} 1
+libp2p_swarm_handshake_latency_seconds_bucket{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1",le="+Inf"} 1
+libp2p_swarm_handshake_latency_seconds_sum{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 0.009579968
+libp2p_swarm_handshake_latency_seconds_count{early_muxer="false",ip_version="ip4",muxer="",security="",transport="quic-v1"} 1
+# HELP libp2p_swarm_key_types_total key type
+# TYPE libp2p_swarm_key_types_total counter
+libp2p_swarm_key_types_total{dir="inbound",key_type="Secp256k1"} 1
+libp2p_swarm_key_types_total{dir="outbound",key_type="Secp256k1"} 1
+# HELP local_value_gwei Local payload value in gwei
+# TYPE local_value_gwei gauge
+local_value_gwei 0
+# HELP log_entries_total Total number of log messages.
+# TYPE log_entries_total counter
+log_entries_total{level="error",prefix="global"} 1
+log_entries_total{level="info",prefix="global"} 39
+# HELP max_blobs_per_block The maximum number of blobs allowed in a block.
+# TYPE max_blobs_per_block gauge
+max_blobs_per_block 0
+# HELP multi_value_object_count The number of instances that exist for the multivalue slice for a particular field.
+# TYPE multi_value_object_count gauge
+multi_value_object_count{field="balances"} 5
+multi_value_object_count{field="blockRoots"} 3
+multi_value_object_count{field="inactivityScores"} 4
+multi_value_object_count{field="randaoMixes"} 3
+multi_value_object_count{field="stateRoots"} 3
+multi_value_object_count{field="validators"} 3
+# HELP new_att_head_milliseconds Captures latency for new attestation head in milliseconds
+# TYPE new_att_head_milliseconds histogram
+new_att_head_milliseconds_bucket{le="1"} 2
+new_att_head_milliseconds_bucket{le="5"} 2
+new_att_head_milliseconds_bucket{le="20"} 2
+new_att_head_milliseconds_bucket{le="100"} 2
+new_att_head_milliseconds_bucket{le="500"} 2
+new_att_head_milliseconds_bucket{le="1000"} 2
+new_att_head_milliseconds_bucket{le="+Inf"} 2
+new_att_head_milliseconds_sum 0
+new_att_head_milliseconds_count 2
+# HELP new_block_head_milliseconds Captures latency for new block head in milliseconds
+# TYPE new_block_head_milliseconds histogram
+new_block_head_milliseconds_bucket{le="1"} 0
+new_block_head_milliseconds_bucket{le="5"} 0
+new_block_head_milliseconds_bucket{le="20"} 0
+new_block_head_milliseconds_bucket{le="100"} 0
+new_block_head_milliseconds_bucket{le="500"} 0
+new_block_head_milliseconds_bucket{le="1000"} 0
+new_block_head_milliseconds_bucket{le="+Inf"} 0
+new_block_head_milliseconds_sum 0
+new_block_head_milliseconds_count 0
+# HELP new_payload_invalid_node_count Count the number of invalid nodes after newPayload EE call
+# TYPE new_payload_invalid_node_count counter
+new_payload_invalid_node_count 0
+# HELP new_payload_optimistic_node_count Count the number of optimistic nodes after newPayload EE call
+# TYPE new_payload_optimistic_node_count counter
+new_payload_optimistic_node_count 0
+# HELP new_payload_v1_latency_milliseconds Captures RPC latency for newPayloadV1 in milliseconds
+# TYPE new_payload_v1_latency_milliseconds histogram
+new_payload_v1_latency_milliseconds_bucket{le="25"} 0
+new_payload_v1_latency_milliseconds_bucket{le="50"} 0
+new_payload_v1_latency_milliseconds_bucket{le="100"} 0
+new_payload_v1_latency_milliseconds_bucket{le="200"} 0
+new_payload_v1_latency_milliseconds_bucket{le="500"} 0
+new_payload_v1_latency_milliseconds_bucket{le="1000"} 0
+new_payload_v1_latency_milliseconds_bucket{le="2000"} 0
+new_payload_v1_latency_milliseconds_bucket{le="4000"} 0
+new_payload_v1_latency_milliseconds_bucket{le="+Inf"} 0
+new_payload_v1_latency_milliseconds_sum 0
+new_payload_v1_latency_milliseconds_count 0
+# HELP new_payload_valid_node_count Count the number of valid nodes after newPayload EE call
+# TYPE new_payload_valid_node_count counter
+new_payload_valid_node_count 0
+# HELP next_slot_cache_hit The total number of cache hits on the next slot state cache.
+# TYPE next_slot_cache_hit counter
+next_slot_cache_hit 2
+# HELP next_slot_cache_miss The total number of cache misses on the next slot state cache.
+# TYPE next_slot_cache_miss counter
+next_slot_cache_miss 1
+# HELP num_pending_attester_slashings Number of pending attester slashings in the pool
+# TYPE num_pending_attester_slashings gauge
+num_pending_attester_slashings 0
+# HELP num_pending_proposer_slashings Number of pending proposer slashings in the pool
+# TYPE num_pending_proposer_slashings gauge
+num_pending_proposer_slashings 0
+# HELP number_of_duplicates_removed Count the number of times a duplicate signature set has been removed.
+# TYPE number_of_duplicates_removed counter
+number_of_duplicates_removed 0
+# HELP number_of_sets_aggregated Count the number of times different sets have been successfully aggregated in a batch.
+# TYPE number_of_sets_aggregated histogram
+number_of_sets_aggregated_bucket{le="10"} 0
+number_of_sets_aggregated_bucket{le="50"} 0
+number_of_sets_aggregated_bucket{le="100"} 0
+number_of_sets_aggregated_bucket{le="200"} 0
+number_of_sets_aggregated_bucket{le="400"} 0
+number_of_sets_aggregated_bucket{le="800"} 0
+number_of_sets_aggregated_bucket{le="1600"} 0
+number_of_sets_aggregated_bucket{le="3200"} 0
+number_of_sets_aggregated_bucket{le="+Inf"} 0
+number_of_sets_aggregated_sum 0
+number_of_sets_aggregated_count 0
+# HELP number_of_times_resynced Count the number of times a node resyncs.
+# TYPE number_of_times_resynced counter
+number_of_times_resynced 1
+# HELP on_block_processing_milliseconds Total time in milliseconds to complete a call to postBlockProcess()
+# TYPE on_block_processing_milliseconds summary
+on_block_processing_milliseconds_sum 0
+on_block_processing_milliseconds_count 0
+# HELP p2p_attestation_subnet_attempted_broadcasts The number of attestations message broadcast attempts.
+# TYPE p2p_attestation_subnet_attempted_broadcasts counter
+p2p_attestation_subnet_attempted_broadcasts 0
+# HELP p2p_attestation_subnet_recovered_broadcasts The number of attestations message broadcast attempts with no peers on the subnet. The beacon node increments this counter when the broadcast is blocked until a subnet peer can be found.
+# TYPE p2p_attestation_subnet_recovered_broadcasts counter
+p2p_attestation_subnet_recovered_broadcasts 0
+# HELP p2p_blob_sidecar_committee_attempted_broadcasts The number of blob sidecar message broadcast attempts.
+# TYPE p2p_blob_sidecar_committee_attempted_broadcasts counter
+p2p_blob_sidecar_committee_attempted_broadcasts 0
+# HELP p2p_blob_sidecar_committee_broadcasts The number of blob sidecar messages that were broadcast with no peer on.
+# TYPE p2p_blob_sidecar_committee_broadcasts counter
+p2p_blob_sidecar_committee_broadcasts 0
+# HELP p2p_data_column_sidecar_attempted_broadcasts The number of data column sidecar message broadcast attempts.
+# TYPE p2p_data_column_sidecar_attempted_broadcasts counter
+p2p_data_column_sidecar_attempted_broadcasts 0
+# HELP p2p_data_column_sidecar_broadcasts The number of data column sidecar messages that were broadcasted.
+# TYPE p2p_data_column_sidecar_broadcasts counter
+p2p_data_column_sidecar_broadcasts 0
+# HELP p2p_max_peers The target maximum number of peers.
+# TYPE p2p_max_peers gauge
+p2p_max_peers 70
+# HELP p2p_message_ignored_validation_total Count of messages that were ignored in validation.
+# TYPE p2p_message_ignored_validation_total counter
+p2p_message_ignored_validation_total{topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 1
+p2p_message_ignored_validation_total{topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 2
+p2p_message_ignored_validation_total{topic="/eth2/07524e7b/sync_committee_contribution_and_proof/ssz_snappy"} 12
+# HELP p2p_message_received_total Count of messages received.
+# TYPE p2p_message_received_total counter
+p2p_message_received_total{topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 1
+p2p_message_received_total{topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 2
+p2p_message_received_total{topic="/eth2/07524e7b/sync_committee_contribution_and_proof/ssz_snappy"} 12
+p2p_message_received_total{topic="/eth2/beacon_chain/req/metadata/2/ssz_snappy"} 1
+p2p_message_received_total{topic="/eth2/beacon_chain/req/ping/1/ssz_snappy"} 3
+# HELP p2p_minimum_peers_per_subnet The minimum number of peers to connect to per subnet
+# TYPE p2p_minimum_peers_per_subnet gauge
+p2p_minimum_peers_per_subnet 6
+# HELP p2p_partial_data_column_broadcasts The number of partial data column messages that were broadcasted.
+# TYPE p2p_partial_data_column_broadcasts counter
+p2p_partial_data_column_broadcasts 0
+# HELP p2p_peer_count The number of peers in a given state.
+# TYPE p2p_peer_count gauge
+p2p_peer_count{state="Bad"} 0
+p2p_peer_count{state="Connected"} 1
+p2p_peer_count{state="Connecting"} 0
+p2p_peer_count{state="Disconnected"} 0
+p2p_peer_count{state="Disconnecting"} 0
+# HELP p2p_peer_count_direction_type The number of peers in a given direction and type.
+# TYPE p2p_peer_count_direction_type gauge
+p2p_peer_count_direction_type{direction="inbound",type="QUIC"} 0
+p2p_peer_count_direction_type{direction="inbound",type="TCP"} 0
+p2p_peer_count_direction_type{direction="outbound",type="QUIC"} 1
+p2p_peer_count_direction_type{direction="outbound",type="TCP"} 0
+# HELP p2p_pubsub_reject_total The number of messages rejected of a particular topic
+# TYPE p2p_pubsub_reject_total counter
+p2p_pubsub_reject_total{reason="validation ignored",topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 1
+p2p_pubsub_reject_total{reason="validation ignored",topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 2
+p2p_pubsub_reject_total{reason="validation ignored",topic="/eth2/07524e7b/sync_committee_contribution_and_proof/ssz_snappy"} 12
+# HELP p2p_pubsub_rpc_drop_sub_total The number of subscription messages dropped via rpc
+# TYPE p2p_pubsub_rpc_drop_sub_total counter
+p2p_pubsub_rpc_drop_sub_total 0
+# HELP p2p_pubsub_rpc_recv_sub_total The number of subscription messages received via rpc
+# TYPE p2p_pubsub_rpc_recv_sub_total counter
+p2p_pubsub_rpc_recv_sub_total 7
+# HELP p2p_pubsub_rpc_recv_total The number of messages received via rpc for a particular control message
+# TYPE p2p_pubsub_rpc_recv_total counter
+p2p_pubsub_rpc_recv_total{control_message="graft"} 0
+p2p_pubsub_rpc_recv_total{control_message="idontwant"} 0
+p2p_pubsub_rpc_recv_total{control_message="ihave"} 0
+p2p_pubsub_rpc_recv_total{control_message="iwant"} 0
+p2p_pubsub_rpc_recv_total{control_message="prune"} 0
+# HELP p2p_pubsub_rpc_sent_sub_total The number of subscription messages sent via rpc
+# TYPE p2p_pubsub_rpc_sent_sub_total counter
+p2p_pubsub_rpc_sent_sub_total 2
+# HELP p2p_pubsub_topic_active The topics that the peer is participating in gossipsub.
+# TYPE p2p_pubsub_topic_active gauge
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/attester_slashing/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/beacon_attestation_56/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/beacon_attestation_57/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_0/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_1/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_2/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_3/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_4/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_5/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_6/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_7/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/blob_sidecar_8/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/bls_to_execution_change/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/proposer_slashing/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/sync_committee_contribution_and_proof/ssz_snappy"} 1
+p2p_pubsub_topic_active{topic="/eth2/07524e7b/voluntary_exit/ssz_snappy"} 1
+# HELP p2p_pubsub_validate_total The number of messages received for validation of a particular topic
+# TYPE p2p_pubsub_validate_total counter
+p2p_pubsub_validate_total{topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 1
+p2p_pubsub_validate_total{topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 2
+p2p_pubsub_validate_total{topic="/eth2/07524e7b/sync_committee_contribution_and_proof/ssz_snappy"} 12
+# HELP p2p_repeat_attempts The number of repeat attempts the connection handler is triggered for a peer.
+# TYPE p2p_repeat_attempts counter
+p2p_repeat_attempts 1
+# HELP p2p_status_message_missing The number of attempts the connection handler rejects a peer for a missing status message.
+# TYPE p2p_status_message_missing counter
+p2p_status_message_missing 0
+# HELP p2p_subscribed_topic_peer_total The number of peers subscribed to topics that a host node is also subscribed to.
+# TYPE p2p_subscribed_topic_peer_total gauge
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/attester_slashing/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/beacon_attestation_56/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/beacon_attestation_57/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_0/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_1/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_2/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_3/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_4/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_5/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_6/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_7/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/blob_sidecar_8/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/bls_to_execution_change/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/proposer_slashing/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/sync_committee_contribution_and_proof/ssz_snappy"} 0
+p2p_subscribed_topic_peer_total{topic="/eth2/07524e7b/voluntary_exit/ssz_snappy"} 0
+# HELP p2p_sync_committee_subnet_attempted_broadcasts The number of sync committee message broadcast attempts.
+# TYPE p2p_sync_committee_subnet_attempted_broadcasts counter
+p2p_sync_committee_subnet_attempted_broadcasts 0
+# HELP p2p_sync_committee_subnet_recovered_broadcasts The number of sync committee messages broadcast attempts with no peers on the subnet. The beacon node increments this counter when the broadcast is blocked until a subnet peer can be found.
+# TYPE p2p_sync_committee_subnet_recovered_broadcasts counter
+p2p_sync_committee_subnet_recovered_broadcasts 0
+# HELP p2p_topic_peer_count The number of peers subscribed to a given topic.
+# TYPE p2p_topic_peer_count gauge
+p2p_topic_peer_count{topic="/eth2/07524e7b/attester_slashing/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/beacon_aggregate_and_proof/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/beacon_block/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_0"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_1"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_2"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_3"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_4"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_5"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_6"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_7"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/blob_sidecar_8"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/bls_to_execution_change/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/data_column_sidecar_%!d(MISSING)/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/execution_payload/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/execution_payload_bid/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/light_client_finality_update/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/light_client_optimistic_update/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/payload_attestation_message/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/proposer_preferences/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/proposer_slashing/ssz_snappy"} 0
+p2p_topic_peer_count{topic="/eth2/07524e7b/voluntary_exit/ssz_snappy"} 0
+# HELP payload_attestation_pool_size The number of unique payload attestation entries currently in the pool.
+# TYPE payload_attestation_pool_size gauge
+payload_attestation_pool_size 0
+# HELP payload_id_cache_hit The number of payload id get requests that are present in the cache.
+# TYPE payload_id_cache_hit counter
+payload_id_cache_hit 0
+# HELP payload_id_cache_miss The number of payload id get requests that aren't present in the cache.
+# TYPE payload_id_cache_miss counter
+payload_id_cache_miss 0
+# HELP powchain_block_number The current block number in the proof-of-work chain
+# TYPE powchain_block_number gauge
+powchain_block_number 3042
+# HELP powchain_header_cache_hit The number of header requests that are present in the cache.
+# TYPE powchain_header_cache_hit counter
+powchain_header_cache_hit 0
+# HELP powchain_header_cache_miss The number of header requests that aren't present in the cache.
+# TYPE powchain_header_cache_miss counter
+powchain_header_cache_miss 0
+# HELP powchain_header_cache_size The number of headers in the header cache
+# TYPE powchain_header_cache_size gauge
+powchain_header_cache_size 0
+# HELP powchain_missed_deposit_logs The number of times a missed deposit log is detected
+# TYPE powchain_missed_deposit_logs counter
+powchain_missed_deposit_logs 0
+# HELP powchain_sync_eth1_connected Boolean indicating whether an eth1 endpoint is currently connected: 0=false, 1=true.
+# TYPE powchain_sync_eth1_connected gauge
+powchain_sync_eth1_connected 1
+# HELP powchain_valid_deposits_received The number of valid deposits received in the deposit contract
+# TYPE powchain_valid_deposits_received counter
+powchain_valid_deposits_received 0
+# HELP process_attestations_milliseconds Captures latency for process attestations (forkchoice) in milliseconds
+# TYPE process_attestations_milliseconds histogram
+process_attestations_milliseconds_bucket{le="1"} 2
+process_attestations_milliseconds_bucket{le="5"} 2
+process_attestations_milliseconds_bucket{le="20"} 2
+process_attestations_milliseconds_bucket{le="100"} 2
+process_attestations_milliseconds_bucket{le="500"} 2
+process_attestations_milliseconds_bucket{le="1000"} 2
+process_attestations_milliseconds_bucket{le="+Inf"} 2
+process_attestations_milliseconds_sum 0
+process_attestations_milliseconds_count 2
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 7.76
+# HELP process_max_fds Maximum number of open file descriptors.
+# TYPE process_max_fds gauge
+process_max_fds 524288
+# HELP process_network_receive_bytes_total Number of bytes received by the process over the network.
+# TYPE process_network_receive_bytes_total counter
+process_network_receive_bytes_total 138309
+# HELP process_network_transmit_bytes_total Number of bytes sent by the process over the network.
+# TYPE process_network_transmit_bytes_total counter
+process_network_transmit_bytes_total 251258
+# HELP process_open_fds Number of open file descriptors.
+# TYPE process_open_fds gauge
+process_open_fds 27
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 2.4950784e+08
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.78730169697e+09
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+process_virtual_memory_bytes 2.738438144e+09
+# HELP process_virtual_memory_max_bytes Maximum amount of virtual memory available in bytes.
+# TYPE process_virtual_memory_max_bytes gauge
+process_virtual_memory_max_bytes 1.8446744073709552e+19
+# HELP proposer_preferences_cache_hit The number of proposer preference lookups served from the cache.
+# TYPE proposer_preferences_cache_hit counter
+proposer_preferences_cache_hit 0
+# HELP proposer_preferences_cache_miss The number of proposer preference lookups not present in the cache.
+# TYPE proposer_preferences_cache_miss counter
+proposer_preferences_cache_miss 0
+# HELP proposer_slashings_included_total Number of proposer slashings included in blocks
+# TYPE proposer_slashings_included_total counter
+proposer_slashings_included_total 0
+# HELP prysm_version 
+# TYPE prysm_version gauge
+prysm_version{buildDate="1784824254",commit="51b5a75ebbadf05af22bd2601b5baf7a9e99b66d",version="v7.1.8"} 1
+# HELP publish_block_v2_duration_milliseconds Duration of publishBlockV2 endpoint processing in milliseconds
+# TYPE publish_block_v2_duration_milliseconds histogram
+publish_block_v2_duration_milliseconds_bucket{le="1"} 0
+publish_block_v2_duration_milliseconds_bucket{le="5"} 0
+publish_block_v2_duration_milliseconds_bucket{le="20"} 0
+publish_block_v2_duration_milliseconds_bucket{le="100"} 0
+publish_block_v2_duration_milliseconds_bucket{le="500"} 0
+publish_block_v2_duration_milliseconds_bucket{le="1000"} 0
+publish_block_v2_duration_milliseconds_bucket{le="2000"} 0
+publish_block_v2_duration_milliseconds_bucket{le="5000"} 0
+publish_block_v2_duration_milliseconds_bucket{le="+Inf"} 0
+publish_block_v2_duration_milliseconds_sum 0
+publish_block_v2_duration_milliseconds_count 0
+# HELP reconstructed_execution_payload_count Count the number of execution payloads that are reconstructed using JSON-RPC from payload headers
+# TYPE reconstructed_execution_payload_count counter
+reconstructed_execution_payload_count 0
+# HELP register_validator_latency_milliseconds Captures RPC latency for register validator in milliseconds
+# TYPE register_validator_latency_milliseconds histogram
+register_validator_latency_milliseconds_bucket{le="1"} 0
+register_validator_latency_milliseconds_bucket{le="2"} 0
+register_validator_latency_milliseconds_bucket{le="5"} 0
+register_validator_latency_milliseconds_bucket{le="10"} 0
+register_validator_latency_milliseconds_bucket{le="20"} 0
+register_validator_latency_milliseconds_bucket{le="50"} 0
+register_validator_latency_milliseconds_bucket{le="100"} 0
+register_validator_latency_milliseconds_bucket{le="200"} 0
+register_validator_latency_milliseconds_bucket{le="500"} 0
+register_validator_latency_milliseconds_bucket{le="1000"} 0
+register_validator_latency_milliseconds_bucket{le="+Inf"} 0
+register_validator_latency_milliseconds_sum 0
+register_validator_latency_milliseconds_count 0
+# HELP reorg_depth Captures depth of reorgs. Depth is defined as the number of blocks between the head and the common ancestor
+# TYPE reorg_depth histogram
+reorg_depth_bucket{le="1"} 1
+reorg_depth_bucket{le="2"} 1
+reorg_depth_bucket{le="4"} 1
+reorg_depth_bucket{le="8"} 1
+reorg_depth_bucket{le="16"} 1
+reorg_depth_bucket{le="32"} 1
+reorg_depth_bucket{le="+Inf"} 1
+reorg_depth_sum 0
+reorg_depth_count 1
+# HELP reorg_distance Captures distance of reorgs. Distance is defined as the number of blocks between the old head and the new head
+# TYPE reorg_distance histogram
+reorg_distance_bucket{le="1"} 1
+reorg_distance_bucket{le="2"} 1
+reorg_distance_bucket{le="4"} 1
+reorg_distance_bucket{le="8"} 1
+reorg_distance_bucket{le="16"} 1
+reorg_distance_bucket{le="32"} 1
+reorg_distance_bucket{le="64"} 1
+reorg_distance_bucket{le="+Inf"} 1
+reorg_distance_sum 0
+reorg_distance_count 1
+# HELP replay_blocks_count The number of blocks to replay to generate a state
+# TYPE replay_blocks_count histogram
+replay_blocks_count_bucket{le="64"} 4
+replay_blocks_count_bucket{le="256"} 4
+replay_blocks_count_bucket{le="1024"} 4
+replay_blocks_count_bucket{le="2048"} 4
+replay_blocks_count_bucket{le="4096"} 4
+replay_blocks_count_bucket{le="+Inf"} 4
+replay_blocks_count_sum 128
+replay_blocks_count_count 4
+# HELP replay_blocks_milliseconds Time it took to replay blocks
+# TYPE replay_blocks_milliseconds summary
+replay_blocks_milliseconds_sum 932
+replay_blocks_milliseconds_count 4
+# HELP replay_to_slot_milliseconds Time it took to replay to slot
+# TYPE replay_to_slot_milliseconds summary
+replay_to_slot_milliseconds_sum 0
+replay_to_slot_milliseconds_count 0
+# HELP rpc_blobs_by_range_response_latency_milliseconds Captures total time to respond to rpc BlobsByRange requests in a milliseconds distribution
+# TYPE rpc_blobs_by_range_response_latency_milliseconds histogram
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="5"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="10"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="50"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="100"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="150"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="250"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="500"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="1000"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="2000"} 0
+rpc_blobs_by_range_response_latency_milliseconds_bucket{le="+Inf"} 0
+rpc_blobs_by_range_response_latency_milliseconds_sum 0
+rpc_blobs_by_range_response_latency_milliseconds_count 0
+# HELP rpc_blocks_by_range_response_latency_milliseconds Captures total time to respond to rpc blocks by range requests in a milliseconds distribution
+# TYPE rpc_blocks_by_range_response_latency_milliseconds histogram
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="5"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="10"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="50"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="100"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="150"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="250"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="500"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="1000"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="2000"} 0
+rpc_blocks_by_range_response_latency_milliseconds_bucket{le="+Inf"} 0
+rpc_blocks_by_range_response_latency_milliseconds_sum 0
+rpc_blocks_by_range_response_latency_milliseconds_count 0
+# HELP rpc_data_columns_by_range_response_latency_milliseconds Captures total time to respond to rpc DataColumnsByRange requests in a milliseconds distribution
+# TYPE rpc_data_columns_by_range_response_latency_milliseconds histogram
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="5"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="10"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="50"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="100"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="150"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="250"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="500"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="1000"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="2000"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_bucket{le="+Inf"} 0
+rpc_data_columns_by_range_response_latency_milliseconds_sum 0
+rpc_data_columns_by_range_response_latency_milliseconds_count 0
+# HELP save_state_to_cold_milliseconds Time it took to save a state to the DB during migration to cold
+# TYPE save_state_to_cold_milliseconds summary
+save_state_to_cold_milliseconds_sum 0
+save_state_to_cold_milliseconds_count 0
+# HELP saved_orphaned_att_total Count the number of times an orphaned attestation is saved
+# TYPE saved_orphaned_att_total counter
+saved_orphaned_att_total 0
+# HELP saved_sync_committee_contribution_total The number of saved sync committee contribution total.
+# TYPE saved_sync_committee_contribution_total counter
+saved_sync_committee_contribution_total 0
+# HELP saved_sync_committee_message_total The number of saved sync committee message total.
+# TYPE saved_sync_committee_message_total counter
+saved_sync_committee_message_total 0
+# HELP seen_aggregated_attestations_in_pool_total The number of aggregated attestations in the seen cache.
+# TYPE seen_aggregated_attestations_in_pool_total gauge
+seen_aggregated_attestations_in_pool_total 0
+# HELP skip_slot_cache_hit The total number of cache hits on the skip slot cache.
+# TYPE skip_slot_cache_hit counter
+skip_slot_cache_hit 2
+# HELP skip_slot_cache_miss The total number of cache misses on the skip slot cache.
+# TYPE skip_slot_cache_miss counter
+skip_slot_cache_miss 3
+# HELP slasher_attestation_distance_epochs The number of epochs between att target and source
+# TYPE slasher_attestation_distance_epochs histogram
+slasher_attestation_distance_epochs_bucket{le="0"} 0
+slasher_attestation_distance_epochs_bucket{le="1"} 0
+slasher_attestation_distance_epochs_bucket{le="2"} 0
+slasher_attestation_distance_epochs_bucket{le="3"} 0
+slasher_attestation_distance_epochs_bucket{le="4"} 0
+slasher_attestation_distance_epochs_bucket{le="5"} 0
+slasher_attestation_distance_epochs_bucket{le="10"} 0
+slasher_attestation_distance_epochs_bucket{le="20"} 0
+slasher_attestation_distance_epochs_bucket{le="50"} 0
+slasher_attestation_distance_epochs_bucket{le="100"} 0
+slasher_attestation_distance_epochs_bucket{le="+Inf"} 0
+slasher_attestation_distance_epochs_sum 0
+slasher_attestation_distance_epochs_count 0
+# HELP slasher_attestations_deferred_total Total number of attestations deferred by slasher for future processing
+# TYPE slasher_attestations_deferred_total counter
+slasher_attestations_deferred_total 0
+# HELP slasher_attestations_dropped_total Total number of attestations dropped by slasher due to invalidity
+# TYPE slasher_attestations_dropped_total counter
+slasher_attestations_dropped_total 0
+# HELP slasher_attestations_processed_total Total number of attestations successfully processed by slasher
+# TYPE slasher_attestations_processed_total counter
+slasher_attestations_processed_total 0
+# HELP slasher_attestations_pruned_total Total number of old attestations pruned by slasher
+# TYPE slasher_attestations_pruned_total counter
+slasher_attestations_pruned_total 0
+# HELP slasher_blocks_processed_total Total number of blocks successfully processed by slasher
+# TYPE slasher_blocks_processed_total counter
+slasher_blocks_processed_total 0
+# HELP slasher_blocks_received_total Total number of blocks received by slasher
+# TYPE slasher_blocks_received_total counter
+slasher_blocks_received_total 0
+# HELP slasher_chunks_saved_total Total number of slasher chunks saved to disk
+# TYPE slasher_chunks_saved_total counter
+slasher_chunks_saved_total 0
+# HELP slasher_double_proposals_total Total slashable proposals successfully detected by slasher
+# TYPE slasher_double_proposals_total counter
+slasher_double_proposals_total 0
+# HELP slasher_double_votes_total Total slashable double votes successfully detected by slasher
+# TYPE slasher_double_votes_total counter
+slasher_double_votes_total 0
+# HELP slasher_proposals_pruned_total Total number of old proposals pruned by slasher
+# TYPE slasher_proposals_pruned_total counter
+slasher_proposals_pruned_total 0
+# HELP slasher_surrounded_votes_total Total slashable surrounded votes successfully detected by slasher
+# TYPE slasher_surrounded_votes_total counter
+slasher_surrounded_votes_total 0
+# HELP slasher_surrounding_votes_total Total slashable surrounding votes successfully detected by slasher
+# TYPE slasher_surrounding_votes_total counter
+slasher_surrounding_votes_total 0
+# HELP state_diff_get_anchor_state_cache_hit_read_milliseconds Milliseconds it takes to read the anchor state from cache in getAnchorState in case of cache hit.
+# TYPE state_diff_get_anchor_state_cache_hit_read_milliseconds histogram
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.005"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.01"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.025"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.05"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.1"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.25"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="0.5"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="1"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="2.5"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="5"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="10"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_bucket{le="+Inf"} 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_sum 0
+state_diff_get_anchor_state_cache_hit_read_milliseconds_count 0
+# HELP state_diff_get_anchor_state_cache_hit_total The total number of state diff getAnchorState cache hits.
+# TYPE state_diff_get_anchor_state_cache_hit_total counter
+state_diff_get_anchor_state_cache_hit_total 0
+# HELP state_diff_get_anchor_state_cache_miss_milliseconds Milliseconds it takes for state diff anchor's cache to return in case of cache miss.
+# TYPE state_diff_get_anchor_state_cache_miss_milliseconds histogram
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.005"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.01"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.025"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.05"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.1"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.25"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="0.5"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="1"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="2.5"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="5"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="10"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_bucket{le="+Inf"} 0
+state_diff_get_anchor_state_cache_miss_milliseconds_sum 0
+state_diff_get_anchor_state_cache_miss_milliseconds_count 0
+# HELP state_diff_get_anchor_state_cache_miss_total The total number of state diff getAnchorState cache misses.
+# TYPE state_diff_get_anchor_state_cache_miss_total counter
+state_diff_get_anchor_state_cache_miss_total 0
+# HELP state_diff_get_anchor_state_db_read_milliseconds Milliseconds it takes to read the anchor state from the database in getAnchorState.
+# TYPE state_diff_get_anchor_state_db_read_milliseconds histogram
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.005"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.01"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.025"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.05"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.1"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.25"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="0.5"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="1"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="2.5"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="5"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="10"} 0
+state_diff_get_anchor_state_db_read_milliseconds_bucket{le="+Inf"} 0
+state_diff_get_anchor_state_db_read_milliseconds_sum 0
+state_diff_get_anchor_state_db_read_milliseconds_count 0
+# HELP state_transition_processing_milliseconds Total time to call a state transition in validateStateTransition()
+# TYPE state_transition_processing_milliseconds summary
+state_transition_processing_milliseconds_sum 0
+state_transition_processing_milliseconds_count 0
+# HELP submit_blinded_block_latency_milliseconds Captures RPC latency for submitting blinded block in milliseconds
+# TYPE submit_blinded_block_latency_milliseconds histogram
+submit_blinded_block_latency_milliseconds_bucket{le="1"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="2"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="5"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="10"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="20"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="50"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="100"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="200"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="500"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="1000"} 0
+submit_blinded_block_latency_milliseconds_bucket{le="+Inf"} 0
+submit_blinded_block_latency_milliseconds_sum 0
+submit_blinded_block_latency_milliseconds_count 0
+# HELP subscribed_validators_cache_count The number of validators currently attached (subscribed) to this beacon node.
+# TYPE subscribed_validators_cache_count gauge
+subscribed_validators_cache_count 0
+# HELP sync_committee_index_cache_hit_total The number of committee requests that are present in the sync committee index cache.
+# TYPE sync_committee_index_cache_hit_total counter
+sync_committee_index_cache_hit_total 0
+# HELP sync_committee_index_cache_miss_total The number of committee requests that aren't present in the sync committee index cache.
+# TYPE sync_committee_index_cache_miss_total counter
+sync_committee_index_cache_miss_total 0
+# HELP sync_committee_messages_unknown_root The number of sync committee messages that are checked against DB to see if there vote is for an unknown root
+# TYPE sync_committee_messages_unknown_root counter
+sync_committee_messages_unknown_root 0
+# HELP sync_execution_payload_envelope_arrival_delay_seconds Time from slot start to execution payload envelope gossip arrival.
+# TYPE sync_execution_payload_envelope_arrival_delay_seconds histogram
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.005"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.01"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.025"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.05"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.1"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.25"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="0.5"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="1"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="2.5"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="5"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="10"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_bucket{le="+Inf"} 0
+sync_execution_payload_envelope_arrival_delay_seconds_sum 0
+sync_execution_payload_envelope_arrival_delay_seconds_count 0
+# HELP sync_head_state_hit The number of sync head state requests that are present in the cache.
+# TYPE sync_head_state_hit counter
+sync_head_state_hit 0
+# HELP sync_head_state_miss The number of sync head state requests that are not present in the cache.
+# TYPE sync_head_state_miss counter
+sync_head_state_miss 0
+# HELP sync_payload_attestation_arrival_delay_seconds Time from slot start to payload attestation gossip arrival.
+# TYPE sync_payload_attestation_arrival_delay_seconds histogram
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.005"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.01"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.025"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.05"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.1"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.25"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="0.5"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="1"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="2.5"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="5"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="10"} 0
+sync_payload_attestation_arrival_delay_seconds_bucket{le="+Inf"} 0
+sync_payload_attestation_arrival_delay_seconds_sum 0
+sync_payload_attestation_arrival_delay_seconds_count 0
+# HELP sync_payload_envelope_by_range_served_total Count the number of execution payload envelopes by range RPC requests served.
+# TYPE sync_payload_envelope_by_range_served_total counter
+sync_payload_envelope_by_range_served_total 0
+# HELP sync_payload_envelope_by_root_served_total Count the number of execution payload envelopes by root RPC requests served.
+# TYPE sync_payload_envelope_by_root_served_total counter
+sync_payload_envelope_by_root_served_total 0
+# HELP total_effective_balance_cache_hit The number of get requests that are present in the cache.
+# TYPE total_effective_balance_cache_hit counter
+total_effective_balance_cache_hit 258
+# HELP total_effective_balance_cache_miss The number of get requests that aren't present in the cache.
+# TYPE total_effective_balance_cache_miss counter
+total_effective_balance_cache_miss 92
+# HELP txs_per_slot_count Count the number of txs per slot
+# TYPE txs_per_slot_count gauge
+txs_per_slot_count 0
+# HELP unaggregated_attestations_in_pool_total The number of unaggregated attestations in the pool.
+# TYPE unaggregated_attestations_in_pool_total gauge
+unaggregated_attestations_in_pool_total 0
+# HELP validator_entry_cache_delete_total The total number of cache deletes on the validator entry cache.
+# TYPE validator_entry_cache_delete_total counter
+validator_entry_cache_delete_total 0
+# HELP validator_entry_cache_hit_total The total number of cache hits on the validator entry cache.
+# TYPE validator_entry_cache_hit_total counter
+validator_entry_cache_hit_total 0
+# HELP validator_entry_cache_miss_total The total number of cache misses on the validator entry cache.
+# TYPE validator_entry_cache_miss_total counter
+validator_entry_cache_miss_total 0

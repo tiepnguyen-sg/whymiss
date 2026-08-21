@@ -10,7 +10,7 @@ module github.com/CHANGEME/whymiss
 // gofumpt's own go.mod requirement climbs over time; ci.yml pins GOTOOLCHAIN=local
 // so a mismatch fails outright instead of silently downloading a newer toolchain.
 // Bump this line, not gofumpt's version, when that requirement moves again.
-go 1.25
+go 1.25.0
 
 // New dependencies require an ADR (I-14: fewer than 15 direct dependencies at
 // v1.0). The locked choices in BUILD_PROMPT §3 — cobra, koanf,
@@ -18,3 +18,22 @@ go 1.25
 // each with its own ADR merged first.
 
 require gopkg.in/yaml.v3 v3.0.1 // ADR-0006: tools/faultinjector scenario files, test/corpus manifest.yaml
+
+require (
+	github.com/spf13/cobra v1.10.2
+	modernc.org/sqlite v1.57.0
+)
+
+require (
+	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	modernc.org/libc v1.74.4 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
+)

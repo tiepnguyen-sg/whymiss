@@ -1,0 +1,233 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/CHANGEME/whymiss/internal/source"
+	"github.com/CHANGEME/whymiss/internal/source/beaconapi"
+	"github.com/CHANGEME/whymiss/internal/source/hostmetrics"
+	"github.com/CHANGEME/whymiss/internal/store"
+)
+
+// WatchConfig is whymiss watch's runtime configuration.
+type WatchConfig struct {
+	// BeaconAPI is the beacon node's base URL, e.g. "http://127.0.0.1:5052".
+	BeaconAPI string
+
+	// DBPath is the SQLite file watch reads and writes.
+	DBPath string
+
+	// MinRequestInterval is the floor between successive beacon API
+	// requests (I-5); see beaconapi.NewClient.
+	MinRequestInterval time.Duration
+
+	// HostSampleInterval is how often disk/memory/CPU pressure is sampled.
+	// Zero disables host sampling — meaningful when whymiss does not run on
+	// the staking box itself, or during development on a platform without
+	// /proc (I-3: this degrades to "no host samples", not a crash).
+	HostSampleInterval time.Duration
+
+	// CLMetricsAPI is the consensus client's own Prometheus endpoint, e.g.
+	// "http://127.0.0.1:5054/metrics". Empty disables peer-count sampling —
+	// meaningful when the node's Prometheus port isn't exposed, or during
+	// development against a node that doesn't have one configured (I-3:
+	// degrades cleanly, not a crash).
+	CLMetricsAPI string
+
+	// PeerSampleInterval is how often CLMetricsAPI is scraped for peer
+	// count, when CLMetricsAPI is set.
+	PeerSampleInterval time.Duration
+
+	// RetentionMaxAge and RetentionMaxBytes are store.Prune's limits,
+	// applied on RetentionInterval (I-12).
+	RetentionMaxAge   time.Duration
+	RetentionMaxBytes int64
+	RetentionInterval time.Duration
+	Logger            *slog.Logger
+}
+
+// Watch runs the collector daemon until ctx is done: it streams the beacon
+// node's head/chain_reorg events, optionally samples host resource
+// pressure, and persists everything to cfg.DBPath, pruning on a timer.
+//
+// This is task 2.7's minimal real daemon — it proves the composition
+// (source adapters -> store) runs end to end against a live node. Per-duty
+// tracking (polling a specific validator's block_seen/
+// attestation_published/attestation_included, which needs to know which
+// validator to watch — a config surface BUILD_PROMPT §3 assigns to koanf,
+// not yet wired) is not yet part of this loop; see CHANGELOG.md.
+func Watch(ctx context.Context, cfg WatchConfig) error {
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	st, err := store.Open(ctx, cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open store: %w", err)
+	}
+	defer st.Close() //nolint:errcheck // best-effort on shutdown; ctx cancellation already determined the exit path
+
+	client := beaconapi.NewClient(cfg.BeaconAPI, cfg.MinRequestInterval)
+	genesis, err := client.FetchGenesis(ctx)
+	if err != nil {
+		return fmt.Errorf("fetch genesis: %w", err)
+	}
+	logger.Info("connected to beacon node", "beacon_api", cfg.BeaconAPI, "genesis_time", genesis.GenesisTime)
+
+	events := client.Stream(ctx, func(streamErr error) {
+		logger.Warn("event stream error, reconnecting", "error", streamErr)
+	})
+
+	if cfg.RetentionInterval > 0 {
+		go runRetention(ctx, st, cfg, logger)
+	}
+	if cfg.HostSampleInterval > 0 {
+		go runHostSampling(ctx, st, cfg.HostSampleInterval, logger)
+	}
+	if cfg.CLMetricsAPI != "" {
+		versionString, err := client.FetchNodeVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("fetch node version: %w", err)
+		}
+		consensusClient := source.DetectConsensusClient(versionString)
+		logger.Info("detected consensus client", "version", versionString, "client", consensusClient)
+		go runPeerSampling(ctx, st, consensusClient, cfg.CLMetricsAPI, cfg.PeerSampleInterval, logger)
+	}
+	go runSlotClock(ctx, st, genesis, logger)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case obs, ok := <-events:
+			if !ok {
+				return nil
+			}
+			if err := st.WriteObservation(ctx, obs); err != nil {
+				logger.Error("write observation", "error", err, "kind", obs.Kind, "slot", obs.Slot)
+			}
+		}
+	}
+}
+
+// runSlotClock writes a derived ObsSlotStart observation for every slot as
+// it begins.
+//
+// Found missing by actually running whymiss watch against a live devnet
+// (BUILD_PROMPT.md §10.3's real end-to-end check, not just unit tests
+// against hand-assembled observation slices that always happened to
+// already include one): the SSE stream only carries head/chain_reorg
+// events, and nothing else in this loop ever produced slot_start —
+// GetTimeline requires exactly one, so `whymiss timeline` failed for every
+// slot watch had actually collected. slot_start is Source: SourceDerived,
+// not SourceBeaconAPI, because it is computed from genesis + the slot
+// schedule, the same as tools/faultinjector's own slot_start observations.
+func runSlotClock(ctx context.Context, st *store.Store, genesis beaconapi.GenesisInfo, logger *slog.Logger) {
+	for {
+		now := time.Now().UTC()
+		untilGenesis := genesis.GenesisTime.Sub(now)
+		if untilGenesis > 0 {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(untilGenesis):
+			}
+			continue
+		}
+
+		currentSlot := domain.Slot(now.Sub(genesis.GenesisTime) / genesis.SecondsPerSlot) //nolint:gosec // G115: guarded by untilGenesis <= 0 above, so the duration here is never negative
+		slotStart := genesis.SlotStart(uint64(currentSlot))
+
+		obs, err := domain.NewObservation(domain.Observation{
+			Slot: currentSlot, Kind: domain.ObsSlotStart, At: slotStart, Source: domain.SourceDerived,
+		})
+		if err != nil {
+			logger.Error("build slot_start observation", "error", err, "slot", currentSlot)
+		} else if err := st.WriteObservation(ctx, obs); err != nil {
+			logger.Error("write slot_start", "error", err, "slot", currentSlot)
+		}
+
+		nextSlotStart := genesis.SlotStart(uint64(currentSlot) + 1)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Until(nextSlotStart)):
+		}
+	}
+}
+
+// runPeerSampling periodically scrapes consensusClient's peer count via
+// source.SamplePeerCount — the dispatcher, not a client-named function —
+// so this file itself never needs to know which client it's talking to.
+// See internal/source/peers.go's doc comment: adding a third client means
+// a new case there and a new function in internal/source/promscrape,
+// nothing here.
+func runPeerSampling(ctx context.Context, st *store.Store, consensusClient source.ConsensusClient, metricsURL string, interval time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sample, err := source.SamplePeerCount(ctx, consensusClient, metricsURL)
+			if err != nil {
+				logger.Debug("sample peer count unavailable", "error", err)
+				continue
+			}
+			if err := st.WriteSample(ctx, sample); err != nil {
+				logger.Error("write sample", "error", err)
+			}
+		}
+	}
+}
+
+func runRetention(ctx context.Context, st *store.Store, cfg WatchConfig, logger *slog.Logger) {
+	ticker := time.NewTicker(cfg.RetentionInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := st.Prune(ctx, cfg.RetentionMaxAge, cfg.RetentionMaxBytes); err != nil {
+				logger.Error("prune", "error", err)
+			}
+		}
+	}
+}
+
+func runHostSampling(ctx context.Context, st *store.Store, interval time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	var cpu hostmetrics.CPUSteal
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if sample, err := hostmetrics.SampleIOPressure(); err != nil {
+				logger.Debug("sample io pressure unavailable", "error", err)
+			} else if err := st.WriteSample(ctx, sample); err != nil {
+				logger.Error("write sample", "error", err)
+			}
+			if sample, err := hostmetrics.SampleMemoryPressure(); err != nil {
+				logger.Debug("sample memory pressure unavailable", "error", err)
+			} else if err := st.WriteSample(ctx, sample); err != nil {
+				logger.Error("write sample", "error", err)
+			}
+			if sample, ok, err := cpu.Sample(); err != nil {
+				logger.Debug("sample cpu steal unavailable", "error", err)
+			} else if ok {
+				if err := st.WriteSample(ctx, sample); err != nil {
+					logger.Error("write sample", "error", err)
+				}
+			}
+		}
+	}
+}
