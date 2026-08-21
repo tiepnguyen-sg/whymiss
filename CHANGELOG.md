@@ -253,3 +253,54 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   wrapped in a `defer`, so every exit path — success or error — reverts
   exactly once, immediately rather than waiting out the fault's full
   declared duration.
+- Attempted `network.inclusion_failure` via moderate (40%) `netem` packet
+  loss on the watched validator's own node (not a full peer drop, unlike
+  the existing `local.p2p_degraded` scenarios): `attestation_published` at
+  4.33s (past the ~4s deadline), no `block_seen`. Checking a *second*,
+  unthrottled node's view of the same slot showed the block did exist and
+  was canonical — the throttled node simply never received it over its own
+  degraded peer link. That is `local.p2p_degraded`'s mechanism exactly (the
+  *observing* node's own reception failed), not a network-wide "published
+  then dropped by an aggregator" case, so this scenario was not added —
+  keeping it would have meant relabelling working evidence for a cause we
+  already have, not adding a new one. `network.inclusion_failure` remains
+  undemonstrated; docs/causes.md itself notes this cause is inherently hard
+  to isolate from `local.p2p_degraded` even for a real RCA engine with full
+  peer-count evidence, which this toolchain doesn't yet collect.
+
+### Phase 1 corpus: final state for this pass
+
+11 real, devnet-verified scenarios across 6 distinct causes:
+`local.p2p_degraded` (4), `local.vc_disconnected` (3), `local.cl_slow` (1),
+`local.vc_slow` (1), `local.host.memory_pressure` (1),
+`network.proposer_missed` (1). Task 1.7's original target — ≥20 scenarios
+across ≥8 causes — is not fully met. Two of the eight taxonomy causes
+this pass tried for were judged not achievable with this project's current
+devnet and toolchain, not merely unlucky:
+
+- `local.host.cpu_steal` needs real hypervisor-level CPU contention
+  (`%steal` in `/proc/stat`), which a cgroup quota cannot produce — cgroup
+  throttling shows up as reduced `%user`/`%sys` or `cpu.stat`'s
+  `throttled_usec`, never as `%steal`. Reproducing it honestly would need a
+  genuinely oversubscribed hypervisor or nested virtualization, neither of
+  which this VM's machine type supports.
+- `network.inclusion_failure` and `network.late_block` were both attempted
+  (see above and the `RequireProposerValidators` entry) and both remain
+  undemonstrated after multiple real tries — not for lack of trying, but
+  because this devnet's two-node, low-load topology doesn't produce a clean
+  middle ground between "no effect" and "a different, already-covered
+  cause."
+- `local.el_slow` and `local.host.disk_io` were also tried repeatedly (disk
+  bandwidth throttling at four severities down to the kernel's practical
+  floor, CPU quota at three levels) and never produced measurable effect —
+  this devnet's per-slot execution/consensus workload is evidently too
+  light for any passive resource cap to gate.
+
+Decision: stop generating further scenarios for this pass at 11/6 rather
+than continue chasing causes this devnet's workload doesn't produce. The
+path to the remaining causes is a different class of fault (active
+competing load pinned into a target's cgroup, rather than a passive cap) or
+a different devnet (one with real transaction/block load, or one running on
+infrastructure that can produce genuine hypervisor-level contention) —
+noted here as the concrete next step if this is revisited, not attempted in
+this pass.
