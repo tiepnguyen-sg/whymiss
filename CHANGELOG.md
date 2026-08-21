@@ -181,3 +181,36 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   across three attempts and was never added to the corpus. `local.el_slow`
   and `local.host.disk_io` remain undemonstrated on this devnet; achieving
   them will need a different fault mechanism than disk I/O throttling.
+- Two new fault mechanisms, `cgroup_cpu` (writes cgroup v2 `cpu.max`) and
+  `cgroup_mem` (writes `memory.high`, which reclaims/throttles rather than
+  OOM-killing the way `memory.max` would), reusing `fault_cgroup.go`'s
+  already-verified host-privileged write path. Three new real corpus
+  scenarios came out of it, each isolating a different cause:
+  `test/corpus/cl-slow-cpu` (`local.cl_slow`, Prysm CL capped to 5% of one
+  core — `inclusion_delay: 2` instead of the best-case 1 seen everywhere
+  else so far, genuine degradation; its README notes that `block_seen`'s
+  offset is measured through the same throttled node's own API, so that
+  particular figure may be inflated by the API server itself being slow to
+  respond, not purely by validation time); `test/corpus/vc-slow-cpu`
+  (`local.vc_slow`, Lighthouse VC capped to 1% — `attestation_published` at
+  4.18s, past the ~4s attestation deadline, while the head had been
+  available since 1.67s — a genuine head-before-deadline,
+  publish-after-deadline split); and `test/corpus/host-memory-pressure`
+  (`local.host.memory_pressure`, EL's `memory.high` capped to 128MB —
+  29.24% memory PSI, and the CL never imported this slot's own block within
+  the full 36-second watch window, though it did exist and was canonical
+  once checked minutes later after the fault cleared — genuine, severe
+  degradation, not a polling bug; see its README for the full explanation
+  of why `block_seen: false` here doesn't mean the block never existed).
+  None of the three faulted containers crashed or needed a restart.
+  A fourth attempt, `el-slow-cpu` (same idea, EL capped to first 5% then
+  1% — the kernel's practical floor for `cpu.max`), showed the same zero
+  effect the disk-throttle family did: sub-3ms Engine API calls, `block_seen`
+  under 700ms, `inclusion_delay: 1` at both quotas. `local.el_slow` remains
+  undemonstrated on this devnet by any resource-cap mechanism tried so far —
+  disk bandwidth and CPU quota both leave this workload's near-empty blocks
+  unaffected. The next thing worth trying is active competing load (e.g. a
+  CPU-bound process pinned into the same cgroup) rather than a passive cap,
+  since a passive cap only bites when the real workload needs more of the
+  resource than the cap allows, and this devnet's per-slot work apparently
+  never does.

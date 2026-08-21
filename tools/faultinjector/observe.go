@@ -478,10 +478,13 @@ type dutyOutcome struct {
 	IncludedInSlot uint64
 	IncludedAt     time.Time
 
-	// HostPressure is the sampled io.pressure "some avg10" percentage. Present
-	// only when Scenario.SampleHostPressure was set.
-	HostPressure  *float64
-	HostSampledAt time.Time
+	// HostPressure is the sampled "some avg10" PSI percentage, for whichever
+	// file HostPressureMetric names ("iowait_pct" -> io.pressure,
+	// "mem_pressure_pct" -> memory.pressure). Present only when
+	// Scenario.SamplePressure was set.
+	HostPressure       *float64
+	HostPressureMetric string
+	HostSampledAt      time.Time
 
 	// EngineSamples is what SampleEngineCallDurations returned. Present only
 	// when Scenario.MetricsTarget was set.
@@ -543,7 +546,7 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 			Slot: domain.Slot(slot), Kind: domain.ObsHostSampled,
 			At: o.HostSampledAt, Source: domain.SourceHostMetrics,
 			Attrs: map[domain.AttrKey]string{
-				domain.AttrMetric: "iowait_pct",
+				domain.AttrMetric: o.HostPressureMetric,
 				domain.AttrValue:  strconv.FormatFloat(*o.HostPressure, 'f', -1, 64),
 			},
 		})

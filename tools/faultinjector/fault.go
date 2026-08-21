@@ -27,6 +27,10 @@ func NewFault(spec FaultSpec) (Fault, error) {
 		return &NetemFault{Params: *spec.Netem}, nil
 	case "cgroup_io":
 		return &CgroupIOFault{Params: *spec.CgroupIO}, nil
+	case "cgroup_cpu":
+		return &CgroupCPUFault{Params: *spec.CgroupCPU}, nil
+	case "cgroup_mem":
+		return &CgroupMemFault{Params: *spec.CgroupMem}, nil
 	case "pause":
 		return &PauseFault{Params: *spec.Pause}, nil
 	case "clock_skew":

@@ -173,17 +173,26 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 		return fmt.Errorf("revert fault: %w", err)
 	}
 
-	if s.SampleHostPressure {
+	if s.SamplePressure != "" {
 		containerID, err := dockerContainerID(ctx, s.Target)
 		if err != nil {
-			return fmt.Errorf("sample_host_pressure: %w", err)
+			return fmt.Errorf("sample_pressure: %w", err)
 		}
-		avg10, err := SampleIOPressure(ctx, containerID)
+		var avg10 float64
+		var psiFile, metric string
+		switch s.SamplePressure {
+		case "memory":
+			avg10, err = SampleMemoryPressure(ctx, containerID)
+			psiFile, metric = "memory.pressure", "mem_pressure_pct"
+		default:
+			avg10, err = SampleIOPressure(ctx, containerID)
+			psiFile, metric = "io.pressure", "iowait_pct"
+		}
 		if err != nil {
-			return fmt.Errorf("sample_host_pressure: %w", err)
+			return fmt.Errorf("sample_pressure: %w", err)
 		}
-		outcome.HostPressure, outcome.HostSampledAt = &avg10, time.Now().UTC()
-		fmt.Printf("faultinjector: sampled io.pressure some avg10=%.2f%% for %s\n", avg10, s.Target)
+		outcome.HostPressure, outcome.HostPressureMetric, outcome.HostSampledAt = &avg10, metric, time.Now().UTC()
+		fmt.Printf("faultinjector: sampled %s some avg10=%.2f%% for %s\n", psiFile, avg10, s.Target)
 	}
 	if s.MetricsTarget != "" {
 		metricsURL, err := resolveMetricsURL(ctx, enclave, s.MetricsTarget)
@@ -278,7 +287,7 @@ func waitUntil(ctx context.Context, t time.Time) {
 func renderReadme(s Scenario, slot uint64, o dutyOutcome) string {
 	var extra strings.Builder
 	if o.HostPressure != nil {
-		fmt.Fprintf(&extra, "- Host io.pressure (some avg10): %.2f%%\n", *o.HostPressure)
+		fmt.Fprintf(&extra, "- Host %s pressure (some avg10): %.2f%%\n", o.HostPressureMetric, *o.HostPressure)
 	}
 	for _, sample := range o.EngineSamples {
 		fmt.Fprintf(&extra, "- Engine API %s (rolling median): %.2fms\n", sample.Method, sample.DurationMS)

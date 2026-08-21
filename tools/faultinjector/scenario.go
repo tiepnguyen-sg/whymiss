@@ -52,12 +52,14 @@ type Scenario struct {
 	// vc-frozen-lighthouse without this picked exactly such a slot.
 	AvoidProposerValidators *[2]uint64 `yaml:"avoid_proposer_validators,omitempty"`
 
-	// SampleHostPressure, when true, reads Target's cgroup v2 io.pressure after
-	// the observation window and records it as a host_sampled observation
-	// (iowait_pct). Meaningful for a fault that runs on Target's own container
-	// — cgroup_io most directly, since that is what actually generates I/O
-	// stall — so this only applies when Target is the container under load.
-	SampleHostPressure bool `yaml:"sample_host_pressure,omitempty"`
+	// SamplePressure, when set to "io" or "memory", reads Target's cgroup v2
+	// io.pressure or memory.pressure after the observation window and records
+	// it as a host_sampled observation (metric "iowait_pct" or
+	// "mem_pressure_pct"). Meaningful for a fault that runs on Target's own
+	// container — cgroup_io/cgroup_mem most directly, since those are what
+	// actually generate the corresponding stall — so this only applies when
+	// Target is the container under load.
+	SamplePressure string `yaml:"sample_pressure,omitempty"`
 
 	// MetricsTarget, when set, names a Kurtosis service (normally an execution
 	// client) whose Prometheus endpoint is scraped after the observation window
@@ -84,12 +86,15 @@ type Expectation struct {
 // FaultSpec names one fault mechanism and its parameters. Exactly one field
 // besides Kind is populated, matching Kind's value — enforced by Validate.
 type FaultSpec struct {
-	// Kind selects the mechanism: "netem", "cgroup_io", "pause", "clock_skew", or
-	// "peer_drop". See fault_*.go for the implementation of each.
+	// Kind selects the mechanism: "netem", "cgroup_io", "cgroup_cpu",
+	// "cgroup_mem", "pause", "clock_skew", or "peer_drop". See fault_*.go for
+	// the implementation of each.
 	Kind string `yaml:"kind"`
 
 	Netem     *NetemParams     `yaml:"netem,omitempty"`
 	CgroupIO  *CgroupIOParams  `yaml:"cgroup_io,omitempty"`
+	CgroupCPU *CgroupCPUParams `yaml:"cgroup_cpu,omitempty"`
+	CgroupMem *CgroupMemParams `yaml:"cgroup_mem,omitempty"`
 	Pause     *PauseParams     `yaml:"pause,omitempty"`
 	ClockSkew *ClockSkewParams `yaml:"clock_skew,omitempty"`
 	PeerDrop  *PeerDropParams  `yaml:"peer_drop,omitempty"`
@@ -129,6 +134,9 @@ func (s Scenario) Validate() error {
 	if s.Expect.Confidence == "" {
 		return fmt.Errorf("expect.confidence is required")
 	}
+	if s.SamplePressure != "" && s.SamplePressure != "io" && s.SamplePressure != "memory" {
+		return fmt.Errorf("sample_pressure must be \"io\" or \"memory\", got %q", s.SamplePressure)
+	}
 	return s.Fault.Validate()
 }
 
@@ -136,15 +144,15 @@ func (s Scenario) Validate() error {
 func (f FaultSpec) Validate() error {
 	set := 0
 	for _, present := range []bool{
-		f.Netem != nil, f.CgroupIO != nil, f.Pause != nil,
-		f.ClockSkew != nil, f.PeerDrop != nil,
+		f.Netem != nil, f.CgroupIO != nil, f.CgroupCPU != nil, f.CgroupMem != nil,
+		f.Pause != nil, f.ClockSkew != nil, f.PeerDrop != nil,
 	} {
 		if present {
 			set++
 		}
 	}
 	if set != 1 {
-		return fmt.Errorf("fault: exactly one of netem/cgroup_io/pause/clock_skew/peer_drop must be set, got %d", set)
+		return fmt.Errorf("fault: exactly one of netem/cgroup_io/cgroup_cpu/cgroup_mem/pause/clock_skew/peer_drop must be set, got %d", set)
 	}
 
 	switch f.Kind {
@@ -155,6 +163,14 @@ func (f FaultSpec) Validate() error {
 	case "cgroup_io":
 		if f.CgroupIO == nil {
 			return fmt.Errorf("fault.kind is %q but cgroup_io params are not set", f.Kind)
+		}
+	case "cgroup_cpu":
+		if f.CgroupCPU == nil {
+			return fmt.Errorf("fault.kind is %q but cgroup_cpu params are not set", f.Kind)
+		}
+	case "cgroup_mem":
+		if f.CgroupMem == nil {
+			return fmt.Errorf("fault.kind is %q but cgroup_mem params are not set", f.Kind)
 		}
 	case "pause":
 		if f.Pause == nil {
@@ -169,7 +185,7 @@ func (f FaultSpec) Validate() error {
 			return fmt.Errorf("fault.kind is %q but peer_drop params are not set", f.Kind)
 		}
 	default:
-		return fmt.Errorf("fault.kind %q is not one of netem/cgroup_io/pause/clock_skew/peer_drop", f.Kind)
+		return fmt.Errorf("fault.kind %q is not one of netem/cgroup_io/cgroup_cpu/cgroup_mem/pause/clock_skew/peer_drop", f.Kind)
 	}
 	return nil
 }
