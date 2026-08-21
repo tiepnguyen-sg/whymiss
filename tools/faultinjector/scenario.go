@@ -52,6 +52,16 @@ type Scenario struct {
 	// vc-frozen-lighthouse without this picked exactly such a slot.
 	AvoidProposerValidators *[2]uint64 `yaml:"avoid_proposer_validators,omitempty"`
 
+	// RequireProposerValidators, when set, restricts the watched slot to one
+	// whose proposer duty falls in [min, max] (inclusive) — the opposite of
+	// AvoidProposerValidators. Set this to the fault target's own validator
+	// range when the fault is meant to delay block *production* itself (e.g.
+	// throttling the proposer's node so the block is genuinely late for every
+	// observer, not just this one) rather than the watched validator's own
+	// attestation path. Mutually exclusive with AvoidProposerValidators — a
+	// scenario isolates one confound or requires the other, never both.
+	RequireProposerValidators *[2]uint64 `yaml:"require_proposer_validators,omitempty"`
+
 	// SamplePressure, when set to "io" or "memory", reads Target's cgroup v2
 	// io.pressure or memory.pressure after the observation window and records
 	// it as a host_sampled observation (metric "iowait_pct" or
@@ -136,6 +146,9 @@ func (s Scenario) Validate() error {
 	}
 	if s.SamplePressure != "" && s.SamplePressure != "io" && s.SamplePressure != "memory" {
 		return fmt.Errorf("sample_pressure must be \"io\" or \"memory\", got %q", s.SamplePressure)
+	}
+	if s.AvoidProposerValidators != nil && s.RequireProposerValidators != nil {
+		return fmt.Errorf("avoid_proposer_validators and require_proposer_validators are mutually exclusive")
 	}
 	return s.Fault.Validate()
 }

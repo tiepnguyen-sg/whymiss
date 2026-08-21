@@ -88,7 +88,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 	currentSlot := uint64(sinceGenesis / obs.SecondsPerSlot) //nolint:gosec // G115: sinceGenesis just checked non-negative
 	startEpoch := currentSlot/domain.SlotsPerEpoch + 1       // next epoch: enough lead time to act before the duty slot
 
-	dutySlot, d, dutyAt, err := findCleanDuty(ctx, obs, startEpoch, s.ValidatorIndex, s.AvoidProposerValidators)
+	dutySlot, d, dutyAt, err := findCleanDuty(ctx, obs, startEpoch, s.ValidatorIndex, s.AvoidProposerValidators, s.RequireProposerValidators)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 // Scenario.AvoidProposerValidators) — attester duty is fixed to one slot per
 // epoch, so avoiding a confounding slot means trying a later epoch, not a later
 // slot within the same one.
-func findCleanDuty(ctx context.Context, obs *Observer, startEpoch, validatorIndex uint64, avoid *[2]uint64) (slot uint64, d duty, at time.Time, err error) {
+func findCleanDuty(ctx context.Context, obs *Observer, startEpoch, validatorIndex uint64, avoid, require *[2]uint64) (slot uint64, d duty, at time.Time, err error) {
 	// The standard beacon API only guarantees duties are computable one epoch
 	// ahead — querying further reliably 400s (verified against both Lighthouse
 	// and Prysm here). So there is exactly one epoch worth trying per
@@ -253,19 +253,24 @@ func findCleanDuty(ctx context.Context, obs *Observer, startEpoch, validatorInde
 	if err != nil {
 		return 0, duty{}, time.Time{}, fmt.Errorf("epoch %d: %w", startEpoch, err)
 	}
-	if avoid == nil {
+	if avoid == nil && require == nil {
 		return slot, d, at, nil
 	}
 	proposer, err := obs.FetchProposer(ctx, slot)
 	if err != nil {
 		return 0, duty{}, time.Time{}, fmt.Errorf("check proposer for slot %d: %w", slot, err)
 	}
-	if proposer < avoid[0] || proposer > avoid[1] {
-		return slot, d, at, nil
+	if avoid != nil && proposer >= avoid[0] && proposer <= avoid[1] {
+		return 0, duty{}, time.Time{}, fmt.Errorf(
+			"epoch %d's duty slot %d has proposer %d, inside the fault's own range %v — this would confound the scenario; run the command again for a freshly-shuffled epoch",
+			startEpoch, slot, proposer, *avoid)
 	}
-	return 0, duty{}, time.Time{}, fmt.Errorf(
-		"epoch %d's duty slot %d has proposer %d, inside the fault's own range %v — this would confound the scenario; run the command again for a freshly-shuffled epoch",
-		startEpoch, slot, proposer, *avoid)
+	if require != nil && (proposer < require[0] || proposer > require[1]) {
+		return 0, duty{}, time.Time{}, fmt.Errorf(
+			"epoch %d's duty slot %d has proposer %d, outside the required range %v — this scenario needs the fault target to be this slot's own proposer; run the command again for a freshly-shuffled epoch",
+			startEpoch, slot, proposer, *require)
+	}
+	return slot, d, at, nil
 }
 
 // waitUntil blocks until t or ctx is done, whichever comes first. Negative

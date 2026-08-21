@@ -214,3 +214,31 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   since a passive cap only bites when the real workload needs more of the
   resource than the cap allows, and this devnet's per-slot work apparently
   never does.
+- Retried `local.host.disk_io` on the execution client (an earlier attempt
+  on the consensus client, `cl-disk-stall-lighthouse`, was never committed
+  after reading 0.00% PSI across three tries) — same 4KB/s `io.max` floor,
+  sampling `io.pressure` directly on `el-1-geth-lighthouse` instead of
+  inferring from duty timing. Also 0.00%. Unlike `memory.high` (which
+  creates pressure passively, since existing resident memory alone can
+  already exceed a tight cap), `io.max` only registers pressure if the cgroup
+  actually tries to read or write past the throttle — and this devnet's
+  clients evidently don't, on either node. `local.host.disk_io` remains
+  undemonstrated here by any passive cap.
+- `RequireProposerValidators` (`require_proposer_validators` in a scenario
+  file): the inverse of the existing `AvoidProposerValidators` — restricts
+  the watched slot to one whose *proposer* duty falls in a given range,
+  instead of excluding it. Built for `network.late_block`: throttle the
+  proposer's own node so its block is genuinely late for every observer,
+  not just the locally-faulted one, then watch a validator on the *other*,
+  unthrottled node so the observation itself isn't confounded. Three
+  attempts at the CPU quota (1%, 10%, 30%) on `cl-1-lighthouse-geth` as
+  proposer, watching validator 40 on node 2: 1% made it skip the slot
+  entirely (`network.proposer_missed` — confirmed via a direct chain query,
+  no canonical block at slot 2287 at all); 30% showed zero effect
+  (`block_seen` at 641ms, healthy); 10% landed in between but still healthy
+  enough to not count (`block_seen` at 1.23s, `inclusion_delay: 1`). The
+  band between "skips the slot" and "no effect" appears to be very narrow —
+  three tries didn't land in it. `network.late_block` remains undemonstrated
+  on this devnet; the mechanism (`RequireProposerValidators`) is kept since
+  it is generically useful for any future proposer-targeted scenario, but no
+  scenario file currently exercises it.
