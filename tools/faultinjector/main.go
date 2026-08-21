@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -145,9 +146,6 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 	}()
 	wg.Wait()
 
-	if err := <-revertDone; err != nil {
-		return fmt.Errorf("revert fault: %w", err)
-	}
 	if blockErr != nil {
 		return fmt.Errorf("poll block: %w", blockErr)
 	}
@@ -155,22 +153,61 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 		return fmt.Errorf("poll attestation publish: %w", publishErr)
 	}
 
-	var (
-		includedInSlot uint64
-		includedAt     time.Time
-		included       bool
-	)
-	if blockFound {
-		includedInSlot, includedAt, included, err = obs.CheckInclusion(ctx, dutySlot, d, dutySlot+2, watchDeadline.Add(2*obs.SecondsPerSlot))
+	outcome := dutyOutcome{
+		BlockFound: blockFound, BlockRoot: blockRoot, ProposerIndex: proposerIndex, BlockSeenAt: seenAt,
+		Published: published, PublishedAt: publishedAt,
+	}
+
+	// Waited for here, before sampling below, on purpose: PollBlockSeen and
+	// PollAttestationPublished (fixed above to run concurrently with the fault)
+	// now typically return within a few seconds, but io.pressure's avg10 is a
+	// 10-second decaying average — sampling that early caught the fault only a
+	// second or two into being held, before enough real I/O had happened to
+	// register any pressure at all (verified: an early version sampled
+	// immediately after the poll and read a flat 0.00% every time). Waiting for
+	// the fault's full declared duration first gives the average something to
+	// have actually averaged. PSI decays smoothly rather than resetting the
+	// instant the throttle lifts, so sampling right after revert still reflects
+	// the preceding ~duration seconds of real pressure.
+	if err := <-revertDone; err != nil {
+		return fmt.Errorf("revert fault: %w", err)
+	}
+
+	if s.SampleHostPressure {
+		containerID, err := dockerContainerID(ctx, s.Target)
+		if err != nil {
+			return fmt.Errorf("sample_host_pressure: %w", err)
+		}
+		avg10, err := SampleIOPressure(ctx, containerID)
+		if err != nil {
+			return fmt.Errorf("sample_host_pressure: %w", err)
+		}
+		outcome.HostPressure, outcome.HostSampledAt = &avg10, time.Now().UTC()
+		fmt.Printf("faultinjector: sampled io.pressure some avg10=%.2f%% for %s\n", avg10, s.Target)
+	}
+	if s.MetricsTarget != "" {
+		metricsURL, err := resolveMetricsURL(ctx, enclave, s.MetricsTarget)
+		if err != nil {
+			return fmt.Errorf("metrics_target: %w", err)
+		}
+		samples, err := SampleEngineCallDurations(ctx, metricsURL)
+		if err != nil {
+			return fmt.Errorf("metrics_target: %w", err)
+		}
+		outcome.EngineSamples, outcome.EngineSampledAt = samples, time.Now().UTC()
+		for _, sample := range samples {
+			fmt.Printf("faultinjector: sampled engine_call %s=%.2fms\n", sample.Method, sample.DurationMS)
+		}
+	}
+
+	if outcome.BlockFound {
+		outcome.IncludedInSlot, outcome.IncludedAt, outcome.Included, err = obs.CheckInclusion(ctx, dutySlot, d, dutySlot+2, watchDeadline.Add(2*obs.SecondsPerSlot))
 		if err != nil {
 			return fmt.Errorf("check inclusion: %w", err)
 		}
 	}
 
-	observations, err := buildObservations(s, dutySlot, slotStart, dutyAt,
-		blockFound, blockRoot, proposerIndex, seenAt,
-		published, publishedAt,
-		included, includedInSlot, includedAt)
+	observations, err := buildObservations(s, dutySlot, slotStart, dutyAt, outcome)
 	if err != nil {
 		return err
 	}
@@ -181,13 +218,13 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 		FaultKind: s.Fault.Kind, FaultTarget: s.Target, Duration: s.Duration,
 		GeneratedAt: time.Now().UTC(),
 	}
-	readme := renderReadme(s, dutySlot, blockFound, published, included)
+	readme := renderReadme(s, dutySlot, outcome)
 
 	if err := WriteCorpusScenario(outDir, manifest, observations, readme); err != nil {
 		return err
 	}
 
-	fmt.Printf("faultinjector: wrote %s (block_found=%v included=%v)\n", outDir, blockFound, included)
+	fmt.Printf("faultinjector: wrote %s (block_found=%v included=%v)\n", outDir, outcome.BlockFound, outcome.Included)
 	return nil
 }
 
@@ -238,7 +275,15 @@ func waitUntil(ctx context.Context, t time.Time) {
 	}
 }
 
-func renderReadme(s Scenario, slot uint64, blockFound, published, included bool) string {
+func renderReadme(s Scenario, slot uint64, o dutyOutcome) string {
+	var extra strings.Builder
+	if o.HostPressure != nil {
+		fmt.Fprintf(&extra, "- Host io.pressure (some avg10): %.2f%%\n", *o.HostPressure)
+	}
+	for _, sample := range o.EngineSamples {
+		fmt.Fprintf(&extra, "- Engine API %s (rolling median): %.2fms\n", sample.Method, sample.DurationMS)
+	}
+
 	return fmt.Sprintf(`# %s
 
 %s
@@ -252,7 +297,7 @@ Fault: %s applied to %s for %s, around slot %d.
 - Block observed for the duty slot: %v
 - Attestation published (seen in the pool): %v
 - Attestation included: %v
-
+%s
 ## Expected taxonomy label
 
 - cause: %s
@@ -262,6 +307,6 @@ Fault: %s applied to %s for %s, around slot %d.
 Generated by tools/faultinjector against a live Kurtosis devnet
 (test/e2e/kurtosis). See manifest.yaml for full provenance and
 observations.jsonl for the raw recorded facts.
-`, s.ID, s.Description, s.Fault.Kind, s.Target, s.Duration, slot, blockFound, published, included,
+`, s.ID, s.Description, s.Fault.Kind, s.Target, s.Duration, slot, o.BlockFound, o.Published, o.Included, extra.String(),
 		s.Expect.Cause, s.Expect.SubCause, s.Expect.Confidence)
 }

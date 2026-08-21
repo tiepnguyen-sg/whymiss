@@ -52,6 +52,20 @@ type Scenario struct {
 	// vc-frozen-lighthouse without this picked exactly such a slot.
 	AvoidProposerValidators *[2]uint64 `yaml:"avoid_proposer_validators,omitempty"`
 
+	// SampleHostPressure, when true, reads Target's cgroup v2 io.pressure after
+	// the observation window and records it as a host_sampled observation
+	// (iowait_pct). Meaningful for a fault that runs on Target's own container
+	// — cgroup_io most directly, since that is what actually generates I/O
+	// stall — so this only applies when Target is the container under load.
+	SampleHostPressure bool `yaml:"sample_host_pressure,omitempty"`
+
+	// MetricsTarget, when set, names a Kurtosis service (normally an execution
+	// client) whose Prometheus endpoint is scraped after the observation window
+	// for Engine API call durations, recorded as engine_call observations. Set
+	// this to the execution client actually under load — usually the same
+	// participant as Target for an el_slow-focused scenario.
+	MetricsTarget string `yaml:"metrics_target,omitempty"`
+
 	// Expect is what docs/causes.md predicts this fault produces. corpusctl
 	// checks it against the taxonomy; it is not checked against the engine here
 	// — internal/rca does not exist until Phase 3. Recording the prediction now

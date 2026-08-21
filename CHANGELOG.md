@@ -144,3 +144,40 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   `docker logs` disagreeing about a container's existence) that required
   rebuilding the VM. `faultinjector` now runs under `sudo` directly, matching
   the pattern `netem` was already using reliably.
+- Observer extension: two new evidence sources, both real measurements against
+  the live devnet, never synthesized. `SampleIOPressure`/`SampleMemoryPressure`
+  read a container's own cgroup v2 PSI files (`io.pressure`/`memory.pressure`,
+  parsing the `some avg10` field) and produce a `host_sampled` observation.
+  `SampleEngineCallDurations` scrapes an execution client's own Prometheus
+  endpoint (`rpc_duration_engine_{newPayloadV4,forkchoiceUpdatedV3}_success`,
+  quantile 0.5) and produces `engine_call` observations — direct evidence of
+  Engine API latency instead of inferring it from block/attestation timing
+  alone.
+- Fixed `resolveMetricsURL`: on a CLI profile's first-ever `kurtosis port
+  print` invocation, a one-time analytics-disclosure banner is printed to
+  stdout ahead of the actual URL, which broke naive whole-output parsing.
+  Now takes the command's last non-empty line, which is always the URL
+  regardless of whether the banner is present.
+- **A negative finding, and a correction to three previously-committed
+  scenarios.** With the timing bug fixed, `el-disk-stall`, `el-disk-stall-
+  prysm`, and `el-disk-stall-severe` were regenerated to get trustworthy
+  timing evidence — all three came back with a fast `block_seen` and the
+  best possible `inclusion_delay` (1), i.e. no observable duty degradation at
+  all. A further scenario throttled to 4KB/s (the kernel's practical floor
+  for cgroup v2 `io.max` — 1 byte/sec is rejected as an invalid value) showed
+  the same healthy result, as did a variant sampling the execution client's
+  own Engine API call durations directly (sub-3ms `forkchoiceUpdated`/
+  `newPayload`, unaffected by the throttle). Across four throttle severities,
+  cgroup `io.max` on the execution client produces no measurable effect on
+  duty timing in this devnet's workload — most likely because geth's engine
+  call hot path has no synchronous write gated by the throttled block device
+  at this load. The three scenarios' original "~18-31s" delays, and the
+  el-disk-stall-severe README's "throttle severity doesn't change the delay"
+  note, are now understood to have been artifacts of the poller-start bug
+  fixed above, not genuine fault evidence. All three are removed from the
+  corpus rather than kept with an unsupported label (docs/BUILD_PROMPT.md
+  §8). A parallel attempt at `local.host.disk_io` (throttling the CL
+  container's own disk I/O and sampling its PSI) produced 0.00% pressure
+  across three attempts and was never added to the corpus. `local.el_slow`
+  and `local.host.disk_io` remain undemonstrated on this devnet; achieving
+  them will need a different fault mechanism than disk I/O throttling.

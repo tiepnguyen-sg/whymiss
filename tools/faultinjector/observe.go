@@ -459,12 +459,37 @@ func doJSON(client *http.Client, req *http.Request, out any) error {
 // domain.Observation values, sorted by timestamp as domain.Timeline requires.
 // Every value here traces to something recorded during this run — see
 // RunScenario's doc comment.
-func buildObservations(
-	s Scenario, slot uint64, slotStart, dutyAt time.Time,
-	blockFound bool, blockRoot string, proposerIndex uint64, seenAt time.Time,
-	published bool, publishedAt time.Time,
-	included bool, includedInSlot uint64, includedAt time.Time,
-) ([]domain.Observation, error) {
+// dutyOutcome carries everything RunScenario measured about how one duty slot
+// resolved — the input buildObservations turns into domain.Observation values.
+// One field per fact, grown as new evidence kinds (SampleIOPressure,
+// SampleEngineCallDurations) were added, so extending what a scenario can
+// record means adding a field here rather than another positional parameter
+// to buildObservations.
+type dutyOutcome struct {
+	BlockFound    bool
+	BlockRoot     string
+	ProposerIndex uint64
+	BlockSeenAt   time.Time
+
+	Published   bool
+	PublishedAt time.Time
+
+	Included       bool
+	IncludedInSlot uint64
+	IncludedAt     time.Time
+
+	// HostPressure is the sampled io.pressure "some avg10" percentage. Present
+	// only when Scenario.SampleHostPressure was set.
+	HostPressure  *float64
+	HostSampledAt time.Time
+
+	// EngineSamples is what SampleEngineCallDurations returned. Present only
+	// when Scenario.MetricsTarget was set.
+	EngineSamples   []EngineCallSample
+	EngineSampledAt time.Time
+}
+
+func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o dutyOutcome) ([]domain.Observation, error) {
 	drafts := []domain.Observation{
 		{
 			Slot: domain.Slot(slot), Kind: domain.ObsSlotStart,
@@ -479,41 +504,63 @@ func buildObservations(
 		},
 	}
 
-	if blockFound {
+	if o.BlockFound {
 		attrs := map[domain.AttrKey]string{
-			domain.AttrProposerIndex: strconv.FormatUint(proposerIndex, 10),
+			domain.AttrProposerIndex: strconv.FormatUint(o.ProposerIndex, 10),
 		}
-		if blockRoot != "" {
-			attrs[domain.AttrBlockRoot] = blockRoot
+		if o.BlockRoot != "" {
+			attrs[domain.AttrBlockRoot] = o.BlockRoot
 		}
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsBlockSeen,
-			At: seenAt, Source: domain.SourceBeaconAPI, Attrs: attrs,
+			At: o.BlockSeenAt, Source: domain.SourceBeaconAPI, Attrs: attrs,
 		})
 	}
 
-	if published {
+	if o.Published {
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsAttestationPublished,
-			At: publishedAt, Source: domain.SourceBeaconAPI,
+			At: o.PublishedAt, Source: domain.SourceBeaconAPI,
 			Attrs: map[domain.AttrKey]string{
 				domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
 			},
 		})
 	}
 
-	if included {
+	if o.Included {
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsAttestationIncluded,
-			At: includedAt, Source: domain.SourceBeaconAPI,
+			At: o.IncludedAt, Source: domain.SourceBeaconAPI,
 			Attrs: map[domain.AttrKey]string{
 				domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
-				domain.AttrInclusionDelay: strconv.FormatUint(includedInSlot-slot, 10),
+				domain.AttrInclusionDelay: strconv.FormatUint(o.IncludedInSlot-slot, 10),
 			},
 		})
 	}
 
-	sort.Slice(drafts, func(i, j int) bool { return drafts[i].At.Before(drafts[j].At) })
+	if o.HostPressure != nil {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsHostSampled,
+			At: o.HostSampledAt, Source: domain.SourceHostMetrics,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrMetric: "iowait_pct",
+				domain.AttrValue:  strconv.FormatFloat(*o.HostPressure, 'f', -1, 64),
+			},
+		})
+	}
+
+	for _, sample := range o.EngineSamples {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsEngineCall,
+			At: o.EngineSampledAt, Source: domain.SourcePromScrape,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrEngineMethod: sample.Method,
+				domain.AttrDurationMS:   strconv.FormatFloat(sample.DurationMS, 'f', -1, 64),
+			},
+		})
+	}
+
+	sort.SliceStable(drafts, func(i, j int) bool { return drafts[i].At.Before(drafts[j].At) })
 
 	out := make([]domain.Observation, 0, len(drafts))
 	for i, d := range drafts {
