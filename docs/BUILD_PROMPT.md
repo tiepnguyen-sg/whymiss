@@ -437,7 +437,7 @@ A repository that builds and lints cleanly, a frozen domain model, and a reprodu
 
 - [ ] `make ci` green on a clean checkout
 - [ ] Binary cross-compiles to `linux/amd64` and `linux/arm64`
-- [ ] `make corpus.generate SCENARIO=el-disk-stall` reproduces the scenario end to end on a fresh machine
+- [ ] `make corpus.generate SCENARIO=vc-frozen-lighthouse BEACON=cl-1-lighthouse-geth` reproduces the scenario end to end on a fresh machine (originally named `el-disk-stall` here; that scenario was removed from the corpus after real devnet runs showed cgroup `io.max` disk throttling has no measurable effect at any severity on this project's devnet workload — see `CHANGELOG.md`. The requirement is unchanged: any one committed scenario ID must reproduce end to end)
 - [ ] `make corpus.validate` passes for all ≥20 scenarios
 - [ ] `internal/domain` imports nothing outside the standard library — enforced by a CI check
 - [ ] Five ADRs merged
