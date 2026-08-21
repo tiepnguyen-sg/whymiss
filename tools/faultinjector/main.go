@@ -105,6 +105,28 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 		return fmt.Errorf("apply fault: %w", err)
 	}
 
+	// revertOnce guards against ever leaving a fault active on the devnet
+	// past this function's return, regardless of how it returns. Without
+	// this, an error from polling (a single non-404 HTTP response, a
+	// timeout — anything that isn't the happy path) would return early and
+	// skip reverting entirely: a real run left a 90%-loss netem qdisc
+	// permanently attached to a container's veth this way, silently
+	// corrupting every subsequent scenario run against the same devnet
+	// until it was found and cleared by hand. The deferred call below runs
+	// on every exit path; revertOnce just keeps it from double-reverting
+	// when the happy path already reverted on its own schedule below.
+	var revertOnce sync.Once
+	var revertErr error
+	doRevert := func(ctx context.Context) error {
+		revertOnce.Do(func() { revertErr = revert(ctx) })
+		return revertErr
+	}
+	defer func() {
+		if rerr := doRevert(context.WithoutCancel(ctx)); rerr != nil {
+			fmt.Fprintln(os.Stderr, "faultinjector: revert on cleanup:", rerr)
+		}
+	}()
+
 	// The fault stays active on its own clock (revertAt) while observation
 	// starts immediately, in parallel — not after revert returns. An earlier
 	// version waited for revert before polling at all, which meant no
@@ -119,7 +141,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 	go func() {
 		waitUntil(ctx, revertAt)
 		fmt.Println("faultinjector: reverting fault")
-		revertDone <- revert(ctx)
+		revertDone <- doRevert(ctx)
 	}()
 
 	watchDeadline := slotStart.Add(3 * obs.SecondsPerSlot)

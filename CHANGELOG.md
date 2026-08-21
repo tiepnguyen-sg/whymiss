@@ -242,3 +242,14 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   on this devnet; the mechanism (`RequireProposerValidators`) is kept since
   it is generically useful for any future proposer-targeted scenario, but no
   scenario file currently exercises it.
+- Fixed a real reliability bug in `RunScenario`: if polling errored out
+  after a fault was applied (any HTTP response other than 200/404 — this
+  was first hit by `network-inclusion-failure`'s 90%-loss netem attempt,
+  which made this tool's own polling time out), the function returned
+  immediately without reverting, leaving the fault permanently active on the
+  devnet. Confirmed in practice: a 90%-loss `netem` qdisc was still attached
+  to `cl-1-lighthouse-geth`'s veth on a *later*, unrelated run, breaking that
+  run's own genesis fetch too. Fixed with a `sync.Once`-guarded revert
+  wrapped in a `defer`, so every exit path — success or error — reverts
+  exactly once, immediately rather than waiting out the fault's full
+  declared duration.
