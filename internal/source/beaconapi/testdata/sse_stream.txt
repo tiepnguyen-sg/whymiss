@@ -1,0 +1,5 @@
+event:head
+data:{"slot":"3641","block":"0xcfdff47b5b03cfe74d933b1e352c300b1e4c0aeabb98373d7d113070b1609214","state":"0x5073262271bf860e17e29a09ac35d61c6a154236f281896eaa1936be19c2893f","current_duty_dependent_root":"0x1bfb1e3438b53a8a7b560441b46146c865dd13689bc684efcfbd6838bb5f4b8b","previous_duty_dependent_root":"0xca7eb24436c7801cc5eee0c1f4182474194dacc888ac9705c249cf8b32fbdfe2","epoch_transition":false,"execution_optimistic":false}
+
+:
+

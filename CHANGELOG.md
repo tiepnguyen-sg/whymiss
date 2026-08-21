@@ -304,3 +304,37 @@ a different devnet (one with real transaction/block load, or one running on
 infrastructure that can produce genuine hypervisor-level contention) —
 noted here as the concrete next step if this is revisited, not attempted in
 this pass.
+
+## Phase 2 — Collector and timeline
+
+### Added
+
+- `internal/source/beaconapi` (task 2.1): the standard Beacon API adapter —
+  REST polling (genesis/spec, attester and proposer duties, block existence,
+  attestation pool inclusion) plus an SSE stream for `head`/`chain_reorg`
+  events with reconnect and full-jitter exponential backoff (I-5). Every
+  request is rate-limited and timeout-bounded (I-1, I-5). Ports and
+  hardens logic already proven in `tools/faultinjector`'s throwaway
+  Observer, structured as a real production adapter this time: a small
+  `AttesterDuty` type (in this package, not `internal/domain`, since
+  `ValidatorCommitteeIndex` is Beacon-API decoding mechanics, not a fact
+  the frozen domain model needs to carry) rather than modifying
+  `domain.Duty`.
+- A real bug found while capturing testdata against a live devnet:
+  `fetchBlock` read a `Eth-Consensus-Block-Root` response header to get a
+  block's root — that header does not exist on a real Lighthouse response
+  (verified: full header dump captured, absent). Silently produced an empty
+  root string every time, in both this new package and the
+  `tools/faultinjector` code it was ported from (harmless there in
+  practice: no committed corpus scenario ever populated `block_root`, an
+  optional attribute). Fixed by reading `GET
+  /eth/v1/beacon/headers/{slot}`'s `data.root` field instead, which also
+  conveniently carries `proposer_index` — one request instead of one plus a
+  header that was never there.
+- Unit tests use only real captured Beacon API responses under
+  `testdata/` (BUILD_PROMPT.md §8), recorded against the project's Kurtosis
+  devnet: genesis, spec, attester/proposer duties, a block, a block header,
+  the attestation pool, and one real SSE `head` event. `chain_reorg`
+  parsing has no test yet — no reorg occurred during the capture session,
+  and hand-writing a substitute payload would violate the same rule; noted
+  in `stream_test.go` rather than papered over.
