@@ -135,3 +135,12 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
   `test/corpus/vc-frozen-lighthouse-2` and `test/corpus/vc-frozen-prysm-2`
   (`local.vc_disconnected`) — clean redundant examples, one per client,
   neither confounded by the paused node's own proposer duty.
+- `fault_cgroup.go` rewritten to run entirely as direct, native calls on the
+  Linux host (`findmnt`/`lsblk`/`os.WriteFile` against `/sys/fs/cgroup/...`)
+  instead of wrapping every step in a `docker run --privileged --pid=host`
+  helper container plus `nsenter`. The docker-wrapped approach was reliable in
+  isolation but proved to intermittently hang under repeated real use, up to
+  and including genuine Docker daemon corruption on one VM (`docker ps` and
+  `docker logs` disagreeing about a container's existence) that required
+  rebuilding the VM. `faultinjector` now runs under `sudo` directly, matching
+  the pattern `netem` was already using reliably.

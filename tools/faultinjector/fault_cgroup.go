@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -22,23 +23,31 @@ type CgroupIOParams struct {
 // io.max file — the same mechanism `systemd-run --property=IOWriteBandwidthMax`
 // or a cloud provider's disk-IOPS cap uses, applied directly.
 //
-// # Why this reaches into the VM
+// # Why this needs the process itself to run privileged
 //
 // A container's own view of /sys/fs/cgroup for itself is mounted read-only
-// (verified: writing to it from inside the target container fails with "Read-only
-// file system") — Docker does not delegate cgroup writes to containers by
-// default, correctly, since a container writing its own resource limits upward
-// would defeat the isolation those limits provide. The limit has to be set from
-// outside the container, by whatever process cgroups says owns it.
+// (verified: writing to it from inside the target container fails with
+// "Read-only file system") — Docker does not delegate cgroup writes to
+// containers by default, correctly, since a container writing its own resource
+// limits upward would defeat the isolation those limits provide. The limit has
+// to be set from outside the container, by whatever process cgroups says owns
+// it — for a container, that is the host.
 //
-// On Docker Desktop that "outside" is the LinuxKit VM Docker itself runs in, not
-// the macOS host — verified by nsenter-ing into the VM's PID 1 and finding the
-// container's real cgroup at /sys/fs/cgroup/docker/<container-id>/. A short-lived
-// privileged helper container does the nsenter, since that is the standard,
-// dependency-free way to reach a Docker-Desktop-for-Mac VM's namespaces (ADR-0004:
-// no Kurtosis or Docker SDK needed — three CLI calls do the whole job). On a plain
-// Linux host (the release target, I-13) this cgroup path is already visible
-// directly; the helper container still works there, just doing less.
+// This package's process must therefore itself run on the real Linux host with
+// root (matching NetemFault, which has the same requirement for the same
+// reason: reaching a namespace the target container does not control). An
+// earlier version reached the host indirectly through a `docker run
+// --privileged --pid=host` helper container instead, needed on Docker Desktop
+// for Mac where the Go process runs on macOS, not Linux, and has no other way
+// to reach the Linux VM Docker actually runs in. That indirection was dropped
+// after it proved unreliable in exactly this tool's real use (verified:
+// `docker run --privileged --pid=host` hung intermittently even for a bare
+// command with nothing installed, on a freshly rebooted host running nothing
+// else — a genuine environment-level flakiness in nested privileged container
+// creation, not a network hiccup or session-length effect, both of which were
+// ruled out first). On a native Linux host, faultinjector already sees the
+// real /sys/fs/cgroup directly — the indirection was never buying anything
+// there, and removing it removes the only unreliable part of this fault.
 type CgroupIOFault struct {
 	Params CgroupIOParams
 }
@@ -50,40 +59,92 @@ func (f *CgroupIOFault) Apply(ctx context.Context, enclave, target string) (func
 		return nil, err
 	}
 
-	// cgroup v2's io controller throttles whole-disk devices, not partitions —
-	// verified: writing io.max for /var/lib/docker's own device (a partition,
-	// major:minor 254:1 in this project's test environment) fails with
-	// "No such device", while its parent whole disk (254:0) accepts the write.
-	// `lsblk -no pkname` reports the parent when the target is a partition, and
-	// nothing when it is already a whole disk. `findmnt`'s SOURCE additionally
-	// appends a "[/subpath]" annotation for a bind mount into a subvolume (seen
-	// here as "/dev/vda1[/docker]"), which `${src%%[*}` strips before `basename`.
-	//
-	// One line, semicolon-separated rather than newline-separated: this string
-	// crosses two nested `sh -c "..."` layers (the alpine helper's, then
-	// nsenter's), and an embedded newline survives %q-quoting as the two literal
-	// characters backslash-n, not an actual line break — the inner shell would
-	// see one broken line instead of five statements.
-	const resolveWholeDiskDevice = `src=$(findmnt -no SOURCE --target /var/lib/docker); ` +
-		`src=${src%%[*}; ` +
-		`part=$(basename "$src"); ` +
-		`parent=$(lsblk -no pkname "/dev/$part"); ` +
-		`[ -z "$parent" ] && parent=$part; ` +
-		`cat "/sys/class/block/$parent/dev"`
-	dev, err := hostNamespaceExec(ctx, resolveWholeDiskDevice)
+	dev, err := wholeDiskDevice(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolve docker storage device: %w", err)
 	}
 
-	limitLine := cgroupIOMaxLine(dev, f.Params.ReadBytesPerSec, f.Params.WriteBytesPerSec)
-	if err := writeCgroupIOMax(ctx, id, limitLine); err != nil {
+	cgroupDir, err := containerCgroupDir(id)
+	if err != nil {
 		return nil, err
 	}
 
-	revert := func(ctx context.Context) error {
-		return writeCgroupIOMax(ctx, id, cgroupIOMaxLine(dev, 0, 0))
+	limitLine := cgroupIOMaxLine(dev, f.Params.ReadBytesPerSec, f.Params.WriteBytesPerSec)
+	if err := writeCgroupFile(cgroupDir, "io.max", limitLine); err != nil {
+		return nil, err
+	}
+
+	revert := func(context.Context) error {
+		return writeCgroupFile(cgroupDir, "io.max", cgroupIOMaxLine(dev, 0, 0))
 	}
 	return revert, nil
+}
+
+// wholeDiskDevice resolves the major:minor of the whole disk backing
+// /var/lib/docker, run directly as a subprocess of this process — no nsenter,
+// no helper container. This works because faultinjector itself runs on the
+// real Linux host (see [CgroupIOFault]), so `findmnt`/`lsblk` here already see
+// what the host sees.
+//
+// cgroup v2's io controller throttles whole-disk devices, not partitions —
+// verified: writing io.max for /var/lib/docker's own device (a partition,
+// major:minor 254:1 in this project's test environment) fails with "No such
+// device", while its parent whole disk (254:0) accepts the write. `lsblk -no
+// pkname` reports the parent when the target is a partition, and nothing when
+// it is already a whole disk. `findmnt`'s SOURCE additionally appends a
+// "[/subpath]" annotation for a bind mount into a subvolume (seen here as
+// "/dev/vda1[/docker]"), stripped below before `basename`.
+func wholeDiskDevice(ctx context.Context) (string, error) {
+	srcOut, err := exec.CommandContext(ctx, "findmnt", "-no", "SOURCE", "--target", "/var/lib/docker").Output()
+	if err != nil {
+		return "", fmt.Errorf("findmnt /var/lib/docker: %w", err)
+	}
+	src := strings.TrimSpace(string(srcOut))
+	if i := strings.IndexByte(src, '['); i >= 0 {
+		src = src[:i]
+	}
+	part := filepath.Base(src)
+
+	parentOut, err := exec.CommandContext(ctx, "lsblk", "-no", "pkname", "/dev/"+part).Output()
+	if err != nil {
+		return "", fmt.Errorf("lsblk /dev/%s: %w", part, err)
+	}
+	parent := strings.TrimSpace(string(parentOut))
+	if parent == "" {
+		parent = part
+	}
+
+	devOut, err := os.ReadFile(filepath.Join("/sys/class/block", parent, "dev"))
+	if err != nil {
+		return "", fmt.Errorf("read device number for %s: %w", parent, err)
+	}
+	return strings.TrimSpace(string(devOut)), nil
+}
+
+// containerCgroupDir locates containerID's cgroup v2 directory under
+// /sys/fs/cgroup, read directly off the host filesystem (see [CgroupIOFault]).
+//
+// Docker's cgroup path depends on which cgroup driver the daemon uses:
+// cgroupfs puts a container at /sys/fs/cgroup/docker/<id>/; systemd — the
+// default on a stock Ubuntu host, and what this project's GCP verification VM
+// actually runs — puts it at /sys/fs/cgroup/system.slice/docker-<id>.scope/
+// instead. filepath.Glob covers both without needing to know which is active.
+func containerCgroupDir(containerID string) (string, error) {
+	matches, err := filepath.Glob("/sys/fs/cgroup/*/*" + containerID + "*")
+	if err != nil {
+		return "", fmt.Errorf("search for cgroup of container %s: %w", containerID, err)
+	}
+	if len(matches) == 0 {
+		// cgroupfs nests one level shallower than systemd's slice layout.
+		matches, err = filepath.Glob("/sys/fs/cgroup/*" + containerID + "*")
+		if err != nil {
+			return "", fmt.Errorf("search for cgroup of container %s: %w", containerID, err)
+		}
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no cgroup found for container %s", containerID)
+	}
+	return matches[0], nil
 }
 
 // cgroupIOMaxLine formats one line of cgroup v2 io.max: "<major:minor>
@@ -100,63 +161,14 @@ func cgroupIOMaxLine(dev string, readBps, writeBps uint64) string {
 	return fmt.Sprintf("%s rbps=%s wbps=%s", dev, r, w)
 }
 
-func writeCgroupIOMax(ctx context.Context, containerID, limitLine string) error {
-	// Docker's cgroup path depends on which cgroup driver the daemon uses:
-	// cgroupfs puts a container at /sys/fs/cgroup/docker/<id>/ (seen on Docker
-	// Desktop's LinuxKit VM); systemd — the default on a stock Ubuntu host, and
-	// what this project's GCP verification VM actually runs — puts it at
-	// /sys/fs/cgroup/system.slice/docker-<id>.scope/ instead. Rather than
-	// hardcode either, `find` locates whichever one exists.
-	script := fmt.Sprintf(
-		`dir=$(find /sys/fs/cgroup -maxdepth 3 -name '*%s*' -type d 2>/dev/null | head -n1); `+
-			`[ -n "$dir" ] || { echo "no cgroup found for container %s" >&2; exit 1; }; `+
-			`echo '%s' > "$dir/io.max"`,
-		containerID, containerID, limitLine,
-	)
-	if _, err := hostNamespaceExec(ctx, script); err != nil {
-		return fmt.Errorf("write io.max for container %s: %w", containerID, err)
+// writeCgroupFile writes content to <cgroupDir>/<file>, direct os.WriteFile —
+// no shell, no helper process. A cgroup control file always accepts a single
+// write() of its whole new value; there is nothing here for a shell to do that
+// os.WriteFile does not already do more simply and more reliably.
+func writeCgroupFile(cgroupDir, file, content string) error {
+	path := filepath.Join(cgroupDir, file)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil { //nolint:gosec // G306: a cgroup control file's permissions are fixed by the kernel, not by this write
+		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
-}
-
-// hostNamespaceExec runs script inside the real Docker host's mount, PID, and
-// network namespaces — the Docker-Desktop-for-Mac VM, or the host itself on
-// native Linux — via a short-lived privileged helper container. See
-// [CgroupIOFault] for why this is necessary.
-func hostNamespaceExec(ctx context.Context, script string) (string, error) {
-	// script must reach nsenter's inner shell byte-for-byte, including any `$`
-	// it contains — those are meant to expand inside the host mount namespace
-	// nsenter switches into, not in the alpine helper's own namespace one level
-	// out. Go's %q verb double-quotes it, and a double-quoted argument is still
-	// subject to $-expansion by the *outer* shell before nsenter ever runs,
-	// which silently expands $(...) and $var against the wrong (empty)
-	// filesystem view instead of passing them through literally. Single-quoting
-	// is what actually defers all expansion to the inner shell; script has no
-	// embedded single quotes today, so the standard POSIX escape for one
-	// (close, escaped quote, reopen) is here defensively, not because it is
-	// exercised yet.
-	quoted := "'" + strings.ReplaceAll(script, "'", `'\''`) + "'"
-	nsenterScript := fmt.Sprintf(
-		`apk add --no-cache util-linux >/dev/null 2>&1; nsenter -t 1 -m -u -n -i sh -c %s`,
-		quoted,
-	)
-	// Output(), not CombinedOutput(): a cache miss on the alpine image makes
-	// `docker run` print pull-progress lines, and those go to stderr — mixing
-	// them into the captured result silently corrupted a device path here once
-	// already (verified on a fresh host where alpine had never been pulled).
-	// Stdout is script's actual output and nothing else; stderr is still folded
-	// into the error below when something fails, so diagnostics are not lost.
-	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
-		"--privileged", "--pid=host", "alpine", "sh", "-c", nsenterScript,
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		stderr := ""
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			stderr = string(exitErr.Stderr)
-		}
-		return "", fmt.Errorf("host-namespace exec %q: %w\n%s", script, err, stderr)
-	}
-	return strings.TrimSpace(string(out)), nil
 }
