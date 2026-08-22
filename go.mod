@@ -10,7 +10,7 @@ module github.com/CHANGEME/whymiss
 // gofumpt's own go.mod requirement climbs over time; ci.yml pins GOTOOLCHAIN=local
 // so a mismatch fails outright instead of silently downloading a newer toolchain.
 // Bump this line, not gofumpt's version, when that requirement moves again.
-go 1.25.0
+go 1.25.14
 
 // New dependencies require an ADR (I-14: fewer than 15 direct dependencies at
 // v1.0). The locked choices in BUILD_PROMPT §3 — cobra, koanf,

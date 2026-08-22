@@ -927,6 +927,30 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   on real Linux (`make test` inside the same container, and `go test -race
   -count=1 ./...` directly) before pushing, not just re-run locally on
   macOS.
+- **A third `main`-blocking gap, surfaced only after the first two fixes
+  let CI progress all the way to the vulnerability scan for the first
+  time.** `govulncheck` failed on real GitHub Actions with nine standard
+  library CVEs (GO-2026-6218, -6090, -6089, -5972, -5856, -5039, -5037,
+  -5026, -4971 — quadratic complexity in `net/url`, a `crypto/tls`
+  post-handshake message limit, `net/http`'s HTTP/2-downgrade timeout,
+  `encoding/asn1` recursion depth, an Encrypted Client Hello privacy leak,
+  and others), every one already fixed upstream in `go1.25.11`–`.13`.
+  Root cause: `go.mod`'s `go 1.25.0` line is the literal toolchain version
+  `ci.yml`'s `setup-go go-version-file: go.mod` installs (the file's own
+  comment already says as much) — it had simply never been bumped since
+  Phase 1, so CI was building and testing with a toolchain that shipped
+  several stdlib CVEs later patched. Not a code bug in this project; local
+  `govulncheck` runs all session had shown "No vulnerabilities found"
+  only because this Mac's own `go` (1.26.6, from Homebrew) is already far
+  ahead of 1.25.x and silently masked it — a third platform/environment
+  gap between local verification and where CI (and, more importantly,
+  operators building from source) actually builds. Fixed: bumped `go.mod`
+  to `go 1.25.14` (the current 1.25.x patch — covers every CVE above, all
+  fixed by `.13`). Verified properly this time, not just re-run on
+  whatever `go` happened to be on PATH: installed the exact `go1.25.14`
+  toolchain (`go install golang.org/dl/go1.25.14@latest && go1.25.14
+  download`) and ran `govulncheck`, then the full `make ci`, under that
+  exact version — "No vulnerabilities found," `CI PASSED`.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`
