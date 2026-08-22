@@ -25,6 +25,11 @@ build.all:
 	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BIN)-linux-arm64 ./cmd/$(BIN)
 
 ## test: run unit tests with the race detector
+# -race needs cgo. The global CGO_ENABLED=0 above is for I-13's shipped
+# static binary (build/build.all) — override it back to 1 for this target
+# only (verified on Linux: CGO_ENABLED=0 makes `go test -race` refuse to
+# run at all with "requires cgo", not merely disable the detector).
+test: export CGO_ENABLED := 1
 test:
 	go test -race -count=1 ./...
 

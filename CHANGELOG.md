@@ -905,6 +905,28 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   reports 0 issues; `make ci` (which now runs lint under `GOOS=linux`)
   still PASSED; pushing confirmed `main`'s `ci` workflow is green again on
   real GitHub Actions.
+- **A second `main`-blocking gap, surfaced only after the first fix let CI
+  progress further than it ever had.** With the lint blind spot above
+  fixed, `main`'s `ci` workflow got past lint for the first time and hit a
+  new failure: `test` — `go: -race requires cgo; enable cgo by setting
+  CGO_ENABLED=1`. `Makefile` exports `CGO_ENABLED := 0` globally for I-13's
+  shipped static binary, and both `Makefile`'s `test` target and
+  `ci.yml`'s standalone `go test -race` step inherited that for the race
+  detector too — which needs cgo to run at all, not just to build the
+  final binary. Reproduced for real on Linux (`docker run
+  golang:1.25-bookworm`, matching `ci.yml`'s `go-version-file: go.mod` and
+  `ubuntu-latest`) before fixing, not assumed: `CGO_ENABLED=0 make test`
+  fails there with the exact error CI showed; `CGO_ENABLED=1` fixes it.
+  Notably this had never been caught locally on macOS either — `go test
+  -race` there tolerates `CGO_ENABLED=0` in a way Linux's toolchain does
+  not, a second, unrelated platform gap between this Mac and where the
+  project actually ships. Fixed with a target-specific override —
+  `Makefile`'s `test: export CGO_ENABLED := 1` and `ci.yml`'s `test` step
+  gets its own `env: CGO_ENABLED: "1"` — so the race detector gets cgo
+  while `build`/`build.all` keep I-13's `CGO_ENABLED=0` untouched. Verified
+  on real Linux (`make test` inside the same container, and `go test -race
+  -count=1 ./...` directly) before pushing, not just re-run locally on
+  macOS.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`

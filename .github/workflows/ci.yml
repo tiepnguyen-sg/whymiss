@@ -43,7 +43,12 @@ jobs:
         run: make check
 
       - name: test
+        # The race detector needs cgo; the workflow-level CGO_ENABLED=0 is
+        # for I-13's shipped static binary (make build/build.all below),
+        # not for running tests.
         run: go test -race -count=1 ./...
+        env:
+          CGO_ENABLED: "1"
 
       - name: vulnerabilities
         run: |
