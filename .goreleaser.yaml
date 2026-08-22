@@ -1,0 +1,81 @@
+# Release config for `whymiss` (task 4.7, docs/BUILD_PROMPT.md §12.2).
+# Locked in docs/BUILD_PROMPT.md §3: "goreleaser + SLSA provenance + cosign + SBOM".
+# See docs/adr/0010-release-supply-chain.md for why this shape and not another.
+#
+# Local dry run (no tag, no publish, no network beyond module downloads):
+#   goreleaser release --snapshot --clean --skip=sign,publish
+version: 2
+
+project_name: whymiss
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: whymiss
+    main: ./cmd/whymiss
+    binary: whymiss
+    env:
+      - CGO_ENABLED=0
+    # I-13: single static binary, linux/amd64 + linux/arm64 only — this
+    # locked scope matches Makefile's build.all, not an arbitrary "build
+    # everything" default.
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# SBOM per archive (CycloneDX JSON, syft's default) — supply-chain
+# credibility per §3, and lets an operator audit exactly what's inside the
+# archive they downloaded before running it on a staking box.
+sboms:
+  - id: archive-sbom
+    artifacts: archive
+
+# cosign keyless signing (Sigstore, GitHub OIDC identity — no long-lived
+# private key for this project to protect or rotate). Signs checksums.txt,
+# which transitively covers every archive since each line is that archive's
+# sha256; verifying the one bundle is enough to trust every artifact in the
+# release. Requires `id-token: write` in the calling workflow.
+#
+# cosign v3's sign-blob writes one self-contained "bundle" file (signature +
+# certificate + transparency-log inclusion proof) rather than separate
+# --output-signature/--output-certificate files — those flags are
+# deprecated and, as of v3, sign-blob refuses to run without --bundle
+# (verified locally: `cosign sign-blob --yes --bundle=out.bundle FILE`,
+# `cosign verify-blob --bundle out.bundle FILE` — see CHANGELOG.md).
+signs:
+  - id: checksums
+    cmd: cosign
+    signature: "${artifact}.bundle"
+    args:
+      - sign-blob
+      - --yes
+      - --bundle=${signature}
+      - ${artifact}
+    artifacts: checksum
+    output: true
+
+# release.github.owner/name deliberately left unset: goreleaser infers them
+# from the git remote. go.mod's module path is still the CHANGEME
+# placeholder STRUCTURE.md's init step rewrites (see go.mod's own comment)
+# — hardcoding a real owner/repo here ahead of that rename would drift.
+release:
+  prerelease: auto
+  mode: replace

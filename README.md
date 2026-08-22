@@ -21,7 +21,8 @@ cp deploy/docker/.env.example deploy/docker/.env   # edit: real BEACON_API, VALI
 cd deploy/docker && docker compose up -d
 ```
 
-Open `http://127.0.0.1:3000` for the dashboard. See
+Open `http://127.0.0.1:3000` and log in as `admin` with the password you set
+(`GRAFANA_ADMIN_PASSWORD` — anonymous access is deliberately off). See
 [`deploy/docker/docker-compose.yml`](deploy/docker/docker-compose.yml).
 
 **From source:**
@@ -35,6 +36,31 @@ make build
 
 **systemd**, for running the bare binary as a long-lived unprivileged service on the
 node itself, is in [`deploy/systemd/`](deploy/systemd/).
+
+**Prebuilt binary**, once a tagged release exists (`v0.1.0` is task 4.10 — until
+then, build from source above): download the `linux_amd64` or `linux_arm64` archive
+from the release's GitHub page, then verify it before running anything from it:
+
+```sh
+# 1. The checksum matches the archive you downloaded.
+sha256sum -c --ignore-missing checksums.txt
+
+# 2. checksums.txt itself is genuinely signed by this project's release workflow —
+#    not a stored key, a keyless Sigstore identity bound to the exact GitHub Actions
+#    run that built it (docs/adr/0010-release-supply-chain.md).
+cosign verify-blob \
+    --bundle checksums.txt.bundle \
+    --certificate-identity-regexp 'https://github.com/.+/whymiss/\.github/workflows/release\.yml@.+' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    checksums.txt
+
+# 3. (optional) inspect exactly what's inside the archive before running it.
+cat whymiss_*_linux_amd64.tar.gz.sbom.json | jq '.packages[].name'
+```
+
+Each release also carries a SLSA provenance attestation (`slsa-verifier` can check
+it against the archive) proving which workflow run, on which commit, produced that
+exact artifact — see `.github/workflows/release.yml`.
 
 ## Usage
 

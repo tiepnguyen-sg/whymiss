@@ -1,0 +1,105 @@
+name: fresh-install
+
+# Task 4.9 (BUILD_PROMPT.md §12.2): does README.md's instructions actually
+# work, on a clean machine, with no tribal knowledge the README itself
+# doesn't state? Each job below runs the literal commands from README.md,
+# nothing more.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "README.md"
+      - "Makefile"
+      - "go.mod"
+      - "cmd/**"
+      - "deploy/**"
+      - ".github/workflows/fresh-install.yml"
+  pull_request:
+    paths:
+      - "README.md"
+      - "Makefile"
+      - "go.mod"
+      - "cmd/**"
+      - "deploy/**"
+      - ".github/workflows/fresh-install.yml"
+  schedule:
+    # deploy/docker/docker-compose.yml pulls prom/prometheus:latest and
+    # grafana/grafana:latest unpinned — this catches breakage from an
+    # upstream image change even when nothing here does.
+    - cron: "17 6 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  from-source:
+    name: "README: from source"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      # README.md "From source": `make build`.
+      - run: make build
+
+      # README's example command names these flags. If one was renamed,
+      # this fails loudly instead of leaving stale copy-paste in the docs.
+      - name: README's documented flags still exist
+        run: |
+          set -eu
+          help="$(./bin/whymiss watch --help)"
+          for flag in beacon-api db validator-index metrics-addr; do
+            echo "$help" | grep -q -- "--$flag" \
+              || { echo "README references --$flag, but 'whymiss watch --help' does not list it"; exit 1; }
+          done
+          ./bin/whymiss --help >/dev/null
+
+  docker-compose:
+    name: "README: Docker Compose"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # README.md's Docker quickstart, run verbatim from a fresh clone. The
+      # example .env's placeholder values are enough to prove the stack
+      # comes up and provisions itself correctly — they don't need to
+      # point at a real beacon node for that (whymiss itself is expected
+      # to crash-loop here; that's covered by the from-source job's flag
+      # check plus the manual devnet smoke test recorded in CHANGELOG.md's
+      # Phase 4 entries, not this job).
+      - run: cp deploy/docker/.env.example deploy/docker/.env
+
+      - name: docker compose up -d
+        working-directory: deploy/docker
+        run: docker compose up -d
+
+      - name: Grafana becomes healthy
+        run: |
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/api/health >/dev/null && exit 0
+            sleep 2
+          done
+          echo "Grafana never became healthy — see README.md's Docker quickstart"
+          exit 1
+
+      - name: whymiss dashboard was auto-provisioned
+        run: |
+          # Anonymous access is deliberately off (docker-compose.yml) — log
+          # in as README.md instructs.
+          . deploy/docker/.env
+          curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" http://127.0.0.1:3000/api/search \
+            | grep -q whymiss-duty-causes \
+            || { echo "dashboard was not provisioned — see deploy/docker/grafana-provisioning/"; exit 1; }
+
+      - name: docker compose down -v
+        if: always()
+        working-directory: deploy/docker
+        run: docker compose down -v

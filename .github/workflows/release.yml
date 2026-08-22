@@ -1,0 +1,64 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Least privilege at the workflow level; each job elevates only what it
+# needs (ADR-0010).
+permissions:
+  contents: read
+
+jobs:
+  goreleaser:
+    name: build, sign, sbom
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # create the GitHub release and upload assets
+      id-token: write # cosign keyless signing via GitHub OIDC (ADR-0010)
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    steps:
+      # Pin actions by SHA, not tag — matches ci.yml's existing convention.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # goreleaser needs full history for the changelog and tag list
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - name: install syft (SBOM)
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+      - name: install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: "~> 2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # SLSA's generic generator wants the base64-encoded contents of a
+      # sha256sum-style file listing every subject to attest for — GoReleaser's
+      # own checksums.txt already is exactly that (ADR-0010).
+      - name: hash release artifacts for SLSA provenance
+        id: hash
+        run: echo "hashes=$(cat dist/checksums.txt | base64 -w0)" >> "$GITHUB_OUTPUT"
+
+  provenance:
+    name: SLSA provenance
+    needs: [goreleaser]
+    permissions:
+      actions: read # to read the workflow path that triggered this run
+      id-token: write # to sign the provenance
+      contents: write # to upload the provenance as a release asset
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
+    with:
+      base64-subjects: ${{ needs.goreleaser.outputs.hashes }}
+      upload-assets: true

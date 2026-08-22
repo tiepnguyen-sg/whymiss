@@ -804,6 +804,78 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   by replaying `test/corpus/host-memory-pressure` through the exact
   `app.Explain` + `report.Markdown` path the CLI calls — it is real,
   unedited output, not hand-written prose that merely looks like output.
+- Task 4.6, `docs/threat-model.md`: maps every threat considered (key
+  exposure, node degradation, privilege escalation, egress/exfiltration,
+  resource exhaustion, wrong-confident-verdict, supply chain, client-leak)
+  to the specific invariant and CI check that mitigates it, states plainly
+  what whymiss deliberately does not defend against (a lying beacon node,
+  an already-root-compromised host, a spoofed `--cl-metrics-api`), and
+  gives the exact commands (`make check.egress`, `check.isolation`,
+  `check.nonroot`, a keystore/mnemonic grep) an operator can run themselves
+  rather than take the document's word for it — all re-run for this task
+  to confirm they still say what the doc claims.
+- Task 4.6, `docs/runbook.md`: alerting guidance (alert on `cause`, not
+  `outcome`, with two starter Prometheus rules), the known-benign
+  `outcome="ok"` → `local.unknown.no_rule_matched` situation so it isn't
+  mistaken for an incident, diagnosis steps for the failure modes an
+  operator actually hits (no metrics appearing, "no observations recorded",
+  store growing past its retention cap, suspected node hammering),
+  restart/upgrade notes, and the one-command uninstall for both deployment
+  methods (BUILD_PROMPT.md §12.3 DoD: "uninstall is one documented command
+  that leaves nothing behind") — including the systemd path's
+  `StateDirectory=`, which persists on its own across restarts and so is
+  the one thing that uninstall must remove explicitly.
+- Task 4.7, `.goreleaser.yaml` + `.github/workflows/release.yml` +
+  `docs/adr/0010-release-supply-chain.md`: release builds for
+  `linux/amd64`/`linux/arm64` (I-13), a per-archive SPDX SBOM via syft,
+  `checksums.txt` signed **keyless** with cosign (Sigstore/GitHub OIDC —
+  no long-lived private key for the project to protect), and a SLSA Build
+  L3 provenance attestation via `slsa-framework/slsa-github-generator`'s
+  reusable workflow, all pinned by commit SHA matching `ci.yml`'s existing
+  convention. `README.md` gains a "verify before you run it" section
+  (`sha256sum -c`, `cosign verify-blob --certificate-identity-regexp`,
+  SBOM inspection) for once a tagged release exists. Verified locally, not
+  just written: `goreleaser check` validates the config; `goreleaser
+  release --snapshot --clean --skip=sign,publish` produced real archives,
+  a real `checksums.txt`, and real syft-generated SPDX SBOMs;
+  `actionlint` passes on the new workflow. This surfaced a real,
+  currently-live break in the widely-copied GoReleaser+cosign recipe:
+  cosign v3 (`brew install cosign` today) removed
+  `--output-signature`/`--output-certificate` and now refuses to run
+  without `--bundle` — caught by actually invoking `cosign sign-blob` /
+  `verify-blob` locally with a throwaway keypair rather than trusting the
+  config would work unverified; `.goreleaser.yaml`'s `signs:` block uses
+  `--bundle` accordingly (full story in ADR-0010).
+- Task 4.8 verified, not newly written: `SECURITY.md` (added in Phase 1's
+  scaffold commit, `c85553e`) already carries a private-disclosure
+  reporting flow (GitHub security advisories, not public issues) and a
+  concrete response SLA (3 working days to acknowledge, 10 to an initial
+  severity assessment, 90 days to a fix or public mitigation) — task
+  4.8's literal requirement. No gap found; no change made.
+- Task 4.9, `.github/workflows/fresh-install.yml`: runs README.md's
+  instructions literally, from a clean checkout, on every change to
+  `README.md`/`Makefile`/`go.mod`/`cmd/**`/`deploy/**`, plus weekly (the
+  Docker Compose stack pulls `prom/prometheus:latest` and
+  `grafana/grafana:latest` unpinned — a scheduled run catches drift from
+  an upstream image change even when nothing in this repo did). Two jobs:
+  "from source" (`make build`, then greps `whymiss watch --help` for every
+  flag the README's example command names, so a flag rename breaks CI
+  instead of silently stranding the docs) and "Docker Compose" (the
+  README's exact `cp .env.example .env` + `docker compose up -d`, then
+  waits for Grafana and asserts the whymiss dashboard was auto-provisioned).
+  Running the Docker Compose job's checks locally first (rather than
+  trusting the design) caught a real gap before it shipped: the official
+  `docker-compose.yml` deliberately leaves Grafana's anonymous access off
+  (task 4.4 — a real deployment shouldn't have an open dashboard), so an
+  unauthenticated `curl .../api/search` 401s even though provisioning
+  succeeded; both the CI job and `README.md`'s "open the dashboard" line
+  now say to log in as `admin` with `GRAFANA_ADMIN_PASSWORD` rather than
+  implying anonymous access. `whymiss` itself is intentionally left out of
+  this job's assertions — it crash-loops against the example `.env`'s
+  fake `BEACON_API`, which is expected without a real beacon node, not a
+  bug; a real end-to-end run against a live devnet is the manual smoke
+  test already recorded in this file's task 4.1 entry, not something a
+  "fresh machine, README only" job can reproduce without one.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`
