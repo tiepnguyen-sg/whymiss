@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/CHANGEME/whymiss/internal/exporter"
 	"github.com/CHANGEME/whymiss/internal/source"
 	"github.com/CHANGEME/whymiss/internal/source/beaconapi"
 	"github.com/CHANGEME/whymiss/internal/source/hostmetrics"
@@ -47,19 +49,47 @@ type WatchConfig struct {
 	RetentionMaxAge   time.Duration
 	RetentionMaxBytes int64
 	RetentionInterval time.Duration
-	Logger            *slog.Logger
+
+	// ValidatorIndices, when non-empty, are the validators whose attester
+	// duties this loop tracks: each epoch, their duty slots are fetched
+	// and, as each one completes, polled for block_seen/
+	// attestation_published/attestation_included and run through
+	// rca.Analyze (via Explain) — the only way this daemon produces a
+	// domain.Verdict at all. Empty disables duty tracking and the
+	// exporter entirely (I-3: this loop still runs, just as a pure
+	// observation collector, exactly as it did before task 4.1).
+	ValidatorIndices []domain.ValidatorIndex
+
+	// MetricsAddr, when set, serves the exporter's Prometheus metrics at
+	// "<MetricsAddr>/metrics". Meaningless (ignored) when
+	// ValidatorIndices is empty, since there is nothing to export.
+	MetricsAddr string
+
+	// Schedule is passed to Explain for every completed duty. Defaults to
+	// domain.MainnetPreEPBS() when zero — the schedule this build ships
+	// with until Phase 5's configurable SlotSchedule lands (matches
+	// cmd/whymiss/timeline.go's own default).
+	Schedule domain.SlotSchedule
+
+	Logger *slog.Logger
 }
 
 // Watch runs the collector daemon until ctx is done: it streams the beacon
 // node's head/chain_reorg events, optionally samples host resource
 // pressure, and persists everything to cfg.DBPath, pruning on a timer.
+// When cfg.ValidatorIndices is non-empty, it also tracks each validator's
+// attester duties, polls their outcome, runs every completed duty through
+// rca.Analyze (via Explain), and records the result into a Prometheus
+// exporter — see duty_tracking.go and internal/exporter.
 //
-// This is task 2.7's minimal real daemon — it proves the composition
-// (source adapters -> store) runs end to end against a live node. Per-duty
-// tracking (polling a specific validator's block_seen/
-// attestation_published/attestation_included, which needs to know which
-// validator to watch — a config surface BUILD_PROMPT §3 assigns to koanf,
-// not yet wired) is not yet part of this loop; see CHANGELOG.md.
+// The observation-collector half is task 2.7's minimal real daemon — it
+// proves the composition (source adapters -> store) runs end to end
+// against a live node. Per-duty tracking (polling a specific validator's
+// block_seen/attestation_published/attestation_included) landed later,
+// task 4.1, once there was a config surface (--validator-index, plain
+// cobra flags rather than the koanf-backed config file BUILD_PROMPT §3
+// eventually assigns this to) and a consumer for the result (the
+// exporter) to justify it; see CHANGELOG.md.
 func Watch(ctx context.Context, cfg WatchConfig) error {
 	logger := cfg.Logger
 	if logger == nil {
@@ -99,6 +129,40 @@ func Watch(ctx context.Context, cfg WatchConfig) error {
 		go runPeerSampling(ctx, st, consensusClient, cfg.CLMetricsAPI, cfg.PeerSampleInterval, logger)
 	}
 	go runSlotClock(ctx, st, genesis, logger)
+
+	if len(cfg.ValidatorIndices) > 0 {
+		schedule := cfg.Schedule
+		if schedule == (domain.SlotSchedule{}) {
+			schedule = domain.MainnetPreEPBS()
+		}
+		exp := exporter.New()
+		go runDutyTracking(ctx, st, client, cfg.ValidatorIndices, cfg.DBPath, schedule, exp, genesis, logger)
+
+		if cfg.MetricsAddr != "" {
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", exp.Handler())
+			srv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+			//nolint:gosec // G118: context.Background() below is deliberate, see comment there — ctx is already cancelled by the time this goroutine unblocks
+			go func() {
+				<-ctx.Done()
+				// context.Background() is deliberate, not an oversight: ctx
+				// is already cancelled at this point (that's what unblocked
+				// this goroutine), so it cannot also bound Shutdown's own
+				// timeout — a cancelled context makes Shutdown return
+				// immediately without waiting for in-flight requests, the
+				// opposite of "graceful."
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = srv.Shutdown(shutdownCtx) //nolint:errcheck,contextcheck // best-effort on shutdown, matching st.Close() above; contextcheck's "non-inherited context" warning is the same false positive gosec's G118 flags above
+			}()
+			go func() {
+				logger.Info("serving metrics", "addr", cfg.MetricsAddr)
+				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					logger.Error("metrics server", "error", err)
+				}
+			}()
+		}
+	}
 
 	for {
 		select {

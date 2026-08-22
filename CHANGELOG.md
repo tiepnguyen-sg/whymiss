@@ -700,3 +700,64 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   `network.inclusion_failure`, `clock_skew` — unchanged from the
   reasoning already on record earlier in this file; nothing new tried
   this pass.
+
+## Phase 4 — Operator surface and v0.1.0
+
+### Added
+
+- Task 4.1, `internal/exporter`: Prometheus metrics with a `cause` label
+  (BUILD_PROMPT.md §12.2's "headline feature — alert on causes, not
+  symptoms"), `github.com/prometheus/client_golang` per ADR-0009. One
+  counter, `whymiss_duty_verdicts_total{cause,outcome}`, cardinality
+  bounded at 19 × 4 = 76 possible series regardless of validator count or
+  uptime (`domain.CauseIDs()`'s closed set plus `"none"` for `no_duty`, ×
+  `domain.Outcome`'s four values) — satisfies BUILD_PROMPT.md §12.3's DoD
+  ("cardinality is bounded and documented") by construction, not by
+  convention.
+- Writing the exporter surfaced that it would have had nothing to export:
+  `whymiss watch` never produced a single `domain.Verdict` before this —
+  it only ever wrote `ObsHeadUpdated`/`ObsReorg` (from the SSE stream) and
+  a derived `ObsSlotStart`, with no notion of which validator to watch and
+  no polling for `block_seen`/`attestation_published`/
+  `attestation_included` at all (`Watch`'s own doc comment already said
+  as much: "per-duty tracking... is not yet part of this loop"). Closed
+  that gap rather than shipping an exporter with an empty pipe behind it:
+  `beaconapi.Client.{BlockSeen,AttestationPublished,CheckInclusion,
+  FetchAttesterDuties}` already existed (built for `tools/faultinjector`,
+  never wired into the real daemon) and needed only orchestration, not
+  new REST logic. `internal/app/duty_tracking.go` (new): `--validator-index`
+  (repeatable) drives `runDutyTracking`, which fetches attester duties
+  once per epoch and spawns `trackDuty` per duty — waits for the slot,
+  polls block/publish/inclusion concurrently with the same margins
+  `tools/faultinjector` already uses in practice (3-slot watch deadline,
+  2-slot inclusion window), writes whatever's found, then runs the
+  completed slot through `Explain` and records the verdict.
+  `--metrics-addr` serves the result at `/metrics`. Both flags default to
+  empty/disabled — `whymiss watch` with neither set behaves exactly as it
+  did before this task, a pure observation collector.
+- `docs/configuration.md`, `docs/adr/0009-prometheus-exporter.md`.
+- Task 4.2, `deploy/grafana/whymiss-dashboard.json`: a provisionable
+  Grafana dashboard for `whymiss_duty_verdicts_total` — timeseries of
+  missed/degraded duties by cause, a pie chart of duties by outcome, a
+  bar gauge cause breakdown, and a "missed or degraded in the last hour"
+  stat panel with green/yellow/red thresholds. Uses a templated
+  `datasource` variable so it binds to whatever Prometheus datasource a
+  deployment provisions it against, rather than hardcoding a UID.
+  Verified locally end-to-end with a throwaway Prometheus + Grafana
+  Docker Compose stack scraping a `/metrics` endpoint seeded from
+  `test/corpus/`: the dashboard auto-provisioned and all four panels
+  rendered real data.
+- **A real gap in `internal/rca`, found by smoke-testing this task against
+  the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
+  ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`
+  — `Analyze` only short-circuits its rule loop for `OutcomeNoDuty`;
+  `OutcomeOK` still runs the full R-010..R-600 chain looking for a
+  problem, none of which match (correctly — there isn't one), so it falls
+  to R-999's catch-all, whose own doc comment and remediation text
+  ("this is a taxonomy gap and a project bug... file an issue") is
+  written for "something's wrong and no rule caught it," not "nothing's
+  wrong." An operator watching a perfectly healthy validator would see
+  every single duty reported as a project bug. This touches
+  `internal/rca`, which needs its own plan-mode session per CLAUDE.md —
+  deliberately not fixed inside this task's scope; tracked here rather
+  than silently left for whoever next reads a `whymiss watch` log.
