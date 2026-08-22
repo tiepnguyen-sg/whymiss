@@ -876,6 +876,35 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   bug; a real end-to-end run against a live devnet is the manual smoke
   test already recorded in this file's task 4.1 entry, not something a
   "fresh machine, README only" job can reproduce without one.
+- **Fixed a real, `main`-blocking gap this Phase 4 work exposed, not
+  introduced.** Pushing this phase's commits and watching them run on
+  actual GitHub Actions (rather than trusting local `make ci`) showed
+  `main`'s `ci` workflow has been red since 2026-08-20 — three pre-existing
+  lint findings in `tools/faultinjector/{fault_pause.go,
+  fault_netem_verify_test.go}` (a G702 command-injection taint warning, a
+  `noctx` finding, an `ST1011` unit-suffixed variable name) that `make
+  lint`/`make ci` never caught **on this Mac**, because
+  `fault_netem_verify_test.go` carries `//go:build linux` and golangci-lint
+  silently drops build-constrained-out files from analysis on a
+  non-matching host OS (darwin here) — every prior `make ci PASSED` this
+  session was real, but had this blind spot the whole time.
+  `GOOS=linux golangci-lint run ./tools/faultinjector/...` reproduced all
+  three locally, confirming the root cause before fixing it. Fixed:
+  `exec.Command` → `exec.CommandContext(t.Context(), ...)` in `pingRTT`;
+  `avgMS` (a `time.Duration`) renamed to `avg`; a justified
+  `//nolint:gosec` on `dockerContainerID` explaining `serviceName` is
+  operator-supplied (Kurtosis service name from a CLI flag or corpus
+  manifest, never network/attacker input) and passed as one argv element
+  with no shell involved, so there is no injection vector for gosec's
+  taint analysis to actually be flagging. `Makefile`'s `lint` target now
+  runs `GOOS=linux golangci-lint run` — I-13 makes Linux the only real
+  target platform anyway, and it's the only build tag combination this
+  repo currently has (`grep -rl '^//go:build'` finds exactly this one
+  file) — so this closes the blind spot for every future session, not
+  just this one. Verified: `GOOS=linux golangci-lint run ./...` now
+  reports 0 issues; `make ci` (which now runs lint under `GOOS=linux`)
+  still PASSED; pushing confirmed `main`'s `ci` workflow is green again on
+  real GitHub Actions.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`

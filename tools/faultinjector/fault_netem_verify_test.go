@@ -86,7 +86,7 @@ func containerIPForTest(ctx context.Context, containerID string) (string, error)
 
 func pingRTT(t *testing.T, ip string) time.Duration {
 	t.Helper()
-	out, err := exec.Command("ping", "-c", "3", "-W", "2", ip).Output()
+	out, err := exec.CommandContext(t.Context(), "ping", "-c", "3", "-W", "2", ip).Output()
 	if err != nil {
 		t.Fatalf("ping %s: %v", ip, err)
 	}
@@ -101,9 +101,9 @@ func pingRTT(t *testing.T, ip string) time.Duration {
 	if len(slashParts) < 2 {
 		t.Fatalf("could not parse rtt values from %q", text[i:])
 	}
-	avgMS, err := time.ParseDuration(slashParts[1] + "ms")
+	avg, err := time.ParseDuration(slashParts[1] + "ms")
 	if err != nil {
 		t.Fatalf("parse avg rtt %q: %v", slashParts[1], err)
 	}
-	return avgMS
+	return avg
 }

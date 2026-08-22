@@ -32,9 +32,11 @@ test:
 test.golden:
 	go test ./internal/rca/... -update
 
-## lint: run golangci-lint
+## lint: run golangci-lint (GOOS=linux: I-13's only real target, and
+## tools/faultinjector/fault_netem_verify_test.go is linux-only-tagged —
+## linting under the host OS silently skips it; see CHANGELOG.md)
 lint:
-	golangci-lint run
+	GOOS=linux golangci-lint run
 
 ## fmt: format all Go source
 fmt:

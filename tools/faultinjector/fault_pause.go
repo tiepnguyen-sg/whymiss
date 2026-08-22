@@ -59,6 +59,11 @@ func (f *PauseFault) Apply(ctx context.Context, enclave, target string) (func(co
 // Kubernetes. If that changes, this is the one function that needs a Kubernetes
 // equivalent — everything above it stays the same.
 func dockerContainerID(ctx context.Context, serviceName string) (string, error) {
+	//nolint:gosec // G702: serviceName is an operator-supplied Kurtosis service
+	// name (CLI flag or test/corpus manifest field), never attacker/network
+	// input, and is passed as one argv element to exec.CommandContext — no
+	// shell is involved, so there is no injection vector for gosec's taint
+	// analysis to actually be flagging here.
 	out, err := exec.CommandContext(ctx, "docker", "ps",
 		"--filter", "name="+serviceName+"--",
 		"--no-trunc",
