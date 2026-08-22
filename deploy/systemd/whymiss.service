@@ -1,0 +1,60 @@
+[Unit]
+Description=whymiss — validator duty miss/late diagnosis
+Documentation=https://github.com/CHANGEME/whymiss
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/whymiss/whymiss.env
+ExecStart=/usr/local/bin/whymiss watch --beacon-api ${BEACON_API} --db ${STATE_DIRECTORY}/whymiss.db --validator-index ${VALIDATOR_INDICES} --metrics-addr ${METRICS_ADDR}
+Restart=on-failure
+RestartSec=5s
+
+# --- Identity (I-3: non-root, no added capabilities; I-2: no key access).
+# No system user to create or manage: systemd allocates an ephemeral
+# UID/GID for this unit's lifetime and owns StateDirectory below, which is
+# read-write even under ProtectSystem=strict.
+DynamicUser=yes
+StateDirectory=whymiss
+StateDirectoryMode=0700
+
+# --- Filesystem
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+
+# --- Privilege
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=true
+RemoveIPC=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+# --- Resource caps (I-12: bounded memory/disk/connections — must be safe
+# on a Raspberry Pi 5).
+MemoryMax=512M
+TasksMax=64
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

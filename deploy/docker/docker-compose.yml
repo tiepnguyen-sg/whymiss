@@ -1,0 +1,89 @@
+# whymiss + the Prometheus/Grafana pair its exporter (internal/exporter,
+# task 4.1) and dashboard (deploy/grafana/, task 4.2) were built for.
+#
+# Quickstart:
+#   cp .env.example .env   # then set BEACON_API, VALIDATOR_INDICES, GRAFANA_ADMIN_PASSWORD
+#   docker compose up -d
+#   open http://127.0.0.1:3000   (Grafana; only port this stack publishes)
+#
+# Every service runs hardened: non-root, no added Linux capabilities, no
+# privilege escalation, and a read-only root filesystem — only the state
+# each one actually needs to persist is a mounted (named) volume
+# (BUILD_PROMPT.md §12.3: "container runs as non-root with a read-only root
+# filesystem").
+
+services:
+  whymiss:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: whymiss:local
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 64
+    command:
+      - watch
+      - --beacon-api
+      - ${BEACON_API:?set BEACON_API in .env, e.g. http://127.0.0.1:5052}
+      - --db
+      - /data/whymiss.db
+      - --validator-index
+      - ${VALIDATOR_INDICES:?set VALIDATOR_INDICES in .env, comma-separated, e.g. 24,187}
+      - --metrics-addr
+      - :9101
+    volumes:
+      - whymiss-data:/data
+    networks: [whymiss]
+    # No ports published on purpose (I-4: no unsolicited egress/ingress).
+    # Prometheus reaches :9101 over the internal "whymiss" network only.
+    # Uncomment to scrape from the host directly instead:
+    # ports:
+    #   - "127.0.0.1:9101:9101"
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [whymiss]
+    depends_on: [whymiss]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    tmpfs:
+      - /tmp
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env — do not ship a default admin password}
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+      - ../grafana:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [whymiss]
+    depends_on: [prometheus]
+
+networks:
+  whymiss: {}
+
+volumes:
+  whymiss-data: {}
+  prometheus-data: {}
+  grafana-data: {}

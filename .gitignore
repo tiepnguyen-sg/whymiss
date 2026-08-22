@@ -34,6 +34,8 @@ coverage.*
 /whymiss.local.yaml
 .env
 .env.*
+!.env.example
+!**/.env.example
 *.log
 
 # Validator keys and secrets must never enter this repo (I-2). Mirrors the deny

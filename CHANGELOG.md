@@ -764,6 +764,35 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   (BUILD_PROMPT.md §12.3 DoD: "container runs as non-root with a read-only
   root filesystem"); `docker run --entrypoint /bin/sh` fails with "no such
   file or directory", confirming no shell is present.
+- Task 4.4, `deploy/docker/docker-compose.yml`: brings up `whymiss watch`
+  alongside the Prometheus/Grafana pair task 4.1's exporter and task 4.2's
+  dashboard were built for, one command. Every service runs non-root,
+  `cap_drop: [ALL]`, `no-new-privileges`, and a `read_only` root filesystem
+  — only what each one actually needs to persist is a named volume
+  (`whymiss-data`, `prometheus-data`, `grafana-data`). Required variables
+  (`BEACON_API`, `VALIDATOR_INDICES`, `GRAFANA_ADMIN_PASSWORD`) come from
+  `.env` via `${VAR:?...}`, so compose refuses to start with an unset one
+  rather than silently running with an empty flag or a default admin
+  password; `.env.example` documents them. No ports are published except
+  Grafana's `127.0.0.1:3000` — Prometheus reaches whymiss's `/metrics`
+  over the internal compose network only (I-4: no unsolicited
+  egress/ingress).
+- Task 4.4, `deploy/systemd/whymiss.service`: a hardened unit for running
+  the bare binary outside Docker. `DynamicUser=yes` + `StateDirectory=`
+  means no system user to create or manage — systemd allocates an
+  ephemeral, capability-less UID for the unit's lifetime and owns the
+  state directory itself, read-write even under `ProtectSystem=strict`.
+  Layers on `NoNewPrivileges`, an empty `CapabilityBoundingSet`,
+  `ProtectKernel*`/`ProtectControlGroups`/`ProtectClock`/`ProtectHostname`,
+  `RestrictAddressFamilies` (AF_INET/AF_INET6/AF_UNIX only),
+  `RestrictNamespaces`, `LockPersonality`, `MemoryDenyWriteExecute`,
+  `SystemCallFilter=@system-service` with `SystemCallArchitectures=native`,
+  and `MemoryMax=512M`/`TasksMax=64` (I-12: bounded, safe on a Raspberry
+  Pi 5). Configuration comes from `EnvironmentFile=/etc/whymiss/whymiss.env`
+  (`whymiss.env.example` provided) rather than being hardcoded in the unit.
+  Verified with `systemd-analyze verify` inside a `debian:bookworm`
+  container (matching the Raspberry Pi OS target) — no syntax or
+  sandboxing warnings.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`
