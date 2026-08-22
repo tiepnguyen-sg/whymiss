@@ -58,14 +58,13 @@ cosign verify-blob \
 cat whymiss_*_linux_amd64.tar.gz.sbom.json | jq '.packages[].name'
 ```
 
-SLSA provenance is not currently generated: this repository is private, and
-`slsa-framework/slsa-github-generator` refuses to run against a private repo by
-default because publishing provenance means publishing an entry — naming this repo
-— to Sigstore's public transparency log. A deliberate tradeoff, not an oversight;
-see `docs/adr/0010-release-supply-chain.md`. The cosign signature and SBOM above
-already cover "was this artifact tampered with" and "what's inside it" — provenance
-would add "which exact build produced it," which `.github/workflows/release.yml`
-re-enables if this repository ever goes public.
+Each release also carries a SLSA provenance attestation (`slsa-verifier` can check
+it against the archive) proving which workflow run, on which commit, produced that
+exact artifact — see `.github/workflows/release.yml`. `v0.1.0` shipped without one:
+this repository was private at the time, and publishing provenance means publishing
+a public transparency-log entry naming the repo — see
+`docs/adr/0010-release-supply-chain.md` for that tradeoff. Every release after the
+repo went public carries it.
 
 ## Usage
 
@@ -113,10 +112,6 @@ Read these before trusting whymiss on a live staking box.
 - **Attester duties only, right now.** `whymiss watch --validator-index` tracks and
   explains missed/late attestations continuously. Proposer duties are not yet wired
   into that automatic pipeline.
-- **A fully healthy duty can misreport.** A duty with nothing wrong at all
-  (`outcome: ok`) currently falls through to `local.unknown.no_rule_matched` instead of
-  a clean "OK" verdict — a known engine gap, not a false negative on a real problem, but
-  confusing if you're watching a healthy validator's log. Tracked in `CHANGELOG.md`.
 - **Small evaluation corpus.** RCA accuracy (`docs/evaluation.md`) is measured against 9
   labelled scenarios covering 6 of the taxonomy's causes, generated on a 2-node
   Lighthouse+Prysm / geth Kurtosis devnet — not yet validated against mainnet incidents

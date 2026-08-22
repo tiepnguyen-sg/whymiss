@@ -21,8 +21,8 @@ problem. Two starter rules:
     summary: "whymiss attributed a missed/degraded duty to {{ $labels.cause }}"
 
 # unknown.no_rule_matched on a *missed* or *degraded* duty means the taxonomy has a
-# gap and needs a look — but it also fires on every healthy duty right now (see the
-# known gap below), so don't alert on outcome="ok" until that's fixed.
+# gap and needs a look. The outcome filter is deliberate: a healthy duty carries no
+# cause at all (cause="none"), never this one, so it can't reach this alert.
 - alert: WhymissUnknownCause
   expr: sum(increase(whymiss_duty_verdicts_total{cause="local.unknown.no_rule_matched", outcome=~"missed|degraded"}[1h])) > 0
   labels: {severity: info}
@@ -36,11 +36,17 @@ and a "last hour" stat panel.
 
 ## Known-benign situations — not incidents
 
-**Every healthy duty shows up as `local.unknown.no_rule_matched`.**
-This is a known engine gap (`internal/rca`'s `Analyze` only short-circuits for
-`OutcomeNoDuty`, not `OutcomeOK` — see `CHANGELOG.md`'s Phase 4 entry), not a sign
-anything is actually wrong. Filter dashboards and alerts to `outcome=~"missed|degraded"`
-until it's fixed; don't page on `outcome="ok"` regardless of cause.
+**Healthy duties scrape as `cause="none"`, `outcome="ok"`.**
+A duty with nothing wrong carries no cause at all — the same shape `no_duty` uses,
+distinguished from it by the `outcome` label. This is the normal steady state for a
+healthy validator, not a gap. (Before the fix in `CHANGELOG.md`'s Unreleased section,
+these reported as `local.unknown.no_rule_matched` with "file an issue" remediation; if
+you see that on an `ok` outcome, you're running a pre-fix build.)
+
+**A real cause on an `ok` outcome is not a contradiction.** A validator client that
+was measurably slow but still beat the deadline reports `local.vc_slow` with
+`outcome: ok` — an early warning worth watching, not a miss. Alert on
+`outcome=~"missed|degraded"` for pages; treat local causes on `ok` as a trend signal.
 
 **`whymiss watch` running with neither `--validator-index` nor `--metrics-addr` set.**
 This is the default — a pure observation collector, no duty tracking, no exporter.

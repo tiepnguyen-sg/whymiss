@@ -147,6 +147,83 @@ func TestAnalyze_SafeFallbackOnInvalidDraft(t *testing.T) {
 	}
 }
 
+// healthyTimeline is a duty that went entirely right: the block arrived
+// well inside the budget, validation and signing both finished early, and
+// the attestation was included with inclusion_delay 1 (which is what makes
+// deriveOutcome return OutcomeOK with every reward flag earned).
+func healthyTimeline(t *testing.T) domain.Timeline {
+	t.Helper()
+	included, err := domain.NewObservation(domain.Observation{
+		Slot:   100,
+		Kind:   domain.ObsAttestationIncluded,
+		At:     slotStart.Add(14 * time.Second),
+		Source: domain.SourceBeaconAPI,
+		Attrs:  map[domain.AttrKey]string{domain.AttrInclusionDelay: "1"},
+	})
+	if err != nil {
+		t.Fatalf("NewObservation(attestation_included): %v", err)
+	}
+	return attesterTimeline(t,
+		mustEngineTestObs(t, domain.ObsBlockSeen, slotStart.Add(500*time.Millisecond)),
+		mustEngineTestObs(t, domain.ObsHeadUpdated, slotStart.Add(900*time.Millisecond)),
+		mustEngineTestObs(t, domain.ObsAttestationPublished, slotStart.Add(1500*time.Millisecond)),
+		included,
+	)
+}
+
+// TestAnalyze_HealthyDutyCarriesNoCause covers Analyze's branch in
+// isolation: the installed rule set matches only via an unconditional
+// catch-all, exactly as the real R-999 does, and the outcome is ok.
+func TestAnalyze_HealthyDutyCarriesNoCause(t *testing.T) {
+	withOrder(t, []rca.Rule{
+		fakeRule{id: "R-999-FAKE", match: true, verdict: &domain.Verdict{
+			Cause:      domain.CauseNoRuleMatched,
+			Confidence: domain.ConfidenceLow,
+			Evidence: []domain.Evidence{{
+				At: slotStart, Statement: "catch-all", Source: domain.SourceDerived,
+			}},
+		}},
+	})
+
+	v := rca.Analyze(healthyTimeline(t), rca.DefaultConfig())
+
+	if v.Outcome != domain.OutcomeOK {
+		t.Fatalf("Outcome = %q, want %q", v.Outcome, domain.OutcomeOK)
+	}
+	if v.Cause != "" {
+		t.Errorf("Cause = %q, want empty — a healthy duty has nothing to attribute", v.Cause)
+	}
+	if v.Confidence != domain.ConfidenceHigh {
+		t.Errorf("Confidence = %q, want high", v.Confidence)
+	}
+	if len(v.Evidence) == 0 {
+		t.Error("verdict must still carry evidence (I-7)")
+	}
+	if len(v.Remediation) != 0 {
+		t.Errorf("Remediation = %v, want none — there is nothing for the operator to fix", v.Remediation)
+	}
+	if v.Flags == nil || !v.Flags.AllEarned() {
+		t.Errorf("Flags = %+v, want every reward flag earned", v.Flags)
+	}
+}
+
+// TestAnalyze_HealthyDutyThroughRealRules is the end-to-end half: the real
+// rules.Order (not a fake) must actually reach that branch for a duty with
+// nothing wrong, rather than some rule matching first.
+func TestAnalyze_HealthyDutyThroughRealRules(t *testing.T) {
+	v := rca.Analyze(healthyTimeline(t), rca.DefaultConfig())
+
+	if v.Outcome != domain.OutcomeOK {
+		t.Fatalf("Outcome = %q, want %q", v.Outcome, domain.OutcomeOK)
+	}
+	if v.Cause != "" {
+		t.Errorf("Cause = %q, want empty — the real rule chain reported a healthy duty as a problem", v.Cause)
+	}
+	if v.IsUnknown() {
+		t.Error("a healthy duty must not be reported as an unknown/taxonomy gap")
+	}
+}
+
 func mustEngineTestObs(t *testing.T, kind domain.ObservationKind, at time.Time) domain.Observation {
 	t.Helper()
 	o, err := domain.NewObservation(domain.Observation{Slot: 100, Kind: kind, At: at, Source: domain.SourceBeaconAPI})

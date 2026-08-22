@@ -473,6 +473,52 @@ func TestNewVerdictRejectsSubCauseWithoutParentValidCause(t *testing.T) {
 	}
 }
 
+// TestVerdictValidateEmptyCauseByOutcome pins down which outcomes may carry
+// no cause at all. no_duty must (nothing was owed) and ok may (nothing went
+// wrong to attribute) — but ok is permissive, not mandatory: a rule can
+// still legitimately match on a duty that ended up ok, e.g. a validator
+// client that was measurably slow yet beat the deadline.
+func TestVerdictValidateEmptyCauseByOutcome(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		outcome  domain.Outcome
+		cause    domain.CauseID
+		subCause domain.CauseID
+		flags    *domain.RewardFlags
+		wantErr  bool
+	}{
+		{"ok without a cause", domain.OutcomeOK, "", "", nil, false},
+		{"ok with a real cause", domain.OutcomeOK, domain.CauseVCSlow, "", nil, false},
+		{"ok without a cause but with a sub-cause", domain.OutcomeOK, "", domain.CauseELSlowPruning, nil, true},
+		{"degraded without a cause", domain.OutcomeDegraded, "", "", &domain.RewardFlags{TimelySource: true}, true},
+		{"missed without a cause", domain.OutcomeMissed, "", "", nil, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			v := validVerdict()
+			v.Outcome = tc.outcome
+			v.Cause = tc.cause
+			v.SubCause = tc.subCause
+			v.Flags = tc.flags
+
+			// NewVerdict, not Validate: it stamps TaxonomyVersion, which
+			// validVerdict deliberately leaves empty, so the only error
+			// this can surface is the cause rule under test.
+			_, err := domain.NewVerdict(v)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("NewVerdict() error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.wantErr && err != nil && !errors.Is(err, domain.ErrInvalidCause) {
+				t.Errorf("NewVerdict() error = %v, want %v", err, domain.ErrInvalidCause)
+			}
+		})
+	}
+}
+
 func TestVerdictValidateRejectsInvalidOutcome(t *testing.T) {
 	t.Parallel()
 

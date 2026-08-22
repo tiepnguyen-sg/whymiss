@@ -42,6 +42,11 @@ func headline(v domain.Verdict) string {
 	if v.Outcome == domain.OutcomeNoDuty {
 		return "no duty"
 	}
+	// A clean pass carries no cause (see rca.Analyze) — without this the
+	// headline would render as a bare "Slot N — ".
+	if v.ReportedCause() == "" {
+		return "healthy"
+	}
 	return string(v.ReportedCause())
 }
 

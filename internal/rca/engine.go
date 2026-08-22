@@ -50,6 +50,11 @@ func SetOrder(rs []Rule) {
 // fallback after the loop exists only to satisfy I-15 (no panics outside
 // main) if that invariant is ever broken by a rule-ordering bug, not
 // because it is expected to run.
+//
+// Two outcomes carry no cause at all: no_duty (nothing was owed) and a
+// clean ok (nothing went wrong for any rule to attribute) — see the
+// branches below for why the second is decided after the rule loop, not
+// before it.
 func Analyze(tl domain.Timeline, cfg Config) domain.Verdict {
 	outcome, flags := deriveOutcome(tl)
 
@@ -65,9 +70,33 @@ func Analyze(tl domain.Timeline, cfg Config) domain.Verdict {
 	}
 
 	for _, r := range order {
-		if draft, ok := r.Evaluate(tl, cfg); ok {
-			return finish(tl, *draft, outcome, flags)
+		draft, ok := r.Evaluate(tl, cfg)
+		if !ok {
+			continue
 		}
+		// Only the unconditional catch-all matched (CauseNoRuleMatched is
+		// produced nowhere else), and nothing actually went wrong. That is a
+		// clean pass, not the taxonomy gap R-999 reports it as — telling an
+		// operator their healthy validator is a project bug is exactly the
+		// kind of false signal I-8 exists to prevent.
+		//
+		// This check deliberately runs after the loop rather than
+		// short-circuiting before it, the way OutcomeNoDuty does above: no
+		// rule inspects Outcome, so a real rule can still match on a duty
+		// that ended up ok (a VC that was measurably slow yet beat the
+		// deadline — test/corpus/vc-slow-cpu is exactly that). Skipping the
+		// loop would silently discard those.
+		if outcome == domain.OutcomeOK && draft.Cause == domain.CauseNoRuleMatched {
+			return finish(tl, domain.Verdict{
+				Confidence: domain.ConfidenceHigh,
+				Evidence: []domain.Evidence{{
+					At:        tl.SlotStart,
+					Statement: "duty fulfilled with every reward flag earned, and no rule found a problem",
+					Source:    domain.SourceDerived,
+				}},
+			}, outcome, flags)
+		}
+		return finish(tl, *draft, outcome, flags)
 	}
 
 	// Defensive-only path — see the doc comment above.

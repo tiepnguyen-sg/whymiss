@@ -427,6 +427,17 @@ func (v Verdict) validateCause() error {
 		}
 		return nil
 	}
+	// An empty cause is also legal for OutcomeOK: the duty was fulfilled and
+	// no rule found anything wrong, so there is nothing to attribute. Unlike
+	// no_duty this is permitted, not required — a rule may legitimately match
+	// on a duty that still ended up ok (a validator that was measurably slow
+	// yet beat the deadline), and erasing that signal would hide it.
+	if v.Outcome == OutcomeOK && v.Cause == "" {
+		if v.SubCause != "" {
+			return fmt.Errorf("%w: sub-cause %q without a cause", ErrInvalidCause, v.SubCause)
+		}
+		return nil
+	}
 	if !v.Cause.Valid() {
 		return fmt.Errorf("%w: %q", ErrInvalidCause, v.Cause)
 	}

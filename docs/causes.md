@@ -180,6 +180,17 @@ R-300 and R-310, and only become a terminal cause at R-600 when no higher-layer 
 matched. This avoids reporting `local.host.disk_io` when the actionable fact is
 `local.el_slow.pruning`.
 
+**R-999 reaching an `ok` outcome is a clean pass, not a taxonomy gap.** The
+catch-all's `unknown.no_rule_matched` reading in the table above holds for
+`degraded` and `missed` — where something demonstrably went wrong and no rule
+explained it. When the outcome is `ok`, nothing went wrong for a rule to attribute,
+so the verdict carries **no cause at all** (the same "nothing to attribute" shape
+`no_duty` uses) at `high` confidence, rather than telling an operator their healthy
+validator is a project bug. Note that a rule *can* still legitimately match on an
+`ok` duty — no rule inspects `Outcome`, and a validator client that was measurably
+slow yet beat the deadline should still say so (`test/corpus/vc-slow-cpu`). Only the
+catch-all is reinterpreted this way; a real cause on an `ok` duty is preserved.
+
 ---
 
 ## 7. Cause reference

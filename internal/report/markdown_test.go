@@ -78,6 +78,31 @@ func TestMarkdown_NoDuty(t *testing.T) {
 	}
 }
 
+// TestMarkdown_HealthyDuty covers the verdict rca.Analyze produces for a
+// duty that went entirely right: outcome ok, no cause at all. Without a
+// headline for that case the report would open with a bare "Slot 100 — ".
+func TestMarkdown_HealthyDuty(t *testing.T) {
+	v := verdictFor(t, domain.Verdict{
+		Slot:       100,
+		Outcome:    domain.OutcomeOK,
+		Confidence: domain.ConfidenceHigh,
+		Flags:      &domain.RewardFlags{TimelySource: true, TimelyTarget: true, TimelyHead: true},
+		Evidence: []domain.Evidence{{
+			At:        time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC),
+			Statement: "duty fulfilled with every reward flag earned, and no rule found a problem",
+			Source:    domain.SourceDerived,
+		}},
+	})
+
+	got := report.Markdown(v)
+	if !strings.Contains(got, "# Slot 100 — healthy\n") {
+		t.Errorf("Markdown output missing healthy headline\n---\n%s", got)
+	}
+	if strings.Contains(got, "## Remediation") {
+		t.Error("Markdown output should not render a Remediation section for a healthy duty")
+	}
+}
+
 func TestMarkdown_NoFlagsUsesBareOutcome(t *testing.T) {
 	v := verdictFor(t, domain.Verdict{
 		Slot:       100,
