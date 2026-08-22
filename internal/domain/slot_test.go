@@ -3,7 +3,7 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 func TestSlotEpoch(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/report"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/report"
 )
 
 func TestJSON_RoundTrips(t *testing.T) {

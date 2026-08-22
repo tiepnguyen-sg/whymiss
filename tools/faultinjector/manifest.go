@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 
 	"gopkg.in/yaml.v3"
 )

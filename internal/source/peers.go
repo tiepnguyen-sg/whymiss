@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/source/promscrape"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/source/promscrape"
 )
 
 // SamplePeerCount scrapes client's Prometheus endpoint for its connected

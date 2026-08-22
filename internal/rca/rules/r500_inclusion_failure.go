@@ -3,8 +3,8 @@ package rules
 import (
 	"fmt"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // InclusionFailure is R-500: the attestation was published before the

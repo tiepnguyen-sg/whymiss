@@ -3,7 +3,7 @@ package rca
 import (
 	"strconv"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // deriveOutcome computes what actually happened to the duty from tl's

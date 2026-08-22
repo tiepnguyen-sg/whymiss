@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // Markdown renders v as a self-contained post-mortem readable pasted

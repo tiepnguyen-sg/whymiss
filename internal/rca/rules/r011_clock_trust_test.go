@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 func obsWithOffset(t *testing.T, at time.Time, clockOffset time.Duration) domain.Observation {

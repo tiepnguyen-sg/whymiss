@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
-	"github.com/CHANGEME/whymiss/internal/timeline"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 )
 
 // TestAnalyze_Deterministic re-analyzes the same real timeline 1000 times

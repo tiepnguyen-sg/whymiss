@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/store"
-	"github.com/CHANGEME/whymiss/internal/timeline"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/store"
+	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 )
 
 // GetTimeline opens dbPath read-only-in-spirit (store.Open still runs

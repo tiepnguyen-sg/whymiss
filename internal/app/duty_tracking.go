@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/exporter"
-	"github.com/CHANGEME/whymiss/internal/source/beaconapi"
-	"github.com/CHANGEME/whymiss/internal/store"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/exporter"
+	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
+	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
 
 // watchDeadlineSlots and inclusionWindowSlots mirror

@@ -1,6 +1,7 @@
-// The module path carries a placeholder. STRUCTURE.md's init step rewrites it:
-//   grep -rl 'CHANGEME' . | xargs sed -i 's|CHANGEME|<your-org>|g'
-module github.com/CHANGEME/whymiss
+// Renamed from the CHANGEME placeholder ahead of the v0.1.0 tag (task 4.10)
+// via STRUCTURE.md's documented init step:
+//   grep -rl 'CHANGEME' . | xargs sed -i 's|CHANGEME|tiepnguyen-sg|g'
+module github.com/tiepnguyen-sg/whymiss
 
 // BUILD_PROMPT §3 locks the language at Go 1.23+. CI installs the toolchain from
 // this line (.github/workflows/ci.yml → setup-go go-version-file: go.mod), so it

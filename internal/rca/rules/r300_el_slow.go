@@ -3,8 +3,8 @@ package rules
 import (
 	"fmt"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // ELSlow is R-300: the execution client responded slowly to Engine API

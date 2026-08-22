@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // propagationDominantTL builds a timeline where block_seen (at blockSeenAt)

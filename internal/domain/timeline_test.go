@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // obs builds a valid observation for the timeline tests. Offsets are expressed

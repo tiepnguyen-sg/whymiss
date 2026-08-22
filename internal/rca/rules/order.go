@@ -1,6 +1,6 @@
 package rules
 
-import "github.com/CHANGEME/whymiss/internal/rca"
+import "github.com/tiepnguyen-sg/whymiss/internal/rca"
 
 // Order is the ordered rule sequence, first match wins (ADR-0003,
 // docs/causes.md §6). R-001 (duty guard) is not a Rule here — it's handled

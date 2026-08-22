@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // LoadObservations decodes path (test/corpus/<id>/observations.jsonl: one

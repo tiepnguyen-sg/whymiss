@@ -1,7 +1,7 @@
 # whymiss — the single interface every agent and human uses.
 # If a workflow is not here, add it here. Do not run ad-hoc shell.
 
-MODULE  := github.com/CHANGEME/whymiss
+MODULE  := github.com/tiepnguyen-sg/whymiss
 BIN     := whymiss
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GOFLAGS := -trimpath

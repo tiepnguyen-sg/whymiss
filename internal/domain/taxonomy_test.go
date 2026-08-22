@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // causesDoc is docs/causes.md's location relative to this package. ADR-0005

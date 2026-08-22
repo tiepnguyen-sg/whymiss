@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // TestParseEvent_Head is captured against a real devnet's SSE event stream

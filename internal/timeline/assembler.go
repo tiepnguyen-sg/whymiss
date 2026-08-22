@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // Assembler collects observations, samples, and duties as adapters produce

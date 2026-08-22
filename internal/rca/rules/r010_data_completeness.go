@@ -3,8 +3,8 @@
 package rules
 
 import (
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // DataCompleteness is R-010: the timeline carries attestation_included with

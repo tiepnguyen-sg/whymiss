@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // streamTopics are the SSE topics this package subscribes to. "head" and

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // at is a fixed instant used across the domain tests. A constant rather than

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
-	_ "github.com/CHANGEME/whymiss/internal/rca/rules" // registers rca.Order via init
-	"github.com/CHANGEME/whymiss/internal/store"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
+	_ "github.com/tiepnguyen-sg/whymiss/internal/rca/rules" // registers rca.Order via init
+	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
 
 func TestExplain(t *testing.T) {

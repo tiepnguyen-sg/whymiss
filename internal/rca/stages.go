@@ -3,7 +3,7 @@ package rca
 import (
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // Stages is the latency-budget decomposition docs/causes.md §3.2 defines:

@@ -1,8 +1,8 @@
 package rules
 
 import (
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // VCDisconnected is R-400: the validator client could not reach the beacon

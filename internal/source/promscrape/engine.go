@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // requestTimeout bounds every scrape this package makes (I-5).

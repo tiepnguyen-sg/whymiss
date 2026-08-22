@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // Reuses promscrape's own real captured testdata rather than duplicating

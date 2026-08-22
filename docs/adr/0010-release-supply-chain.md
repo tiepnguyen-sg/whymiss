@@ -30,7 +30,7 @@ decision from CI's cross-compile targets), archives each with
 (`artifacts: archive`) and produces one SPDX-2.3 JSON document per
 archive — verified locally: `goreleaser release --snapshot --clean
 --skip=sign,publish` produced real,
-loadable `*.sbom.json` files listing `github.com/CHANGEME/whymiss` and its
+loadable `*.sbom.json` files listing `github.com/tiepnguyen-sg/whymiss` and its
 dependency graph.
 
 **Signing**: **cosign, keyless** (Sigstore, GitHub Actions OIDC identity)

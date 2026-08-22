@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // MetricCLPeerCount is the consensus client's connected-peer count,

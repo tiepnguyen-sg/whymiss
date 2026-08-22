@@ -73,9 +73,9 @@ signs:
     output: true
 
 # release.github.owner/name deliberately left unset: goreleaser infers them
-# from the git remote. go.mod's module path is still the CHANGEME
-# placeholder STRUCTURE.md's init step rewrites (see go.mod's own comment)
-# — hardcoding a real owner/repo here ahead of that rename would drift.
+# from the git remote rather than a hardcoded value that could drift from
+# it — go.mod's module path (github.com/tiepnguyen-sg/whymiss) already
+# matches the remote as of the CHANGEME rename ahead of task 4.10's tag.
 release:
   prerelease: auto
   mode: replace

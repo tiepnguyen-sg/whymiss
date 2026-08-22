@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/CHANGEME/whymiss/internal/source"
+	"github.com/tiepnguyen-sg/whymiss/internal/source"
 )
 
 // SamplePeerCount scrapes target's own Prometheus endpoint for its connected

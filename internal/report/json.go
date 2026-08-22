@@ -3,7 +3,7 @@ package report
 import (
 	"encoding/json"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // JSON renders v as indented JSON, for machine consumption or a `whymiss

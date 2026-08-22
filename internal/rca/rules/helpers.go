@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // postPropagationDominant reports whether the "post-propagation" span

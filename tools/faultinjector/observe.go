@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // Observer watches one validator's duty through a beacon node's standard REST

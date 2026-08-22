@@ -3,7 +3,7 @@ package rules
 import (
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 func TestCatchAll(t *testing.T) {

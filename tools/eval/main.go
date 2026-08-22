@@ -18,10 +18,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
-	_ "github.com/CHANGEME/whymiss/internal/rca/rules" // registers rca.Order via init
-	"github.com/CHANGEME/whymiss/internal/timeline"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
+	_ "github.com/tiepnguyen-sg/whymiss/internal/rca/rules" // registers rca.Order via init
+	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 )
 
 // manifest mirrors tools/corpusctl's own type — see its doc comment for why

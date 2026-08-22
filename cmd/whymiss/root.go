@@ -6,10 +6,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/CHANGEME/whymiss/internal/app"
-	"github.com/CHANGEME/whymiss/internal/domain"
-	_ "github.com/CHANGEME/whymiss/internal/rca/rules" // registers rca.Order via init
-	"github.com/CHANGEME/whymiss/internal/report"
+	"github.com/tiepnguyen-sg/whymiss/internal/app"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	_ "github.com/tiepnguyen-sg/whymiss/internal/rca/rules" // registers rca.Order via init
+	"github.com/tiepnguyen-sg/whymiss/internal/report"
 )
 
 // globalFlags are shared by every subcommand that talks to a beacon node or

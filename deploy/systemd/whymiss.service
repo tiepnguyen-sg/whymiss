@@ -1,6 +1,6 @@
 [Unit]
 Description=whymiss — validator duty miss/late diagnosis
-Documentation=https://github.com/CHANGEME/whymiss
+Documentation=https://github.com/tiepnguyen-sg/whymiss
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=300

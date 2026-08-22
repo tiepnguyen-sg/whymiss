@@ -11,6 +11,13 @@ update this file in the same commit. CI and the pre-commit hook both enforce it.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-22
+
+Everything below through "Phase 4" is this release — the phases were the
+working structure while it was all still unreleased; this heading is where
+that becomes a real, tagged version (BUILD_PROMPT §12: "a release an
+operator can trust on a live staking box").
+
 ### Added
 
 - Repository scaffold: canonical directory layout per BUILD_PROMPT §4, Apache-2.0
@@ -951,6 +958,30 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   toolchain (`go install golang.org/dl/go1.25.14@latest && go1.25.14
   download`) and ran `govulncheck`, then the full `make ci`, under that
   exact version — "No vulnerabilities found," `CI PASSED`.
+- Task 4.10 prerequisite: renamed the module path from the `CHANGEME`
+  placeholder to `github.com/tiepnguyen-sg/whymiss`, via `STRUCTURE.md`'s
+  own documented init step (`grep -rl 'CHANGEME' . | xargs sed -i
+  's|CHANGEME|tiepnguyen-sg|g'`), across ~90 files (every Go import, plus
+  `.golangci.yml`'s depguard rules, `.goreleaser.yaml`, `Makefile`'s
+  `MODULE`, `SECURITY.md`'s advisory link, and the systemd unit's
+  `Documentation=` URL). Necessary before a real `v0.1.0` tag: a module
+  still claiming to be `github.com/CHANGEME/whymiss` would make `go
+  install github.com/tiepnguyen-sg/whymiss/cmd/whymiss@v0.1.0` fail for
+  anyone who actually tried it, since the module's own declared identity
+  wouldn't match where it's hosted. Two spots the mechanical replace would
+  have corrupted were hand-fixed instead: `go.mod`'s own top comment
+  (which quoted the rewrite command as a live instruction — now reads as
+  the historical record of what was done) and `.goreleaser.yaml`'s comment
+  explaining why `release.github` is left unset (was reasoning about the
+  placeholder still being unrenamed; that's no longer true). Left alone,
+  deliberately: `CODE_OF_CONDUCT.md`'s `CHANGEME-conduct-contact` (an
+  unrelated, pre-existing placeholder for a real reporting contact — not
+  a module-path occurrence, not this task's gap to fill by guessing one)
+  and `STRUCTURE.md`'s "Initialise" section (generic bootstrap
+  instructions for starting a *new* project from this same scaffold,
+  correctly left as `<your-org>` template text). Verified: `go build
+  ./...` and the full `make ci` pass under the new import path;
+  `goreleaser check` and `actionlint` still pass.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`

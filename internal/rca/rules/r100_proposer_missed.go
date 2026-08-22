@@ -1,8 +1,8 @@
 package rules
 
 import (
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // ProposerMissed is R-100: no block_seen observation exists for this slot.

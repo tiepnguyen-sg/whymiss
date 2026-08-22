@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/exporter"
-	"github.com/CHANGEME/whymiss/internal/source"
-	"github.com/CHANGEME/whymiss/internal/source/beaconapi"
-	"github.com/CHANGEME/whymiss/internal/source/hostmetrics"
-	"github.com/CHANGEME/whymiss/internal/store"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/exporter"
+	"github.com/tiepnguyen-sg/whymiss/internal/source"
+	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
+	"github.com/tiepnguyen-sg/whymiss/internal/source/hostmetrics"
+	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
 
 // WatchConfig is whymiss watch's runtime configuration.

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/CHANGEME/whymiss/internal/app"
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/app"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 func newTimelineCmd(flags *globalFlags) *cobra.Command {

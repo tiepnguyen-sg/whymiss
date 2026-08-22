@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
-	"github.com/CHANGEME/whymiss/internal/rca/rules"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca/rules"
 )
 
 var slotStart = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)

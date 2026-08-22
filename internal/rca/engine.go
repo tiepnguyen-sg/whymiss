@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // EngineVersion is stamped into every Verdict this build produces (I-10) —

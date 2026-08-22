@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // poolAttestation is the subset of the attestation-pool response this

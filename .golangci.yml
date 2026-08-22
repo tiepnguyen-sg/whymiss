@@ -51,7 +51,7 @@ linters:
         #
         # No `deny` list here on purpose: depguard v2 evaluates deny before
         # allow, so a broad `deny: pkg: "github.com"` would also catch this
-        # module's own import path (github.com/CHANGEME/whymiss/...) and
+        # module's own import path (github.com/tiepnguyen-sg/whymiss/...) and
         # silently block internal/domain even though it's in `allow` —
         # verified by reproducing it (internal/domain's import was rejected
         # with both listed) and confirming the fix (removing `deny` still
@@ -73,8 +73,8 @@ linters:
             - "!**/internal/rca/rules/*_test.go"
           allow:
             - $gostd
-            - github.com/CHANGEME/whymiss/internal/domain
-            - github.com/CHANGEME/whymiss/internal/rca
+            - github.com/tiepnguyen-sg/whymiss/internal/domain
+            - github.com/tiepnguyen-sg/whymiss/internal/rca
 
         # I-11: only adapters may reach the network or the OS.
         adapters-only:
@@ -144,4 +144,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/CHANGEME/whymiss
+        - github.com/tiepnguyen-sg/whymiss

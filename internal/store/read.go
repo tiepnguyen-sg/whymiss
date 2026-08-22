@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 // ObservationsForSlot returns every observation recorded for slot, sorted

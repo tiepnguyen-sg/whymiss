@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/exporter"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/exporter"
 )
 
 func TestRecord_LabelsCauseAndOutcome(t *testing.T) {

@@ -27,7 +27,7 @@ security fixes.
 **Do not open a public issue for a security report.**
 
 Use GitHub's private vulnerability reporting:
-<https://github.com/CHANGEME/whymiss/security/advisories/new>
+<https://github.com/tiepnguyen-sg/whymiss/security/advisories/new>
 
 Please include the affected version, a reproduction, and the impact you believe it
 has. If the finding is that one of the guarantees above does not hold, say which one

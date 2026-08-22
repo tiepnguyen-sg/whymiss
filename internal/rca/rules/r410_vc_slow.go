@@ -3,8 +3,8 @@ package rules
 import (
 	"fmt"
 
-	"github.com/CHANGEME/whymiss/internal/domain"
-	"github.com/CHANGEME/whymiss/internal/rca"
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
 // VCSlow is R-410: the validator client received a valid head in time but
