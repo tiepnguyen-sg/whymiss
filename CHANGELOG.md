@@ -747,6 +747,23 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   Docker Compose stack scraping a `/metrics` endpoint seeded from
   `test/corpus/`: the dashboard auto-provisioned and all four panels
   rendered real data.
+- Task 4.3, `deploy/docker/Dockerfile`: multi-stage build — cross-compiles a
+  static (`CGO_ENABLED=0`) binary on `golang:1.25-bookworm`, then ships it
+  on `gcr.io/distroless/static-debian12:nonroot`, which bakes in the
+  unprivileged `65532:65532` user and carries no shell or package manager
+  (BUILD_PROMPT.md task 4.3: "distroless, non-root, read-only rootfs, no
+  shell"). `WORKDIR /data` + `VOLUME ["/data"]` gives the one writable path
+  `--db`'s relative default (`whymiss.db`) needs; everywhere else can stay
+  read-only. `--platform=$BUILDPLATFORM` on the builder stage means
+  `docker buildx build --platform linux/amd64,linux/arm64` cross-compiles
+  natively (no QEMU), satisfying I-13's multi-arch requirement. Verified
+  locally: `docker buildx build --platform linux/amd64,linux/arm64` builds
+  both arches; `docker run --read-only --user 65532:65532 -v
+  <hostdir>:/data whymiss timeline 1` creates and writes `whymiss.db` under
+  the mounted volume while the rest of the rootfs stays read-only
+  (BUILD_PROMPT.md §12.3 DoD: "container runs as non-root with a read-only
+  root filesystem"); `docker run --entrypoint /bin/sh` fails with "no such
+  file or directory", confirming no shell is present.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`

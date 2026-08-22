@@ -1,0 +1,12 @@
+.git/
+bin/
+dist/
+*.db
+*.db-shm
+*.db-wal
+docs/
+test/
+tools/
+.claude/
+.codex-log/
+*.md
