@@ -793,6 +793,17 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   Verified with `systemd-analyze verify` inside a `debian:bookworm`
   container (matching the Raspberry Pi OS target) — no syntax or
   sandboxing warnings.
+- Task 4.5, `README.md`: a Quickstart section (Docker Compose, from-source,
+  and a pointer to the systemd unit), and a **Limitations** section stating
+  plainly what whymiss does not yet do — attester-duty-only automatic
+  tracking, the `local.unknown.no_rule_matched` misreport on fully healthy
+  duties (cross-referenced to the gap noted below), the 9-scenario
+  evaluation corpus's actual coverage, the closed-taxonomy/`unknown`
+  preference (I-8), the optional host-metrics collector some causes need,
+  and no ePBS support yet. The sample report was re-verified for this task
+  by replaying `test/corpus/host-memory-pressure` through the exact
+  `app.Explain` + `report.Markdown` path the CLI calls — it is real,
+  unedited output, not hand-written prose that merely looks like output.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`
