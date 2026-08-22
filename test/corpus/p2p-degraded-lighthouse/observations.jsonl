@@ -1,5 +1,6 @@
-{"slot":58,"kind":"duty_assigned","at":"2026-08-20T09:00:05.58113411Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
-{"slot":58,"kind":"slot_start","at":"2026-08-20T09:11:14Z","clock_offset":0,"source":"derived"}
-{"slot":58,"kind":"block_seen","at":"2026-08-20T09:11:32.187836623Z","clock_offset":0,"source":"beaconapi","attrs":{"proposer_index":"31"}}
-{"slot":58,"kind":"attestation_published","at":"2026-08-20T09:11:32.188874313Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
-{"slot":58,"kind":"attestation_included","at":"2026-08-20T09:11:32.189839513Z","clock_offset":0,"source":"beaconapi","attrs":{"inclusion_delay":"1","validator_index":"24"}}
+{"slot":437,"kind":"duty_assigned","at":"2026-08-22T10:12:27.61627043Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"1"}}
+{"slot":437,"kind":"slot_start","at":"2026-08-22T10:18:25Z","clock_offset":0,"source":"derived"}
+{"slot":437,"kind":"block_seen","at":"2026-08-22T10:18:35.687932472Z","clock_offset":0,"source":"beaconapi","attrs":{"proposer_index":"40"}}
+{"slot":437,"kind":"attestation_published","at":"2026-08-22T10:18:36.189747437Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"1"}}
+{"slot":437,"kind":"peer_count_sampled","at":"2026-08-22T10:18:48.610850805Z","clock_offset":0,"source":"promscrape","attrs":{"peer_count":"0"}}
+{"slot":437,"kind":"attestation_included","at":"2026-08-22T10:18:49.617102935Z","clock_offset":0,"source":"beaconapi","attrs":{"inclusion_delay":"2","validator_index":"1"}}

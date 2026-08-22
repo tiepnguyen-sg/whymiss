@@ -1,14 +1,38 @@
 id: p2p-degraded-lighthouse
 description: >
-  200ms of added latency (tc netem) on the Lighthouse consensus client's network
+  3s of added latency (tc netem) on the Lighthouse consensus client's network
   path for the full duty window, simulating degraded peering / propagation.
+  (5s was tried first and broke faultinjector's own HTTP polling — netem
+  delays the veth bidirectionally, so a round trip can see roughly 2x the
+  configured delay, and 2x5s exceeded the 10s HTTP client timeout in
+  observe.go. 3s keeps round trips comfortably under that while still
+  pushing block arrival past the ~4s attestation deadline once combined
+  with this devnet's ~1s propagation baseline.)
+  require_proposer_validators forces the proposer to be the Prysm-side
+  validator, so the watched Lighthouse validator's block_seen genuinely
+  depends on cross-node gossip over the throttled link — without this, a
+  slot where Lighthouse happens to propose its own block would see no
+  delay at all, since a locally-produced block never traverses the
+  network path this fault degrades (a confound discovered when the
+  original 200ms/no-proposer-constraint version of this scenario, whose
+  timing was generated before RunScenario's poller-start-timing fix, was
+  rerun post-fix and came back with zero measurable effect either way).
+  Also samples the faulted node's own connected-peer count, which R-200
+  reads as corroboration. On this two-node devnet that count is 1 either
+  way — a structural property of the topology, not something this fault
+  produces — but it is a real measured value, and one below the
+  mainnet-scale peer_count_min this build ships with, so it exercises
+  R-200's corroborated (high-confidence) branch with genuine data rather
+  than leaving that branch unreached by any real scenario.
 target: cl-1-lighthouse-geth
-validator_index: 24
-duration: 20s
+validator_candidates: [0, 31]
+duration: 25s
+require_proposer_validators: [32, 63]
+peer_count_target: cl-1-lighthouse-geth
 fault:
   kind: netem
   netem:
-    delay: 200ms
+    delay: 3s
 expect:
   cause: local.p2p_degraded
-  confidence: medium
+  confidence: high

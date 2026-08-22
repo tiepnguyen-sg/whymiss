@@ -5,7 +5,7 @@ A clean attempt at the same fault as vc-frozen-prysm (which landed on network.pr
 
 ## What was broken
 
-Fault: pause applied to vc-2-geth-prysm for 20s, around slot 462.
+Fault: pause applied to vc-2-geth-prysm for 20s, around slot 1375.
 
 ## Recorded outcome
 

@@ -32,8 +32,30 @@ type Scenario struct {
 	Target string `yaml:"target"`
 
 	// ValidatorIndex is whose duty is being watched. The scenario targets a
-	// validator known to be keyed to Target's validator client.
+	// validator known to be keyed to Target's validator client. Ignored when
+	// ValidatorCandidates is set.
 	ValidatorIndex uint64 `yaml:"validator_index"`
+
+	// ValidatorCandidates, when set, is an inclusive [min, max] range of
+	// validator indices any one of which is an acceptable subject — normally
+	// the whole validator set keyed to Target's validator client, since a
+	// fault applied to that client affects all of them identically.
+	//
+	// This exists because attester duty is assigned once per epoch per
+	// validator: with a single fixed ValidatorIndex there is exactly one
+	// candidate slot per epoch, so a scenario that also constrains the
+	// proposer (RequireProposerValidators) only has a ~50% chance of a
+	// usable slot on this two-node devnet and fails outright otherwise,
+	// leaving "run it again next epoch" as the only recourse (observed: five
+	// consecutive misses). Given a range, findCleanDuty asks for every
+	// candidate's duty in one request and picks whichever one lands on a
+	// slot that satisfies the constraint, which makes a usable slot
+	// essentially certain on the first attempt.
+	//
+	// The validator actually chosen is what gets recorded in the manifest
+	// and observations, so a scenario generated this way is still a
+	// concrete, reproducible record of one real validator's duty.
+	ValidatorCandidates *[2]uint64 `yaml:"validator_candidates,omitempty"`
 
 	// Fault names which mechanism to apply and its parameters. Exactly one of
 	// the typed fields on Fault is set, matching Fault.Kind.
@@ -77,6 +99,14 @@ type Scenario struct {
 	// this to the execution client actually under load — usually the same
 	// participant as Target for an el_slow-focused scenario.
 	MetricsTarget string `yaml:"metrics_target,omitempty"`
+
+	// PeerCountTarget, when set, names a Kurtosis consensus-client service
+	// (e.g. "cl-1-lighthouse-geth") whose peer count is scraped after the
+	// observation window and recorded as a peer_count_sampled observation.
+	// A separate field from Target (mirroring MetricsTarget's shape) since
+	// the duty being watched may live on the VC while the CL whose peering
+	// matters is a different service name.
+	PeerCountTarget string `yaml:"peer_count_target,omitempty"`
 
 	// Expect is what docs/causes.md predicts this fault produces. corpusctl
 	// checks it against the taxonomy; it is not checked against the engine here
@@ -149,6 +179,9 @@ func (s Scenario) Validate() error {
 	}
 	if s.AvoidProposerValidators != nil && s.RequireProposerValidators != nil {
 		return fmt.Errorf("avoid_proposer_validators and require_proposer_validators are mutually exclusive")
+	}
+	if s.ValidatorCandidates != nil && s.ValidatorCandidates[0] > s.ValidatorCandidates[1] {
+		return fmt.Errorf("validator_candidates range %v is inverted", *s.ValidatorCandidates)
 	}
 	return s.Fault.Validate()
 }

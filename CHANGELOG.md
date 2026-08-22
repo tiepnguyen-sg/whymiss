@@ -542,3 +542,161 @@ this pass.
   since `head_updated` — the observation the real Signing/Validation split
   depends on — is never populated by any collector in this build
   (`ComputeStages`'s doc comment covers the degraded fallback this forces).
+
+### Task 3.10 — corpus correctness audit and real peer-count corroboration
+
+Started as "add one real peer-count-corroborated scenario" and grew into a
+correctness audit once generating it surfaced a genuine, dangerous gap.
+
+- **A real false-`high` bug, found via a live devnet run, not a
+  hypothetical.** Generating a fresh `p2p-degraded-prysm` scenario
+  produced a severely propagation-degraded slot (`block_seen` at +13.6s,
+  deadline ~4s) where Prysm's validator client gave up on the duty
+  entirely rather than publishing late — no `attestation_published`, no
+  `attestation_included`. R-400 (`local.vc_disconnected`) only ever
+  checked *whether* those observations existed, never *when*
+  `block_seen` happened, so this shape hit R-400 at `ConfidenceHigh`
+  ("directly observed, not inferred") for a problem that was actually
+  propagation, not VC-to-BN connectivity — exactly the false-confident-
+  verdict failure mode I-8 and Phase 3's own DoD treat as most serious.
+  Fixed: R-400 now defers (returns no match) when `block_seen` exists and
+  is not before the attestation deadline, leaving that shape to R-200. R-200's
+  matching first-line defer to R-400 (added earlier this phase for the
+  `vc-frozen-*` shape) is now redundant with R-400's own narrower check and
+  was removed — R-100 already rules out "no block_seen at all" ahead of
+  R-200 in the order, so R-200 never needed its own copy of that logic.
+- **Discovered while chasing the above: three already-committed
+  `vc-frozen-*` scenarios had stale timing evidence.** All three fault
+  the *VC* container only (`pause`), never the CL, so `block_seen` — read
+  via the CL's own beacon API — should be fast (~1s) regardless. All
+  three instead showed ~18.1–18.2s, the same signature CHANGELOG already
+  identified as inflated by the poller-start-timing bug (`RunScenario`
+  didn't begin polling until after the fault's full duration elapsed) —
+  a bug fixed for `p2p-degraded-lighthouse`/`-prysm` and the
+  `el-disk-stall` family, but these three were never regenerated
+  afterward. Regenerated against the live devnet: all three now show
+  `block_seen` at 0.2–0.7s, no `attestation_published`/`attestation_included`,
+  same `local.vc_disconnected` cause — the label was right, only the
+  timestamp was stale.
+- **`local.p2p_degraded`'s original two scenarios turned out to be
+  unreproducible with the poller-timing bug fixed, and were regenerated
+  with a real confound found and closed.** `p2p-degraded-lighthouse`/`-prysm`
+  (200ms `netem`, no proposer constraint) reran with clean timing and
+  came back with *zero* measurable effect — the same "the tool wasn't
+  watching yet" pattern already known from `el-disk-stall`. Root cause
+  once measured correctly: 200ms is trivial, and a slot where the
+  degraded node happens to propose its own block sees no delay at all,
+  since a locally-produced block never traverses the throttled network
+  path. Fixed with two changes together: 3s of `netem` delay (enough to
+  clear the ~4s deadline once combined with this devnet's ~1s baseline,
+  while staying under half the HTTP client's 10s timeout so the
+  observer's own polling — which shares the same throttled path — doesn't
+  time out) and `require_proposer_validators` forcing the *other* node to
+  be the proposer, so `block_seen` genuinely depends on cross-node gossip.
+  Both regenerated against the live devnet with real degradation
+  (`block_seen` 7.6s/14.1s past slot start).
+- **`peer-isolated-lighthouse`/`-prysm` removed from the corpus: real
+  reruns showed the `peer_drop` (pause) mechanism structurally can't
+  isolate a validator from its only peer on this two-node devnet.**
+  Pausing the *entire* peer node doesn't just cut connectivity — it also
+  makes the un-paused side the sole active proposer for the whole fault
+  window (the paused side literally cannot propose while paused), so
+  every slot in the window gets self-produced *and* self-included with
+  zero dependency on the paused peer. Confirmed symmetrically: reruns of
+  both scenarios came back fully healthy (`block_seen` <1s, `inclusion_delay`
+  1) with the proposer each time landing on the very node whose peer was
+  paused. This is a property of "pause the whole node" on a 2-node
+  topology, not something a parameter tune fixes — matches
+  `local.p2p_degraded`'s existing evidence via the `netem` scenarios
+  above, so nothing is lost.
+- **Real peer-count corroboration in the corpus for the first time.**
+  R-200's `ConfidenceHigh` branch (peer count below `peer_count_min`)
+  had zero real-world coverage — no corpus scenario had ever sampled
+  peer count, and even if one had, R-200 only ever read
+  `Timeline.SampleValue` (the live-collection `MetricSample` form),
+  never the `Observation` form `tools/faultinjector` actually produces.
+  Fixed both sides: `peerCountValue` (`internal/rca/rules/helpers.go`)
+  checks the `Observation` form first, falling back to `SampleValue`,
+  mirroring `hostSampledValue`'s existing pattern; `tools/faultinjector`
+  gained `peer_count_target` (`Scenario`), `SamplePeerCount`
+  (`observe_peers.go`, reusing `internal/source.SamplePeerCount` directly
+  rather than reimplementing client-specific parsing), and the
+  observation-building wiring. `p2p-degraded-lighthouse` now samples
+  real peer count (0, on this two-node devnet — always below
+  mainnet-scale `peer_count_min`) and correctly lands on `ConfidenceHigh`.
+- **Fixed a real reliability bug in scenario duty selection, found the
+  hard way (five consecutive failed attempts across five epochs).**
+  A scenario naming one fixed `validator_index` has exactly one candidate
+  attester-duty slot per epoch; combined with a proposer constraint
+  (`avoid`/`require_proposer_validators`), that slot has roughly even
+  odds of being usable at all, and a miss costs a full epoch (~6.4
+  minutes) to retry. Fixed with `Scenario.ValidatorCandidates` (an
+  inclusive validator-index range — normally a whole node's validator
+  set) and a rewritten `findCleanDuty` that asks for every candidate's
+  duty in one request (the beacon API already accepts an array; asking
+  about 32 validators costs the same as asking about one) and picks
+  whichever lands on a usable slot — makes a usable slot essentially
+  certain on the first attempt instead of a coin flip. Also added a
+  minimum-lead-time check (a candidate slot too close to "now" to still
+  act on is skipped), which the original single-candidate version had no
+  way to route around either.
+- Raised `observe.go`'s HTTP client timeout from 10s to 25s. A
+  `cgroup_cpu` fault applied directly to the node this tool polls also
+  starves that node's own REST API of CPU — the same process serves
+  both — so a quota low enough to produce genuine duty degradation was
+  also low enough to make polling itself time out before any
+  degradation could be observed (verified generating `cl-slow-lighthouse`:
+  5/7/9% quota all timed out outright; only 10% answered inside 10s, but
+  by then there was too little CPU pressure left to degrade the duty).
+  25s gives real CPU pressure room to answer without hunting for an
+  ever-narrower quota window.
+- **Three negative findings from this pass, corpus unchanged as a
+  result — evidence for these causes stays exactly what it was.**
+  - `cl-slow-lighthouse`: even with the timeout fix, throttling a CL's
+    own CPU makes `block_seen` and `attestation_published` measured
+    through that same starved node's API arrive within milliseconds of
+    each other regardless of throttle severity, since both come from the
+    same slow API rather than independent signals — the derived
+    "validation span" is always ≈0, so the shape always reads as
+    `local.p2p_degraded` (100% propagation share) rather than
+    `local.cl_slow`, never mind how low the quota goes. `local.cl_slow`
+    already has clean evidence from `cl-slow-cpu` (Prysm); not pursued
+    further.
+  - `vc-slow-prysm`: four quotas tried (1%, 3%, 5%, 8%); Prysm's
+    validator client showed near-binary behaviour — either abandoning
+    the duty entirely (no publish at all, `local.vc_disconnected`'s
+    shape) or answering close to normally — never landing in the
+    "attempts a late publish" band `local.vc_slow` needs, unlike
+    Lighthouse's validator client at a single quota (1%, `vc-slow-cpu`).
+    `local.vc_slow` already has clean evidence from `vc-slow-cpu`
+    (Lighthouse); not pursued further.
+  - `host-memory-pressure-prysm`: real memory pressure was produced
+    (27–30% PSI, matching `host-memory-pressure`'s Lighthouse-side
+    figure), and a direct chain query confirmed the slot's block
+    genuinely existed and was canonical (the starved node's own
+    collector just never saw it in time — the same shape as
+    `host-memory-pressure`) — but Prysm's validator client published
+    nothing at all rather than attesting to its last known head the way
+    Lighthouse's did in the original scenario, landing on
+    `local.network.proposer_missed`'s shape instead. `local.host.memory_pressure`
+    already has clean evidence from `host-memory-pressure` (Lighthouse);
+    not pursued further.
+  - Across all three: Prysm's validator client appears to withdraw from
+    a duty entirely under sustained resource pressure rather than
+    degrading gradually the way Lighthouse's does, which made every
+    Prysm-side variant of an already-covered cause land on
+    `local.vc_disconnected` or `network.proposer_missed` instead of the
+    intended cause. Worth remembering if this is revisited: the
+    mechanism that works on Lighthouse does not reliably transfer.
+- Corpus now 9 real scenarios across 6 causes (`local.p2p_degraded` ×2,
+  `local.vc_disconnected` ×3, `local.cl_slow`, `local.vc_slow`,
+  `local.host.memory_pressure`, `network.proposer_missed` ×1 each) — down
+  from 11 (two non-reproducible `peer-isolated-*` scenarios removed), but
+  every remaining scenario's evidence has now been verified against the
+  current, bug-fixed `RunScenario`. `make eval`: 100% top-1 accuracy,
+  0 false-`high` verdicts (`docs/evaluation.md`).
+- **Still not attempted**: growing past 9 scenarios, `local.el_slow`,
+  `local.host.disk_io`, `local.host.cpu_steal`, `network.late_block`,
+  `network.inclusion_failure`, `clock_skew` — unchanged from the
+  reasoning already on record earlier in this file; nothing new tried
+  this pass.

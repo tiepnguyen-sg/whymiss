@@ -1,15 +1,20 @@
 id: p2p-degraded-prysm
 description: >
-  200ms of added latency (tc netem) on the Prysm consensus client's network
-  path for the full duty window — the same fault as p2p-degraded-lighthouse, on
-  the other client.
+  3s of added latency (tc netem) on the Prysm consensus client's network
+  path for the full duty window — the same fault as p2p-degraded-lighthouse,
+  on the other client. require_proposer_validators forces the proposer to
+  be the Lighthouse-side validator, so the watched Prysm validator's
+  block_seen genuinely depends on cross-node gossip over the throttled
+  link (see p2p-degraded-lighthouse's doc comment for the confound this
+  avoids and why 3s, not 200ms or 5s).
 target: cl-2-prysm-geth
-validator_index: 40
-duration: 20s
+validator_candidates: [32, 63]
+duration: 25s
+require_proposer_validators: [0, 31]
 fault:
   kind: netem
   netem:
-    delay: 200ms
+    delay: 3s
 expect:
   cause: local.p2p_degraded
   confidence: medium

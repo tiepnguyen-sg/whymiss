@@ -4,9 +4,9 @@ description: |
 expect:
     cause: local.vc_disconnected
     confidence: high
-slot: 462
+slot: 1375
 validator_index: 33
 fault_kind: pause
 fault_target: vc-2-geth-prysm
 duration: 20s
-generated_at: 2026-08-20T10:33:02.47297629Z
+generated_at: 2026-08-21T17:17:14.50314539Z

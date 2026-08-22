@@ -5,7 +5,7 @@ A second, independent run of the same fault as vc-frozen-lighthouse — the Ligh
 
 ## What was broken
 
-Fault: pause applied to vc-1-geth-lighthouse for 20s, around slot 374.
+Fault: pause applied to vc-1-geth-lighthouse for 20s, around slot 1318.
 
 ## Recorded outcome
 

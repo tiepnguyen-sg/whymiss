@@ -4,9 +4,9 @@ description: |
 expect:
     cause: local.vc_disconnected
     confidence: high
-slot: 374
-validator_index: 2
+slot: 1318
+validator_index: 7
 fault_kind: pause
 fault_target: vc-1-geth-lighthouse
 duration: 20s
-generated_at: 2026-08-20T10:15:26.4547415Z
+generated_at: 2026-08-21T17:05:50.575942714Z

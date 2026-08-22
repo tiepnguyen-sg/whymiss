@@ -4,7 +4,7 @@ description: >
   full duty window, so it cannot sign or publish an attestation even though the
   beacon node it talks to stays healthy throughout.
 target: vc-1-geth-lighthouse
-validator_index: 24
+validator_candidates: [0, 31]
 duration: 20s
 avoid_proposer_validators: [0, 31]
 fault:

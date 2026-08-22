@@ -88,10 +88,15 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 	currentSlot := uint64(sinceGenesis / obs.SecondsPerSlot) //nolint:gosec // G115: sinceGenesis just checked non-negative
 	startEpoch := currentSlot/domain.SlotsPerEpoch + 1       // next epoch: enough lead time to act before the duty slot
 
-	dutySlot, d, dutyAt, err := findCleanDuty(ctx, obs, startEpoch, s.ValidatorIndex, s.AvoidProposerValidators, s.RequireProposerValidators)
+	dutySlot, watched, d, dutyAt, err := findCleanDuty(ctx, obs, startEpoch, watchedValidators(s), s.AvoidProposerValidators, s.RequireProposerValidators)
 	if err != nil {
 		return err
 	}
+	// Pin the scenario to whichever candidate was actually chosen, so the
+	// manifest, the observations, and the log line below all record the one
+	// real validator this run watched (s is a value parameter — this does
+	// not leak back to the caller's copy).
+	s.ValidatorIndex = watched
 	slotStart := obs.SlotStart(dutySlot)
 
 	fmt.Printf("faultinjector: watching validator %d at slot %d (starts %s), fault=%s target=%s duration=%s\n",
@@ -230,6 +235,14 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 			fmt.Printf("faultinjector: sampled engine_call %s=%.2fms\n", sample.Method, sample.DurationMS)
 		}
 	}
+	if s.PeerCountTarget != "" {
+		peerCount, err := SamplePeerCount(ctx, enclave, s.PeerCountTarget)
+		if err != nil {
+			return fmt.Errorf("peer_count_target: %w", err)
+		}
+		outcome.PeerCount, outcome.PeerCountSampledAt = &peerCount, time.Now().UTC()
+		fmt.Printf("faultinjector: sampled peer_count=%.0f for %s\n", peerCount, s.PeerCountTarget)
+	}
 
 	if outcome.BlockFound {
 		outcome.IncludedInSlot, outcome.IncludedAt, outcome.Included, err = obs.CheckInclusion(ctx, dutySlot, d, dutySlot+2, watchDeadline.Add(2*obs.SecondsPerSlot))
@@ -259,40 +272,90 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir str
 	return nil
 }
 
-// findCleanDuty finds validatorIndex's attester duty starting from startEpoch,
-// skipping an epoch whose assigned slot's proposer falls inside avoid (see
-// Scenario.AvoidProposerValidators) — attester duty is fixed to one slot per
-// epoch, so avoiding a confounding slot means trying a later epoch, not a later
-// slot within the same one.
-func findCleanDuty(ctx context.Context, obs *Observer, startEpoch, validatorIndex uint64, avoid, require *[2]uint64) (slot uint64, d duty, at time.Time, err error) {
+// minDutyLead is how far in the future a candidate duty slot must be to be
+// usable: the fault has to be applied before the slot starts, and
+// RunScenario itself waits until slotStart-2s before doing so. A few
+// seconds of headroom past that keeps a slot from being picked that is
+// already effectively upon us.
+const minDutyLead = 8 * time.Second
+
+// findCleanDuty picks which validator's attester duty to watch in
+// startEpoch: the first candidate (in ascending index order, for
+// determinism) whose assigned slot is far enough ahead to still act on and
+// whose proposer satisfies the scenario's constraint — outside avoid (see
+// Scenario.AvoidProposerValidators), or inside require (see
+// Scenario.RequireProposerValidators).
+//
+// Attester duty is one slot per epoch per validator, so a single candidate
+// gives a single slot to accept or reject. Supplying a whole node's
+// validator set instead (Scenario.ValidatorCandidates) gives one candidate
+// slot per validator, which is what makes a constrained scenario reliably
+// satisfiable within one epoch rather than a coin flip — both duty lookups
+// cost exactly one request regardless of how many candidates are asked
+// about.
+func findCleanDuty(ctx context.Context, obs *Observer, startEpoch uint64, candidates []uint64, avoid, require *[2]uint64) (slot, validatorIndex uint64, d duty, at time.Time, err error) {
 	// The standard beacon API only guarantees duties are computable one epoch
 	// ahead — querying further reliably 400s (verified against both Lighthouse
 	// and Prysm here). So there is exactly one epoch worth trying per
-	// invocation; a proposer confound in it means "run the command again", not
-	// "look further ahead" — retrying naturally lands on a freshly-shuffled
-	// epoch next time.
-	slot, d, at, err = obs.FetchDuty(ctx, startEpoch, validatorIndex)
+	// invocation.
+	duties, at, err := obs.FetchDuties(ctx, startEpoch, candidates)
 	if err != nil {
-		return 0, duty{}, time.Time{}, fmt.Errorf("epoch %d: %w", startEpoch, err)
+		return 0, 0, duty{}, time.Time{}, fmt.Errorf("epoch %d: %w", startEpoch, err)
 	}
-	if avoid == nil && require == nil {
-		return slot, d, at, nil
+
+	var proposers map[uint64]uint64
+	if avoid != nil || require != nil {
+		proposers, err = obs.FetchProposers(ctx, startEpoch)
+		if err != nil {
+			return 0, 0, duty{}, time.Time{}, fmt.Errorf("epoch %d: %w", startEpoch, err)
+		}
 	}
-	proposer, err := obs.FetchProposer(ctx, slot)
-	if err != nil {
-		return 0, duty{}, time.Time{}, fmt.Errorf("check proposer for slot %d: %w", slot, err)
+
+	earliestUsable := time.Now().UTC().Add(minDutyLead)
+	var tooSoon, wrongProposer int
+	for _, vi := range candidates {
+		assignment, ok := duties[vi]
+		if !ok {
+			continue // no duty for this validator this epoch
+		}
+		if obs.SlotStart(assignment.Slot).Before(earliestUsable) {
+			tooSoon++
+			continue
+		}
+		if proposers != nil {
+			proposer, ok := proposers[assignment.Slot]
+			if !ok {
+				return 0, 0, duty{}, time.Time{}, fmt.Errorf("no proposer duty found for slot %d", assignment.Slot)
+			}
+			if avoid != nil && proposer >= avoid[0] && proposer <= avoid[1] {
+				wrongProposer++
+				continue
+			}
+			if require != nil && (proposer < require[0] || proposer > require[1]) {
+				wrongProposer++
+				continue
+			}
+		}
+		return assignment.Slot, vi, assignment.Duty, at, nil
 	}
-	if avoid != nil && proposer >= avoid[0] && proposer <= avoid[1] {
-		return 0, duty{}, time.Time{}, fmt.Errorf(
-			"epoch %d's duty slot %d has proposer %d, inside the fault's own range %v — this would confound the scenario; run the command again for a freshly-shuffled epoch",
-			startEpoch, slot, proposer, *avoid)
+
+	return 0, 0, duty{}, time.Time{}, fmt.Errorf(
+		"no usable duty in epoch %d across %d candidate validator(s): %d assigned a slot too soon to act on, %d assigned a slot whose proposer fails the scenario's constraint — widen validator_candidates, or run the command again for a freshly-shuffled epoch",
+		startEpoch, len(candidates), tooSoon, wrongProposer)
+}
+
+// watchedValidators is the candidate list findCleanDuty chooses from: the
+// whole ValidatorCandidates range when the scenario declares one, otherwise
+// just its single ValidatorIndex.
+func watchedValidators(s Scenario) []uint64 {
+	if s.ValidatorCandidates == nil {
+		return []uint64{s.ValidatorIndex}
 	}
-	if require != nil && (proposer < require[0] || proposer > require[1]) {
-		return 0, duty{}, time.Time{}, fmt.Errorf(
-			"epoch %d's duty slot %d has proposer %d, outside the required range %v — this scenario needs the fault target to be this slot's own proposer; run the command again for a freshly-shuffled epoch",
-			startEpoch, slot, proposer, *require)
+	out := make([]uint64, 0, s.ValidatorCandidates[1]-s.ValidatorCandidates[0]+1)
+	for vi := s.ValidatorCandidates[0]; vi <= s.ValidatorCandidates[1]; vi++ {
+		out = append(out, vi)
 	}
-	return slot, d, at, nil
+	return out
 }
 
 // waitUntil blocks until t or ctx is done, whichever comes first. Negative
@@ -318,6 +381,9 @@ func renderReadme(s Scenario, slot uint64, o dutyOutcome) string {
 	}
 	for _, sample := range o.EngineSamples {
 		fmt.Fprintf(&extra, "- Engine API %s (rolling median): %.2fms\n", sample.Method, sample.DurationMS)
+	}
+	if o.PeerCount != nil {
+		fmt.Fprintf(&extra, "- Connected peers: %.0f\n", *o.PeerCount)
 	}
 
 	return fmt.Sprintf(`# %s

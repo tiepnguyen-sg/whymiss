@@ -5,11 +5,12 @@ The Lighthouse validator client's container is frozen (docker pause) for the ful
 
 ## What was broken
 
-Fault: pause applied to vc-1-geth-lighthouse for 20s, around slot 129.
+Fault: pause applied to vc-1-geth-lighthouse for 20s, around slot 1285.
 
 ## Recorded outcome
 
 - Block observed for the duty slot: true
+- Attestation published (seen in the pool): false
 - Attestation included: false
 
 ## Expected taxonomy label

@@ -1,17 +1,17 @@
 # p2p-degraded-prysm
 
-200ms of added latency (tc netem) on the Prysm consensus client's network path for the full duty window — the same fault as p2p-degraded-lighthouse, on the other client.
+3s of added latency (tc netem) on the Prysm consensus client's network path for the full duty window — the same fault as p2p-degraded-lighthouse, on the other client. require_proposer_validators forces the proposer to be the Lighthouse-side validator, so the watched Prysm validator's block_seen genuinely depends on cross-node gossip over the throttled link (see p2p-degraded-lighthouse's doc comment for the confound this avoids and why 3s, not 200ms or 5s).
 
 
 ## What was broken
 
-Fault: netem applied to cl-2-prysm-geth for 20s, around slot 95.
+Fault: netem applied to cl-2-prysm-geth for 25s, around slot 659.
 
 ## Recorded outcome
 
 - Block observed for the duty slot: true
 - Attestation published (seen in the pool): false
-- Attestation included: true
+- Attestation included: false
 
 ## Expected taxonomy label
 

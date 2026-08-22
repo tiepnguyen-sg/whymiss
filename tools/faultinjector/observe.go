@@ -39,7 +39,18 @@ type Observer struct {
 // NewObserver fetches genesis time and the slot duration from beaconAPI and
 // returns an Observer ready to watch duties on that chain.
 func NewObserver(ctx context.Context, beaconAPI string) (*Observer, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
+	// 25s, not something tighter: a cgroup_cpu fault applied directly to the
+	// node this tool is polling also starves that node's own REST API of
+	// CPU, since it's the same process — a low enough quota to produce a
+	// genuinely late duty also makes the API slow to answer, not just the
+	// duty slow to complete. Verified in practice generating cl-slow-lighthouse:
+	// 5%/7%/9% quota all made requests exceed a 10s timeout outright before
+	// any real degradation could be observed; only 10% answered inside 10s,
+	// but at 10% the duty itself was fully timely — too little CPU pressure
+	// left to attribute anything to. 25s gives enough room for the API to
+	// answer under real CPU pressure while still bounding how long a single
+	// request can hang if something is genuinely broken.
+	client := &http.Client{Timeout: 25 * time.Second}
 
 	var genesis struct {
 		Data struct {
@@ -88,25 +99,43 @@ type duty struct {
 	ValidatorCommitteeIndex uint64
 }
 
-// FetchDuty resolves validatorIndex's attester committee assignment for epoch,
-// via the standard POST /eth/v1/validator/duties/attester/{epoch} endpoint.
-// Attester duty is assigned once per epoch to exactly one slot within it — the
-// caller does not choose the slot, this call reports which one it is.
-func (o *Observer) FetchDuty(ctx context.Context, epoch, validatorIndex uint64) (assignedSlot uint64, d duty, at time.Time, err error) {
-	body, err := json.Marshal([]string{strconv.FormatUint(validatorIndex, 10)})
+// dutyAssignment is one validator's attester assignment within an epoch:
+// which slot it was assigned, and its committee position in that slot.
+type dutyAssignment struct {
+	Slot uint64
+	Duty duty
+}
+
+// FetchDuties resolves the attester committee assignment of every validator
+// in validatorIndices for epoch, in a single request — the standard
+// POST /eth/v1/validator/duties/attester/{epoch} endpoint takes an array of
+// indices, so asking about a whole node's validator set costs exactly as
+// much as asking about one. Attester duty is assigned once per epoch to
+// exactly one slot per validator; the caller does not choose the slot, this
+// call reports which one each validator got.
+//
+// Validators with no duty in this epoch are simply absent from the result
+// rather than an error — a caller supplying a range wants whichever of them
+// the shuffle actually assigned, not a guarantee that all of them were.
+func (o *Observer) FetchDuties(ctx context.Context, epoch uint64, validatorIndices []uint64) (map[uint64]dutyAssignment, time.Time, error) {
+	indices := make([]string, 0, len(validatorIndices))
+	for _, vi := range validatorIndices {
+		indices = append(indices, strconv.FormatUint(vi, 10))
+	}
+	body, err := json.Marshal(indices)
 	if err != nil {
-		return 0, duty{}, time.Time{}, fmt.Errorf("marshal duty request: %w", err)
+		return nil, time.Time{}, fmt.Errorf("marshal duty request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		fmt.Sprintf("%s/eth/v1/validator/duties/attester/%d", o.BeaconAPI, epoch),
 		strings.NewReader(string(body)))
 	if err != nil {
-		return 0, duty{}, time.Time{}, fmt.Errorf("build duty request: %w", err)
+		return nil, time.Time{}, fmt.Errorf("build duty request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	at = time.Now().UTC()
+	at := time.Now().UTC()
 	var resp struct {
 		Data []struct {
 			ValidatorIndex          string `json:"validator_index"`
@@ -117,32 +146,34 @@ func (o *Observer) FetchDuty(ctx context.Context, epoch, validatorIndex uint64) 
 		} `json:"data"`
 	}
 	if err := doJSON(o.Client, req, &resp); err != nil {
-		return 0, duty{}, time.Time{}, fmt.Errorf("fetch attester duty: %w", err)
+		return nil, time.Time{}, fmt.Errorf("fetch attester duties: %w", err)
 	}
 
-	target := strconv.FormatUint(validatorIndex, 10)
+	out := make(map[uint64]dutyAssignment, len(resp.Data))
 	for _, entry := range resp.Data {
-		if entry.ValidatorIndex != target {
-			continue
+		vi, err0 := strconv.ParseUint(entry.ValidatorIndex, 10, 64)
+		slot, err1 := strconv.ParseUint(entry.Slot, 10, 64)
+		ci, err2 := strconv.ParseUint(entry.CommitteeIndex, 10, 64)
+		cl, err3 := strconv.ParseUint(entry.CommitteeLength, 10, 64)
+		vci, err4 := strconv.ParseUint(entry.ValidatorCommitteeIndex, 10, 64)
+		if err := errors.Join(err0, err1, err2, err3, err4); err != nil {
+			return nil, time.Time{}, fmt.Errorf("parse duty fields in epoch %d: %w", epoch, err)
 		}
-		slot, err0 := strconv.ParseUint(entry.Slot, 10, 64)
-		ci, err1 := strconv.ParseUint(entry.CommitteeIndex, 10, 64)
-		cl, err2 := strconv.ParseUint(entry.CommitteeLength, 10, 64)
-		vci, err3 := strconv.ParseUint(entry.ValidatorCommitteeIndex, 10, 64)
-		if err := errors.Join(err0, err1, err2, err3); err != nil {
-			return 0, duty{}, time.Time{}, fmt.Errorf("parse duty fields for validator %d epoch %d: %w",
-				validatorIndex, epoch, err)
+		out[vi] = dutyAssignment{
+			Slot: slot,
+			Duty: duty{CommitteeIndex: ci, CommitteeLength: cl, ValidatorCommitteeIndex: vci},
 		}
-		return slot, duty{CommitteeIndex: ci, CommitteeLength: cl, ValidatorCommitteeIndex: vci}, at, nil
 	}
-	return 0, duty{}, time.Time{}, fmt.Errorf("no attester duty found for validator %d in epoch %d", validatorIndex, epoch)
+	return out, at, nil
 }
 
-// FetchProposer resolves the proposer duty for slot via the standard
-// GET /eth/v1/validator/duties/proposer/{epoch} endpoint.
-func (o *Observer) FetchProposer(ctx context.Context, slot uint64) (validatorIndex uint64, err error) {
-	epoch := slot / domain.SlotsPerEpoch
-
+// FetchProposers resolves every slot's proposer for epoch in a single
+// request, via the standard GET /eth/v1/validator/duties/proposer/{epoch}
+// endpoint, keyed by slot. The endpoint always returns the whole epoch, so
+// asking about one slot and asking about all of them is the same call —
+// callers checking several candidate slots should fetch this map once
+// rather than per slot.
+func (o *Observer) FetchProposers(ctx context.Context, epoch uint64) (map[uint64]uint64, error) {
 	var resp struct {
 		Data []struct {
 			ValidatorIndex string `json:"validator_index"`
@@ -151,21 +182,19 @@ func (o *Observer) FetchProposer(ctx context.Context, slot uint64) (validatorInd
 	}
 	url := fmt.Sprintf("%s/eth/v1/validator/duties/proposer/%d", o.BeaconAPI, epoch)
 	if err := getJSON(ctx, o.Client, url, &resp); err != nil {
-		return 0, fmt.Errorf("fetch proposer duties for epoch %d: %w", epoch, err)
+		return nil, fmt.Errorf("fetch proposer duties for epoch %d: %w", epoch, err)
 	}
 
-	wantSlot := strconv.FormatUint(slot, 10)
+	out := make(map[uint64]uint64, len(resp.Data))
 	for _, d := range resp.Data {
-		if d.Slot != wantSlot {
-			continue
+		slot, err0 := strconv.ParseUint(d.Slot, 10, 64)
+		vi, err1 := strconv.ParseUint(d.ValidatorIndex, 10, 64)
+		if err := errors.Join(err0, err1); err != nil {
+			return nil, fmt.Errorf("parse proposer duty in epoch %d: %w", epoch, err)
 		}
-		vi, err := strconv.ParseUint(d.ValidatorIndex, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("parse proposer validator_index %q: %w", d.ValidatorIndex, err)
-		}
-		return vi, nil
+		out[slot] = vi
 	}
-	return 0, fmt.Errorf("no proposer duty found for slot %d", slot)
+	return out, nil
 }
 
 // blockAttestation is the subset of an Electra-style attestation this tool reads.
@@ -490,6 +519,11 @@ type dutyOutcome struct {
 	// when Scenario.MetricsTarget was set.
 	EngineSamples   []EngineCallSample
 	EngineSampledAt time.Time
+
+	// PeerCount is what SamplePeerCount returned. Present only when
+	// Scenario.PeerCountTarget was set.
+	PeerCount          *float64
+	PeerCountSampledAt time.Time
 }
 
 func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o dutyOutcome) ([]domain.Observation, error) {
@@ -559,6 +593,16 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 			Attrs: map[domain.AttrKey]string{
 				domain.AttrEngineMethod: sample.Method,
 				domain.AttrDurationMS:   strconv.FormatFloat(sample.DurationMS, 'f', -1, 64),
+			},
+		})
+	}
+
+	if o.PeerCount != nil {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsPeerCountSampled,
+			At: o.PeerCountSampledAt, Source: domain.SourcePromScrape,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrPeerCount: strconv.FormatFloat(*o.PeerCount, 'f', -1, 64),
 			},
 		})
 	}
