@@ -982,6 +982,26 @@ correctness audit once generating it surfaced a genuine, dangerous gap.
   correctly left as `<your-org>` template text). Verified: `go build
   ./...` and the full `make ci` pass under the new import path;
   `goreleaser check` and `actionlint` still pass.
+- **Task 4.10: tagged and published `v0.1.0` — the real release, not a
+  dry run.** `git tag v0.1.0 && git push origin v0.1.0` triggered
+  `release.yml` for real: GoReleaser built both platform archives, syft
+  generated their SBOMs, cosign keyless-signed `checksums.txt`, and the
+  GitHub release published with all of it attached. Verified after the
+  fact, not assumed: downloaded `checksums.txt`/`checksums.txt.bundle`
+  from the real release and ran `cosign verify-blob` against Sigstore's
+  public log for real (not the throwaway-keypair test from ADR-0010's
+  local verification) — `Verified OK`, identity matched
+  `.github/workflows/release.yml` on this exact repo. One piece did not
+  make it into `v0.1.0`: the SLSA provenance job refused to run because
+  this repo is private, and publishing provenance means publishing a
+  public Rekor log entry naming it — see ADR-0010's updated SLSA section
+  and `.github/workflows/release.yml`'s comment. Decided with the human
+  rather than silently forcing `private-repository: true`: drop the
+  `provenance` job, keep the repo's privacy intact, ship `v0.1.0` with
+  signed-and-SBOM'd artifacts but no provenance attestation. Also
+  necessary for a real tag to make sense: `go.mod`'s module-path rename
+  (separate entry above) and cutting this section's own `[0.1.0]` header
+  from what had been an open-ended `[Unreleased]` since Phase 1.
 - **A real gap in `internal/rca`, found by smoke-testing this task against
   the live devnet, not fixed this pass.** A fully healthy duty (`outcome:
   ok`, nothing wrong at all) comes back as `local.unknown.no_rule_matched`

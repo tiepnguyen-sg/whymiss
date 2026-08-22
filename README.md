@@ -58,9 +58,14 @@ cosign verify-blob \
 cat whymiss_*_linux_amd64.tar.gz.sbom.json | jq '.packages[].name'
 ```
 
-Each release also carries a SLSA provenance attestation (`slsa-verifier` can check
-it against the archive) proving which workflow run, on which commit, produced that
-exact artifact — see `.github/workflows/release.yml`.
+SLSA provenance is not currently generated: this repository is private, and
+`slsa-framework/slsa-github-generator` refuses to run against a private repo by
+default because publishing provenance means publishing an entry — naming this repo
+— to Sigstore's public transparency log. A deliberate tradeoff, not an oversight;
+see `docs/adr/0010-release-supply-chain.md`. The cosign signature and SBOM above
+already cover "was this artifact tampered with" and "what's inside it" — provenance
+would add "which exact build produced it," which `.github/workflows/release.yml`
+re-enables if this repository ever goes public.
 
 ## Usage
 
