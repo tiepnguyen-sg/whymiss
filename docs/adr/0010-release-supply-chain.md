@@ -74,17 +74,9 @@ accepted for cosign (identity is public; here, existence is too). Decided
 with the human, not unilaterally (post-`v0.1.0` follow-up): drop the
 `provenance` job entirely rather than force it — see `CHANGELOG.md`'s
 `v0.1.0` entry. The cosign signature and syft SBOM above still hold; only
-the third property ("which exact build produced this") was missing from
-`v0.1.0`.
-
-**Update, same day:** the repo went public shortly after `v0.1.0` shipped
-(the human's decision, not this task's). The constraint that forced the
-job's removal no longer applies, so the `provenance` job was re-added to
-`.github/workflows/release.yml` in its original shape — no
-`private-repository` override needed now, since a public repo's name
-isn't a secret the transparency log could leak. `v0.1.0` itself remains
-without provenance (its release artifacts aren't rebuilt retroactively);
-every release after this point carries it.
+the third property ("which exact build produced this") is missing.
+Re-adding the job (same shape, `private-repository: true` no longer
+needed) is the whole fix if this repository ever goes public.
 
 ## Consequences
 

@@ -17,8 +17,6 @@ jobs:
     permissions:
       contents: write # create the GitHub release and upload assets
       id-token: write # cosign keyless signing via GitHub OIDC (ADR-0010)
-    outputs:
-      hashes: ${{ steps.hash.outputs.hashes }}
     steps:
       # Pin actions by SHA, not tag — matches ci.yml's existing convention.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,28 +42,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # SLSA's generic generator wants the base64-encoded contents of a
-      # sha256sum-style file listing every subject to attest for — GoReleaser's
-      # own checksums.txt already is exactly that (ADR-0010).
-      - name: hash release artifacts for SLSA provenance
-        id: hash
-        run: echo "hashes=$(cat dist/checksums.txt | base64 -w0)" >> "$GITHUB_OUTPUT"
-
-  # Re-enabled now that the repo is public (ADR-0010, CHANGELOG.md's v0.1.0
-  # entry): this job was dropped for v0.1.0 because
-  # slsa-framework/slsa-github-generator refuses to run against a private
-  # repo without `private-repository: true` — publishing provenance means
-  # publishing a Rekor transparency-log entry that names the repo, which
-  # would have defeated the point of it being private. That constraint no
-  # longer applies.
-  provenance:
-    name: SLSA provenance
-    needs: [goreleaser]
-    permissions:
-      actions: read # to read the workflow path that triggered this run
-      id-token: write # to sign the provenance
-      contents: write # to upload the provenance as a release asset
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
-    with:
-      base64-subjects: ${{ needs.goreleaser.outputs.hashes }}
-      upload-assets: true
+  # SLSA provenance (slsa-framework/slsa-github-generator) is deliberately
+  # not wired in here while this repo is private. That reusable workflow
+  # refuses to run against a private repo unless `private-repository: true`
+  # is set, specifically because publishing provenance means publishing an
+  # entry to Sigstore's public Rekor transparency log — and that entry
+  # would name this repo, defeating its privacy. v0.1.0 shipped without it
+  # for exactly that reason (a deliberate choice, not an oversight — see
+  # ADR-0010 and CHANGELOG.md). Re-add the `provenance` job (same shape as
+  # the `goreleaser` job's checksums.txt → base64 `hashes` output, feeding
+  # `slsa-framework/slsa-github-generator`'s `generator_generic_slsa3.yml`)
+  # if this repo ever goes public.

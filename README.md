@@ -37,9 +37,9 @@ make build
 **systemd**, for running the bare binary as a long-lived unprivileged service on the
 node itself, is in [`deploy/systemd/`](deploy/systemd/).
 
-**Prebuilt binary**, once a tagged release exists (`v0.1.0` is task 4.10 — until
-then, build from source above): download the `linux_amd64` or `linux_arm64` archive
-from the release's GitHub page, then verify it before running anything from it:
+**Prebuilt binary**, once a release is published (none yet — build from source
+above): download the `linux_amd64` or `linux_arm64` archive from the release's
+GitHub page, then verify it before running anything from it:
 
 ```sh
 # 1. The checksum matches the archive you downloaded.
@@ -58,13 +58,14 @@ cosign verify-blob \
 cat whymiss_*_linux_amd64.tar.gz.sbom.json | jq '.packages[].name'
 ```
 
-Each release also carries a SLSA provenance attestation (`slsa-verifier` can check
-it against the archive) proving which workflow run, on which commit, produced that
-exact artifact — see `.github/workflows/release.yml`. `v0.1.0` shipped without one:
-this repository was private at the time, and publishing provenance means publishing
-a public transparency-log entry naming the repo — see
-`docs/adr/0010-release-supply-chain.md` for that tradeoff. Every release after the
-repo went public carries it.
+SLSA provenance is not currently generated: this repository is private, and
+`slsa-framework/slsa-github-generator` refuses to run against a private repo by
+default because publishing provenance means publishing an entry — naming this repo
+— to Sigstore's public transparency log. A deliberate tradeoff, not an oversight;
+see `docs/adr/0010-release-supply-chain.md`. The cosign signature and SBOM above
+already cover "was this artifact tampered with" and "what's inside it" — provenance
+would add "which exact build produced it," which `.github/workflows/release.yml`
+re-enables if this repository ever goes public.
 
 ## Usage
 
