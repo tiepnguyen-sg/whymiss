@@ -4,6 +4,7 @@ description: >
   Lighthouse validator client's container frozen for the full duty window —
   against a different validator and slot, for redundancy in the corpus.
 target: vc-1-geth-lighthouse
+timing_target: cl-1-lighthouse-geth
 validator_candidates: [0, 31]
 duration: 20s
 avoid_proposer_validators: [0, 31]
@@ -12,4 +13,4 @@ fault:
   pause: {}
 expect:
   cause: local.vc_disconnected
-  confidence: high
+  confidence: medium

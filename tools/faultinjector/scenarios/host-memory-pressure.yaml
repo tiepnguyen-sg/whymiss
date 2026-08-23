@@ -1,18 +1,26 @@
 id: host-memory-pressure
 description: >
-  The Lighthouse-paired execution client's cgroup v2 memory.high is capped
-  to 128MB for the full duty window — well under geth's normal working set
-  for this devnet, forcing sustained reclaim. memory.high throttles and
-  reclaims rather than OOM-killing the process (unlike memory.max), which is
-  what docs/causes.md's local.host.memory_pressure rule measures via PSI.
-target: el-1-geth-lighthouse
-validator_index: 24
+  The Lighthouse consensus client's cgroup v2 memory.high is capped to 512MB
+  while a devnet-only helper allocates 1GB of file cache in the same cgroup
+  for the full duty window, forcing sustained reclaim on the validation path.
+  memory.high
+  throttles and reclaims rather than OOM-killing processes (unlike memory.max),
+  which is what docs/causes.md's local.host.memory_pressure rule measures via
+  PSI. An unfaulted Prysm baseline distinguishes local processing delay from a
+  network-wide late block. The helper is stopped before the original limit is
+  restored.
+target: cl-1-lighthouse-geth
+timing_target: cl-1-lighthouse-geth
+baseline_target: cl-2-prysm-geth
+validator_candidates: [0, 31]
+avoid_proposer_validators: [0, 31]
 duration: 25s
 sample_pressure: memory
 fault:
   kind: cgroup_mem
   cgroup_mem:
-    limit_bytes: 134217728
+    limit_bytes: 536870912
+    pressure_bytes: 1073741824
 expect:
   cause: local.host.memory_pressure
   confidence: medium

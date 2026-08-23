@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +17,8 @@ func writeScenarioFixture(t *testing.T, root, id string, manifestYAML, observati
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
+	hash := sha256.Sum256([]byte(observationsJSONL))
+	manifestYAML = strings.ReplaceAll(manifestYAML, "OBS_SHA", hex.EncodeToString(hash[:]))
 	if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(manifestYAML), 0o644); err != nil {
 		t.Fatalf("write manifest.yaml: %v", err)
 	}
@@ -28,6 +32,8 @@ func writeScenarioFixture(t *testing.T, root, id string, manifestYAML, observati
 }
 
 const validManifest = `
+corpus_format_version: 2
+generator_engine_version: 0.2.0
 id: ok-scenario
 description: a fixture that should pass
 slot: 100
@@ -36,13 +42,19 @@ fault_kind: pause
 fault_target: vc-1-geth-lighthouse
 duration: 20s
 generated_at: 2026-08-20T07:00:00Z
+clock_samples:
+  - server: 127.0.0.1:123
+    sampled_at: 2026-08-20T07:00:00Z
+    offset: 0s
+    round_trip: 1ms
+observations_sha256: OBS_SHA
 expect:
   cause: local.vc_disconnected
   confidence: high
 `
 
-const validObservations = `{"slot":100,"kind":"slot_start","at":"2026-08-20T07:00:00Z","clock_offset":0,"source":"derived"}
-{"slot":100,"kind":"duty_assigned","at":"2026-08-20T07:00:01Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
+const validObservations = `{"slot":100,"kind":"slot_start","at":"2026-08-20T07:00:00Z","clock_offset":0,"clock_measured":true,"clock_sample_at":"2026-08-20T07:00:00Z","source":"derived"}
+{"slot":100,"kind":"duty_assigned","at":"2026-08-20T07:00:01Z","clock_offset":0,"clock_measured":true,"clock_sample_at":"2026-08-20T07:00:00Z","source":"beaconapi","attrs":{"validator_index":"24"}}
 `
 
 func TestValidateCorpusAccepts(t *testing.T) {

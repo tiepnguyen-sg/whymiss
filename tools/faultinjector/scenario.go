@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"time"
 
@@ -20,6 +21,10 @@ type Scenario struct {
 	// ID names the scenario and becomes its corpus directory name
 	// (test/corpus/<ID>/). Lowercase, hyphen-separated, e.g. "el-disk-stall".
 	ID string `yaml:"id"`
+
+	// RecipeID is runtime-only provenance. LoadScenario sets it to the YAML
+	// ID before a campaign may replace ID with a unique record ID.
+	RecipeID string `yaml:"-"`
 
 	// Description is one sentence: what was broken and how, for
 	// test/corpus/<ID>/README.md.
@@ -85,20 +90,25 @@ type Scenario struct {
 	RequireProposerValidators *[2]uint64 `yaml:"require_proposer_validators,omitempty"`
 
 	// SamplePressure, when set to "io" or "memory", reads Target's cgroup v2
-	// io.pressure or memory.pressure after the observation window and records
-	// it as a host_sampled observation (metric "iowait_pct" or
-	// "mem_pressure_pct"). Meaningful for a fault that runs on Target's own
+	// io.pressure or memory.pressure during the faulted duty slot and records
+	// it as a host_sampled observation (metric "host_iowait_pct" or
+	// "host_mem_pressure_pct"). Meaningful for a fault that runs on Target's own
 	// container — cgroup_io/cgroup_mem most directly, since those are what
 	// actually generate the corresponding stall — so this only applies when
 	// Target is the container under load.
 	SamplePressure string `yaml:"sample_pressure,omitempty"`
 
-	// MetricsTarget, when set, names a Kurtosis service (normally an execution
-	// client) whose Prometheus endpoint is scraped after the observation window
-	// for Engine API call durations, recorded as engine_call observations. Set
-	// this to the execution client actually under load — usually the same
-	// participant as Target for an el_slow-focused scenario.
-	MetricsTarget string `yaml:"metrics_target,omitempty"`
+	// TimingTarget is the consensus client whose block-arrival gauge is
+	// sampled when the watched slot reaches head.
+	TimingTarget string `yaml:"timing_target"`
+
+	// BaselineTarget is an independent, unfaulted consensus client whose
+	// block-arrival metric supplies the network comparison for R-110/R-200.
+	BaselineTarget string `yaml:"baseline_target,omitempty"`
+
+	// SampleEngineCalls records exact per-slot Engine durations when both
+	// required cumulative counters advance exactly once.
+	SampleEngineCalls bool `yaml:"sample_engine_calls,omitempty"`
 
 	// PeerCountTarget, when set, names a Kurtosis consensus-client service
 	// (e.g. "cl-1-lighthouse-geth") whose peer count is scraped after the
@@ -122,6 +132,8 @@ type Expectation struct {
 	SubCause   string `yaml:"sub_cause,omitempty"`
 	Confidence string `yaml:"confidence"`
 }
+
+const maxScenarioValidatorCandidates = 64
 
 // FaultSpec names one fault mechanism and its parameters. Exactly one field
 // besides Kind is populated, matching Kind's value — enforced by Validate.
@@ -154,16 +166,31 @@ func LoadScenario(path string) (Scenario, error) {
 	if err := s.Validate(); err != nil {
 		return Scenario{}, fmt.Errorf("scenario %s: %w", path, err)
 	}
+	s.RecipeID = s.ID
 	return s, nil
 }
 
 // Validate reports why the scenario cannot be run, or nil.
 func (s Scenario) Validate() error {
-	if s.ID == "" {
-		return fmt.Errorf("id is required")
+	if !validScenarioID(s.ID) {
+		return fmt.Errorf("id %q must contain only lowercase letters, digits, and internal hyphens", s.ID)
 	}
 	if s.Target == "" {
 		return fmt.Errorf("target is required")
+	}
+	if s.TimingTarget == "" {
+		return fmt.Errorf("timing_target is required")
+	}
+	if (s.Expect.Cause == "local.p2p_degraded" || s.Expect.Cause == "network.late_block") && s.BaselineTarget == "" {
+		return fmt.Errorf("baseline_target is required for %s", s.Expect.Cause)
+	}
+	if s.Expect.Cause == "local.p2p_degraded" {
+		if s.Fault.Netem == nil || s.Fault.Netem.PeerTarget == "" {
+			return fmt.Errorf("fault.netem.peer_target is required for local.p2p_degraded so observability traffic is not faulted")
+		}
+		if s.Fault.Netem.PeerTarget == s.Target {
+			return fmt.Errorf("fault.netem.peer_target must differ from the fault target")
+		}
 	}
 	if s.Duration <= 0 {
 		return fmt.Errorf("duration must be positive, got %s", s.Duration)
@@ -183,7 +210,29 @@ func (s Scenario) Validate() error {
 	if s.ValidatorCandidates != nil && s.ValidatorCandidates[0] > s.ValidatorCandidates[1] {
 		return fmt.Errorf("validator_candidates range %v is inverted", *s.ValidatorCandidates)
 	}
+	if s.ValidatorCandidates != nil && s.ValidatorCandidates[1]-s.ValidatorCandidates[0] >= maxScenarioValidatorCandidates {
+		return fmt.Errorf("validator_candidates range %v exceeds %d validators", *s.ValidatorCandidates, maxScenarioValidatorCandidates)
+	}
+	if s.Fault.PeerDrop != nil && s.Fault.PeerDrop.PeerTarget == s.Target {
+		return fmt.Errorf("fault.peer_drop.peer_target must differ from the fault target")
+	}
 	return s.Fault.Validate()
+}
+
+func validScenarioID(id string) bool {
+	if id == "" || id[0] == '-' || id[len(id)-1] == '-' {
+		return false
+	}
+	for i := range len(id) {
+		c := id[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+		if c == '-' && i > 0 && id[i-1] == '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // Validate reports why the fault spec is malformed, or nil.
@@ -206,17 +255,38 @@ func (f FaultSpec) Validate() error {
 		if f.Netem == nil {
 			return fmt.Errorf("fault.kind is %q but netem params are not set", f.Kind)
 		}
+		if f.Netem.Delay != "" {
+			delay, err := time.ParseDuration(f.Netem.Delay)
+			if err != nil || delay <= 0 {
+				return fmt.Errorf("fault.netem.delay must be a positive duration, got %q", f.Netem.Delay)
+			}
+		}
+		if math.IsNaN(f.Netem.LossPercent) || math.IsInf(f.Netem.LossPercent, 0) || f.Netem.LossPercent < 0 || f.Netem.LossPercent > 100 {
+			return fmt.Errorf("fault.netem.loss_percent must be finite and between 0 and 100, got %v", f.Netem.LossPercent)
+		}
+		if f.Netem.Delay == "" && f.Netem.LossPercent == 0 {
+			return fmt.Errorf("fault.netem requires delay or positive loss_percent")
+		}
 	case "cgroup_io":
 		if f.CgroupIO == nil {
 			return fmt.Errorf("fault.kind is %q but cgroup_io params are not set", f.Kind)
+		}
+		if f.CgroupIO.ReadBytesPerSec == 0 && f.CgroupIO.WriteBytesPerSec == 0 {
+			return fmt.Errorf("fault.cgroup_io requires read_bytes_per_sec or write_bytes_per_sec")
 		}
 	case "cgroup_cpu":
 		if f.CgroupCPU == nil {
 			return fmt.Errorf("fault.kind is %q but cgroup_cpu params are not set", f.Kind)
 		}
+		if f.CgroupCPU.QuotaPercent == 0 || f.CgroupCPU.QuotaPercent > 100 {
+			return fmt.Errorf("fault.cgroup_cpu.quota_percent must be between 1 and 100, got %d", f.CgroupCPU.QuotaPercent)
+		}
 	case "cgroup_mem":
 		if f.CgroupMem == nil {
 			return fmt.Errorf("fault.kind is %q but cgroup_mem params are not set", f.Kind)
+		}
+		if f.CgroupMem.LimitBytes == 0 {
+			return fmt.Errorf("fault.cgroup_mem.limit_bytes must be positive")
 		}
 	case "pause":
 		if f.Pause == nil {
@@ -226,9 +296,16 @@ func (f FaultSpec) Validate() error {
 		if f.ClockSkew == nil {
 			return fmt.Errorf("fault.kind is %q but clock_skew params are not set", f.Kind)
 		}
+		offset, err := time.ParseDuration(f.ClockSkew.Offset)
+		if err != nil || offset == 0 {
+			return fmt.Errorf("fault.clock_skew.offset must be a non-zero duration, got %q", f.ClockSkew.Offset)
+		}
 	case "peer_drop":
 		if f.PeerDrop == nil {
 			return fmt.Errorf("fault.kind is %q but peer_drop params are not set", f.Kind)
+		}
+		if f.PeerDrop.PeerTarget == "" {
+			return fmt.Errorf("fault.peer_drop.peer_target is required")
 		}
 	default:
 		return fmt.Errorf("fault.kind %q is not one of netem/cgroup_io/cgroup_cpu/cgroup_mem/pause/clock_skew/peer_drop", f.Kind)

@@ -1,0 +1,17 @@
+FROM sigp/lighthouse@sha256:9a62bb8705455136e1cf96613460960f80dc2faa9d75b5c16a3bfcc9210dcdd1
+
+USER root
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libfaketime=0.9.8-9 \
+    && rm -rf /var/lib/apt/lists/* \
+    && library="$(find /usr/lib -type f -path '*/faketime/libfaketime.so.1' -print -quit)" \
+    && test -n "$library" \
+    && ln -s "$library" /usr/local/lib/libfaketime.so.1 \
+    && printf '%s\n' '+0' > /etc/whymiss-faketime
+
+ENV LD_PRELOAD=/usr/local/lib/libfaketime.so.1 \
+    FAKETIME_TIMESTAMP_FILE=/etc/whymiss-faketime \
+    FAKETIME_NO_CACHE=1 \
+    FAKETIME_DONT_FAKE_MONOTONIC=1 \
+    NO_FAKE_STAT=1

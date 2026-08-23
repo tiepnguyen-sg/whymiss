@@ -1,13 +1,10 @@
 id: p2p-degraded-lighthouse
 description: >
-  3s of added latency (tc netem) on the Lighthouse consensus client's network
-  path for the full duty window, simulating degraded peering / propagation.
-  (5s was tried first and broke faultinjector's own HTTP polling — netem
-  delays the veth bidirectionally, so a round trip can see roughly 2x the
-  configured delay, and 2x5s exceeded the 10s HTTP client timeout in
-  observe.go. 3s keeps round trips comfortably under that while still
-  pushing block arrival past the ~4s attestation deadline once combined
-  with this devnet's ~1s propagation baseline.)
+  5s of added latency (tc netem) on packets arriving from the Prysm peer at
+  the Lighthouse consensus client for the full duty window, simulating
+  degraded peering / propagation. The filter is scoped to the peer container's
+  IP, so Beacon API, Prometheus, and Engine traffic remain independently
+  observable while block gossip crosses the ~4s attestation deadline.
   require_proposer_validators forces the proposer to be the Prysm-side
   validator, so the watched Lighthouse validator's block_seen genuinely
   depends on cross-node gossip over the throttled link — without this, a
@@ -18,13 +15,14 @@ description: >
   timing was generated before RunScenario's poller-start-timing fix, was
   rerun post-fix and came back with zero measurable effect either way).
   Also samples the faulted node's own connected-peer count, which R-200
-  reads as corroboration. On this two-node devnet that count is 1 either
-  way — a structural property of the topology, not something this fault
-  produces — but it is a real measured value, and one below the
-  mainnet-scale peer_count_min this build ships with, so it exercises
-  R-200's corroborated (high-confidence) branch with genuine data rather
-  than leaving that branch unreached by any real scenario.
+  reads as corroboration. The value is measured after the fault rather than
+  assumed: on this two-node devnet it may remain at 1 or fall to 0 if the
+  delayed peer disconnects. Either real value is below the mainnet-scale
+  peer_count_min this build ships with, so it exercises R-200's
+  peer-corroborated branch without fabricated data.
 target: cl-1-lighthouse-geth
+timing_target: cl-1-lighthouse-geth
+baseline_target: cl-2-prysm-geth
 validator_candidates: [0, 31]
 duration: 25s
 require_proposer_validators: [32, 63]
@@ -32,7 +30,8 @@ peer_count_target: cl-1-lighthouse-geth
 fault:
   kind: netem
   netem:
-    delay: 3s
+    delay: 5s
+    peer_target: cl-2-prysm-geth
 expect:
   cause: local.p2p_degraded
-  confidence: high
+  confidence: medium

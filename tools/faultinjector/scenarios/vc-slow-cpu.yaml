@@ -8,7 +8,9 @@ description: >
   (published late, head received on time) from local.vc_disconnected
   (never published at all).
 target: vc-1-geth-lighthouse
-validator_index: 24
+timing_target: cl-1-lighthouse-geth
+validator_candidates: [0, 31]
+avoid_proposer_validators: [0, 31]
 duration: 35s
 fault:
   kind: cgroup_cpu

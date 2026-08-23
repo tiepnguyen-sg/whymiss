@@ -1,0 +1,19 @@
+id: proposer-missed-concurrent-vc-pause
+description: >
+  The Lighthouse validator client is paused across a slot where the same
+  Lighthouse validator set owns both the watched attester duty and the proposer
+  duty. The proposer cannot publish a block and the watched validator cannot
+  publish an attestation, producing the observation shape for R-100 without
+  relying on an unrelated spontaneous proposer miss. The generator persists a
+  positive canonical skipped-slot proof, so R-100 reports high confidence.
+target: vc-1-geth-lighthouse
+timing_target: cl-1-lighthouse-geth
+validator_candidates: [0, 31]
+duration: 20s
+require_proposer_validators: [0, 31]
+fault:
+  kind: pause
+  pause: {}
+expect:
+  cause: network.proposer_missed
+  confidence: high

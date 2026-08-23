@@ -4,11 +4,12 @@
 // block. It prints a Markdown report to stdout — `make eval` redirects
 // that into docs/evaluation.md.
 //
-// This is a measurement, not a gate: it reports whatever the corpus
-// actually shows, honestly, rather than being tuned to hit a target.
+// Normal mode is a measurement and reports whatever the corpus actually shows.
+// --check additionally enforces the release policy from BUILD_PROMPT.md §11.3.
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -20,7 +21,6 @@ import (
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/rca"
-	_ "github.com/tiepnguyen-sg/whymiss/internal/rca/rules" // registers rca.Order via init
 	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 )
 
@@ -44,18 +44,28 @@ type result struct {
 	falseHigh                     bool
 }
 
+const (
+	releaseAccuracyPercent = 90
+	releaseMinScenarios    = 50
+)
+
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: eval <corpus-dir>")
+	flags := flag.NewFlagSet("eval", flag.ContinueOnError)
+	check := flags.Bool("check", false, "enforce release accuracy and false-high gates")
+	if err := flags.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
-	if err := run(os.Args[1], os.Stdout); err != nil {
+	if flags.NArg() != 1 {
+		fmt.Fprintln(os.Stderr, "usage: eval [--check] <corpus-dir>")
+		os.Exit(2)
+	}
+	if err := run(flags.Arg(0), os.Stdout, *check); err != nil {
 		fmt.Fprintln(os.Stderr, "eval:", err)
 		os.Exit(1)
 	}
 }
 
-func run(corpusDir string, out io.Writer) error {
+func run(corpusDir string, out io.Writer, check bool) error {
 	entries, err := os.ReadDir(corpusDir)
 	if err != nil {
 		return fmt.Errorf("read corpus dir: %w", err)
@@ -74,8 +84,41 @@ func run(corpusDir string, out io.Writer) error {
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].id < results[j].id })
 
-	_, err = io.WriteString(out, buildReport(results))
-	return err
+	if _, err := io.WriteString(out, buildReport(results)); err != nil {
+		return err
+	}
+	if check {
+		return checkReleasePolicy(results)
+	}
+	return nil
+}
+
+func checkReleasePolicy(results []result) error {
+	if len(results) < releaseMinScenarios {
+		return fmt.Errorf("release gate failed: corpus has %d scenarios, want at least %d", len(results), releaseMinScenarios)
+	}
+	correct, falseHigh, ambiguous := 0, 0, 0
+	for _, r := range results {
+		if r.correct {
+			correct++
+		}
+		if r.falseHigh {
+			falseHigh++
+		}
+		if strings.HasPrefix(r.want, "unknown.") {
+			ambiguous++
+		}
+	}
+	if ambiguous == 0 {
+		return fmt.Errorf("release gate failed: corpus has no ambiguous scenario expected to yield unknown.*")
+	}
+	if falseHigh > 0 {
+		return fmt.Errorf("release gate failed: %d false-high verdict(s), want 0", falseHigh)
+	}
+	if correct*100 < len(results)*releaseAccuracyPercent {
+		return fmt.Errorf("release gate failed: top-1 accuracy %d/%d is below %d%%", correct, len(results), releaseAccuracyPercent)
+	}
+	return nil
 }
 
 func evalScenario(dir string) (result, error) {

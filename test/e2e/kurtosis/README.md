@@ -12,6 +12,8 @@ make devnet.info     # list service endpoints
 make devnet.down     # tear it down
 ```
 
+Set `DEVNET_ENCLAVE=<name>` on every target to use an isolated enclave name.
+
 `kurtosis cluster set docker` first if `kurtosis engine status` complains about a
 Kubernetes backend — see below.
 
@@ -42,31 +44,34 @@ touching the other one.
 ## Reaching a container's cgroup / host network namespace (Docker Desktop for Mac)
 
 Docker Desktop runs containers inside a Linux VM, not directly on macOS. A
-container's own `/sys/fs/cgroup` is mounted read-only from inside it (correctly —
-delegating writes to a container's own resource limits would defeat the point),
-so `tools/faultinjector`'s cgroup_io fault reaches the VM's real cgroup
-filesystem via a short-lived privileged helper:
+container's own `/sys/fs/cgroup` is mounted read-only from inside it, so the
+development-only fault injector uses a digest-pinned, short-lived privileged
+helper to enter the VM host namespaces. It uses this path for CPU and memory
+cgroup limits and for `tc netem` on the container's VM-side veth:
 
 ```sh
-docker run --rm --privileged --pid=host alpine sh -c \
-  'apk add --no-cache util-linux; nsenter -t 1 -m -u -n -i sh -c "<command>"'
+docker run --rm --privileged --pid=host alpine@sha256:<pinned> sh -c \
+  'nsenter -t 1 -m -u -n -i sh -c "<command>"'
 ```
 
-This also works unmodified on a native Linux host — it just has less to reach
-through there.
+Native Linux uses the host cgroup filesystem and veth directly and therefore
+requires root (or the equivalent capabilities). `cgroup_io` remains native-
+Linux-only; the current release corpus does not use it.
 
-**Network faults (tc netem) do not work this way on Docker Desktop for Mac.**
-Its networking is not a plain Linux bridge+veth topology, so host-side-veth-based
-`tc netem` (the standard technique for unprivileged Docker containers) could not
-be made to actually delay traffic when prototyped there. It works cleanly on
-native Linux: verified end to end on a GCP `e2-standard-4` Ubuntu 22.04 VM —
-`hostVethFor` resolved the correct host veth from the container's own
-`eth0@if<N>` naming, and `tc qdisc add ... netem delay 300ms` measurably added
-~300ms of round-trip latency, reverting cleanly. Run
-`tools/faultinjector/fault_netem_verify_test.go`'s
-`TestNetemFaultAgainstRealDevnet` (root, `WHYMISS_NETEM_INTEGRATION=1`) to
-reproduce. `clock_skew` remains unimplemented for an unrelated, platform-
-independent reason — see `fault_clock.go`'s doc comment.
+The opt-in Docker Desktop integration tests prove both paths against a live
+devnet and verify rollback: `TestNetemFaultAgainstDockerDesktopDevnet` measures
+the injected latency, and `TestCgroupFaultAgainstDockerDesktopDevnet` reads the
+changed `cpu.max` and its restored value, including rollback after the apply
+context is canceled. Run `make test.faults.darwin
+DEVNET_ENCLAVE=whymiss-release`.
+
+`make devnet.up` first builds a devnet-only Lighthouse validator image with
+libfaketime preloaded. The `clock_skew` fault updates its offset file live,
+verifies that PID 1 loaded the library, and restores the exact original file.
+The Prysm images are static Go binaries, which libfaketime cannot intercept, so
+clock-skew recipes must target `vc-1-geth-lighthouse`. Run
+`make test.faults.clock` to prove the live apply and rollback path independently
+of a duty slot.
 
 ## Validator index ranges
 
@@ -80,3 +85,33 @@ range at once — see `Scenario.AvoidProposerValidators` in
 validator's attester duty needs to avoid slots where the same range also holds
 the proposer duty, or the recorded outcome gets confounded with
 `network.proposer_missed`.
+
+## Release corpus campaign
+
+Regenerate the 15 canonical recipes first, then collect 35 additional live
+records. Every additional record re-runs its source recipe against a newly
+selected slot and validator; `recipe_id` in its manifest preserves that
+provenance. No fixture is copied or relabelled.
+
+```sh
+make corpus.generate.all \
+  DEVNET_ENCLAVE=whymiss-release \
+  NTP_SERVER=time.cloudflare.com
+make corpus.generate.campaign \
+  DEVNET_ENCLAVE=whymiss-release \
+  NTP_SERVER=time.cloudflare.com
+make corpus.validate
+make eval
+make eval.check
+```
+
+The fixed campaign contains exactly 50 live records: seven for each of six
+positive causes and eight adversarial `unknown` records. Runs are serial so a
+fault is never contaminated by another active fault. A failed record is kept
+for diagnosis and reported at the end; it is not counted as a passing fixture.
+
+Before starting, measure the chosen fixed NTP server repeatedly. The injector
+also samples before the duty and after the full inclusion window and rejects an
+absolute offset above 100 ms. Do not disable or loosen that gate: synchronize
+the host clock, then rerun the failed record with `make corpus.generate` and a
+unique `RECORD_ID` if needed.

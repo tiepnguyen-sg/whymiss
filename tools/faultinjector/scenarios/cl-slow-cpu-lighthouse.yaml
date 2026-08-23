@@ -1,0 +1,20 @@
+id: cl-slow-cpu-lighthouse
+description: >
+  The Lighthouse consensus client's CPU is capped to 9% of one core for the
+  full duty window while geth remains unthrottled. Exact per-slot Engine
+  counters separate consensus validation time from execution latency, and
+  Lighthouse-side proposers are excluded so proposal production cannot
+  confound the watched attestation.
+target: cl-1-lighthouse-geth
+timing_target: cl-1-lighthouse-geth
+sample_engine_calls: true
+validator_candidates: [0, 31]
+avoid_proposer_validators: [0, 31]
+duration: 25s
+fault:
+  kind: cgroup_cpu
+  cgroup_cpu:
+    quota_percent: 9
+expect:
+  cause: local.cl_slow
+  confidence: medium

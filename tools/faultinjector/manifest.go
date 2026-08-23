@@ -1,26 +1,40 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/tiepnguyen-sg/whymiss/internal/clock"
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Manifest is test/corpus/<id>/manifest.yaml: the label on a corpus scenario.
-// docs/BUILD_PROMPT.md §4 names the three fields this file must have; the rest
-// here are provenance — which fault produced the scenario and against what,
-// so a scenario can be regenerated or audited without reading its README.
+// ClockProvenance identifies the real NTP exchange used to correct every
+// observation timestamp in one generated scenario.
+type ClockProvenance struct {
+	Server    string        `yaml:"server"`
+	SampleAt  time.Time     `yaml:"sampled_at"`
+	Offset    time.Duration `yaml:"offset"`
+	RoundTrip time.Duration `yaml:"round_trip"`
+}
+
+// Manifest is test/corpus/<id>/manifest.yaml: the label and reproducibility
+// metadata for one real fault-injection run.
 type Manifest struct {
-	ID          string      `yaml:"id"`
-	Description string      `yaml:"description"`
-	Expect      Expectation `yaml:"expect"`
+	CorpusFormatVersion    int         `yaml:"corpus_format_version"`
+	GeneratorEngineVersion string      `yaml:"generator_engine_version"`
+	ID                     string      `yaml:"id"`
+	RecipeID               string      `yaml:"recipe_id,omitempty"`
+	Description            string      `yaml:"description"`
+	Expect                 Expectation `yaml:"expect"`
 
 	Slot           uint64 `yaml:"slot"`
 	ValidatorIndex uint64 `yaml:"validator_index"`
@@ -29,60 +43,133 @@ type Manifest struct {
 	FaultTarget string        `yaml:"fault_target"`
 	Duration    time.Duration `yaml:"duration"`
 
-	GeneratedAt time.Time `yaml:"generated_at"`
+	GeneratedAt        time.Time         `yaml:"generated_at"`
+	ClockSamples       []ClockProvenance `yaml:"clock_samples"`
+	ObservationsSHA256 string            `yaml:"observations_sha256"`
 }
 
-// WriteCorpusScenario writes manifest.yaml, observations.jsonl, and README.md
-// under dir, which must already exist.
-//
-// observations.jsonl is one JSON object per line, each the exact wire form of a
-// [domain.Observation] — the same shape Phase 2's replay mode (BUILD_PROMPT task
-// 2.8) will read back in. Writing through domain.NewObservation's JSON encoding
-// rather than a bespoke format means the corpus and the collector agree on the
-// format by construction, not by two implementations staying in sync by hand.
+// WriteCorpusScenario replaces a scenario's three files atomically one file at
+// a time, publishing manifest.yaml last. The manifest hashes observations.jsonl,
+// so an interrupted multi-file update is detected rather than silently accepted.
 func WriteCorpusScenario(dir string, m Manifest, observations []domain.Observation, readme string) error {
+	if err := validateCorpusWrite(m, observations, readme); err != nil {
+		return err
+	}
+	observationsBytes, err := encodeObservationsJSONL(observations)
+	if err != nil {
+		return err
+	}
+	hash := sha256.Sum256(observationsBytes)
+	m.ObservationsSHA256 = hex.EncodeToString(hash[:])
+
 	manifestBytes, err := yaml.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), manifestBytes, 0o600); err != nil {
-		return fmt.Errorf("write manifest.yaml: %w", err)
+	if err := atomicWriteFile(filepath.Join(dir, "observations.jsonl"), observationsBytes); err != nil {
+		return fmt.Errorf("write observations.jsonl: %w", err)
 	}
-
-	if err := writeObservationsJSONL(filepath.Join(dir, "observations.jsonl"), observations); err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(readme), 0o600); err != nil {
+	if err := atomicWriteFile(filepath.Join(dir, "README.md"), []byte(readme)); err != nil {
 		return fmt.Errorf("write README.md: %w", err)
+	}
+	if err := atomicWriteFile(filepath.Join(dir, "manifest.yaml"), manifestBytes); err != nil {
+		return fmt.Errorf("write manifest.yaml: %w", err)
 	}
 	return nil
 }
 
-func writeObservationsJSONL(path string, observations []domain.Observation) (err error) {
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("create observations.jsonl: %w", err)
+func validateCorpusWrite(m Manifest, observations []domain.Observation, readme string) error {
+	if m.CorpusFormatVersion != 2 || m.GeneratorEngineVersion == "" || m.ID == "" || m.Description == "" {
+		return fmt.Errorf("manifest identity and corpus format provenance are required")
 	}
-	defer func() {
-		// This is the file the corpus scenario's facts live in: a Close error
-		// (a late-surfacing write failure, e.g. on a full disk) means the file
-		// on disk cannot be trusted, so it must not be swallowed the way a
-		// read-only Close typically can be.
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("close observations.jsonl: %w", cerr)
+	if !validScenarioID(m.ID) || (m.RecipeID != "" && !validScenarioID(m.RecipeID)) {
+		return fmt.Errorf("manifest id and recipe_id must be valid scenario ids")
+	}
+	if m.FaultKind == "" || m.FaultTarget == "" || m.Duration <= 0 || m.GeneratedAt.IsZero() {
+		return fmt.Errorf("manifest fault provenance is incomplete")
+	}
+	if len(m.ClockSamples) == 0 {
+		return fmt.Errorf("manifest clock provenance is incomplete")
+	}
+	knownClockSamples := make(map[string]struct{}, len(m.ClockSamples))
+	for i, sample := range m.ClockSamples {
+		if sample.Server == "" || sample.SampleAt.IsZero() || sample.RoundTrip <= 0 {
+			return fmt.Errorf("manifest clock sample %d is incomplete", i)
 		}
-	}()
+		knownClockSamples[clockSampleKey(sample.SampleAt, sample.Offset)] = struct{}{}
+	}
+	if m.Expect.Cause == "" || m.Expect.Confidence == "" {
+		return fmt.Errorf("manifest expectation is incomplete")
+	}
+	if len(observations) == 0 || readme == "" {
+		return fmt.Errorf("scenario observations and README must not be empty")
+	}
+	for i, obs := range observations {
+		if err := obs.Validate(); err != nil {
+			return fmt.Errorf("validate observation %d: %w", i, err)
+		}
+		_, known := knownClockSamples[clockSampleKey(obs.ClockSampleAt, obs.ClockOffset)]
+		if !obs.ClockMeasured || !known {
+			return fmt.Errorf("observation %d clock provenance does not match manifest", i)
+		}
+	}
+	return nil
+}
 
-	w := bufio.NewWriter(f)
-	enc := json.NewEncoder(w)
+func clockProvenance(readings []clock.Reading) []ClockProvenance {
+	out := make([]ClockProvenance, len(readings))
+	for i, reading := range readings {
+		out[i] = ClockProvenance{
+			Server: reading.Server, SampleAt: reading.At.Add(reading.Offset).UTC(),
+			Offset: reading.Offset, RoundTrip: reading.RoundTrip,
+		}
+	}
+	return out
+}
+
+func clockSampleKey(sampleAt time.Time, offset time.Duration) string {
+	return sampleAt.UTC().Format(time.RFC3339Nano) + "\x00" + offset.String()
+}
+
+func encodeObservationsJSONL(observations []domain.Observation) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
 	for i, obs := range observations {
 		if err := enc.Encode(obs); err != nil {
-			return fmt.Errorf("encode observation %d: %w", i, err)
+			return nil, fmt.Errorf("encode observation %d: %w", i, err)
 		}
 	}
-	if err := w.Flush(); err != nil {
-		return fmt.Errorf("flush observations.jsonl: %w", err)
+	return b.Bytes(), nil
+}
+
+func atomicWriteFile(path string, content []byte) (err error) {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		if err != nil {
+			if closeErr := tmp.Close(); closeErr != nil && !errors.Is(closeErr, os.ErrClosed) {
+				err = errors.Join(err, fmt.Errorf("close failed temporary file: %w", closeErr))
+			}
+			if removeErr := os.Remove(tmpPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				err = errors.Join(err, fmt.Errorf("remove failed temporary file: %w", removeErr))
+			}
+		}
+	}()
+	if _, err = tmp.Write(content); err != nil {
+		return fmt.Errorf("write temporary file: %w", err)
+	}
+	if err = tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temporary file: %w", err)
+	}
+	if err = tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary file: %w", err)
+	}
+	if err = os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("publish temporary file: %w", err)
 	}
 	return nil
 }

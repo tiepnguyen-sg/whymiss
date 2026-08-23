@@ -5,7 +5,8 @@ description: >
   prove the taxonomy attribution and the injector itself are not
   client-specific (I-11).
 target: vc-2-geth-prysm
-validator_index: 33
+timing_target: cl-2-prysm-geth
+validator_candidates: [32, 63]
 duration: 20s
 avoid_proposer_validators: [32, 63]
 fault:
@@ -13,4 +14,4 @@ fault:
   pause: {}
 expect:
   cause: local.vc_disconnected
-  confidence: high
+  confidence: medium

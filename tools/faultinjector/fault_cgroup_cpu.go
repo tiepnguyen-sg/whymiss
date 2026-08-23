@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // cgroupCPUPeriodUS is the period half of cgroup v2 cpu.max's "<quota> <period>"
@@ -35,21 +36,24 @@ func (f *CgroupCPUFault) Apply(ctx context.Context, enclave, target string) (fun
 	if err != nil {
 		return nil, err
 	}
-	cgroupDir, err := containerCgroupDir(id)
+	original, err := readContainerCgroupFile(ctx, id, "cpu.max")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("snapshot cpu.max: %w", err)
 	}
-
+	originalValue := strings.TrimSpace(string(original))
+	if originalValue == "" {
+		return nil, fmt.Errorf("snapshot cpu.max: empty value")
+	}
 	quota := cgroupCPUPeriodUS * f.Params.QuotaPercent / 100
 	if quota == 0 {
 		quota = 1000 // cpu.max rejects 0 as invalid, same as io.max's rbps/wbps=0
 	}
-	if err := writeCgroupFile(cgroupDir, "cpu.max", fmt.Sprintf("%d %d", quota, cgroupCPUPeriodUS)); err != nil {
+	if err := writeContainerCgroupFile(ctx, id, "cpu.max", fmt.Sprintf("%d %d", quota, cgroupCPUPeriodUS)); err != nil {
 		return nil, err
 	}
 
-	revert := func(context.Context) error {
-		return writeCgroupFile(cgroupDir, "cpu.max", fmt.Sprintf("max %d", cgroupCPUPeriodUS))
+	revert := func(revertCtx context.Context) error {
+		return writeContainerCgroupFile(revertCtx, id, "cpu.max", originalValue)
 	}
 	return revert, nil
 }

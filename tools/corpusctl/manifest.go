@@ -11,9 +11,12 @@ import "time"
 // hand — a small, stable struct, and a cost worth paying to avoid a directory
 // neither BUILD_PROMPT nor STRUCTURE.md calls for.
 type manifest struct {
-	ID          string `yaml:"id"`
-	Description string `yaml:"description"`
-	Expect      struct {
+	CorpusFormatVersion    int    `yaml:"corpus_format_version"`
+	GeneratorEngineVersion string `yaml:"generator_engine_version"`
+	ID                     string `yaml:"id"`
+	RecipeID               string `yaml:"recipe_id,omitempty"`
+	Description            string `yaml:"description"`
+	Expect                 struct {
 		Cause      string `yaml:"cause"`
 		SubCause   string `yaml:"sub_cause,omitempty"`
 		Confidence string `yaml:"confidence"`
@@ -26,5 +29,12 @@ type manifest struct {
 	FaultTarget string        `yaml:"fault_target"`
 	Duration    time.Duration `yaml:"duration"`
 
-	GeneratedAt time.Time `yaml:"generated_at"`
+	GeneratedAt  time.Time `yaml:"generated_at"`
+	ClockSamples []struct {
+		Server    string        `yaml:"server"`
+		SampleAt  time.Time     `yaml:"sampled_at"`
+		Offset    time.Duration `yaml:"offset"`
+		RoundTrip time.Duration `yaml:"round_trip"`
+	} `yaml:"clock_samples"`
+	ObservationsSHA256 string `yaml:"observations_sha256"`
 }

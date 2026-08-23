@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/bits"
 	"net/http"
 	"sort"
@@ -12,7 +13,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tiepnguyen-sg/whymiss/internal/clock"
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/source"
 )
 
 // Observer watches one validator's duty through a beacon node's standard REST
@@ -24,17 +27,37 @@ import (
 // Phase 2's real internal/source/beaconapi collector will use. That means
 // ObsBlockSeen here is "the poll loop first found this slot's block queryable",
 // not "the node's gossip layer received it" — close enough to be a genuine,
-// non-fabricated measurement for a corpus fixture, but coarser than what the
-// shipped product will record. ObsHeadUpdated is not emitted at all: telling
-// "seen" apart from "validated as head" needs the event stream this tool does
-// not have. A scenario built from this Observer is honest about what it
-// contains; it is not a preview of Phase 2's collector fidelity.
+// non-fabricated measurement for a corpus fixture, but coarser than the client
+// metric used by the shipped collector. Head timing polls the standard canonical
+// header endpoint and rejects optimistic or already-advanced heads, so it records
+// when this observer first verified the exact slot as validated head.
 type Observer struct {
 	BeaconAPI      string
 	Client         *http.Client
 	GenesisTime    time.Time
 	SecondsPerSlot time.Duration
+
+	// NodeRecoveryBudget is how long blockStatusAtDeadline waits for the
+	// watched node to return to a fully synced, execution-valid state
+	// before giving up. Zero means defaultNodeRecoveryBudget; tests set it
+	// small to assert the give-up path without waiting for it.
+	NodeRecoveryBudget time.Duration
 }
+
+// defaultNodeRecoveryBudget bounds the wait for a node degraded by the very
+// fault the scenario injected.
+//
+// A fault aimed at a node component can leave the beacon node reporting
+// unsynced or optimistic for a while after the fault is reverted. Sampling
+// that state exactly once at the deadline turned a
+// transient into a hard failure that aborted corpus generation — observed on
+// a real devnet, where the run died at this check on slot 3442 while the node
+// went on to catch up to slot 3708 entirely unaided.
+//
+// Waiting is not the same as assuming: a node that never recovers still fails
+// the check, because a 404 from a node that is not execution-valid is not
+// evidence of a skipped slot (ADR-0015).
+const defaultNodeRecoveryBudget = 3 * time.Minute
 
 // NewObserver fetches genesis time and the slot duration from beaconAPI and
 // returns an Observer ready to watch duties on that chain.
@@ -50,7 +73,15 @@ func NewObserver(ctx context.Context, beaconAPI string) (*Observer, error) {
 	// left to attribute anything to. 25s gives enough room for the API to
 	// answer under real CPU pressure while still bounding how long a single
 	// request can hang if something is genuinely broken.
-	client := &http.Client{Timeout: 25 * time.Second}
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		defaultTransport = &http.Transport{Proxy: http.ProxyFromEnvironment}
+	}
+	transport := defaultTransport.Clone()
+	transport.MaxIdleConns = 8
+	transport.MaxIdleConnsPerHost = 8
+	transport.MaxConnsPerHost = 8
+	client := &http.Client{Transport: transport, Timeout: 25 * time.Second}
 
 	var genesis struct {
 		Data struct {
@@ -75,12 +106,16 @@ func NewObserver(ctx context.Context, beaconAPI string) (*Observer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse SECONDS_PER_SLOT %q: %w", spec.Data["SECONDS_PER_SLOT"], err)
 	}
+	if secondsPerSlot <= 0 || secondsPerSlot > 60 {
+		return nil, fmt.Errorf("SECONDS_PER_SLOT %d is outside supported range [1,60]", secondsPerSlot)
+	}
 
 	return &Observer{
-		BeaconAPI:      beaconAPI,
-		Client:         client,
-		GenesisTime:    time.Unix(genesisUnix, 0).UTC(),
-		SecondsPerSlot: time.Duration(secondsPerSlot) * time.Second,
+		BeaconAPI:          beaconAPI,
+		Client:             client,
+		GenesisTime:        time.Unix(genesisUnix, 0).UTC(),
+		SecondsPerSlot:     time.Duration(secondsPerSlot) * time.Second,
+		NodeRecoveryBudget: defaultNodeRecoveryBudget,
 	}, nil
 }
 
@@ -96,6 +131,7 @@ func (o *Observer) SlotStart(slot uint64) time.Time {
 type duty struct {
 	CommitteeIndex          uint64
 	CommitteeLength         uint64
+	CommitteesAtSlot        uint64
 	ValidatorCommitteeIndex uint64
 }
 
@@ -142,6 +178,7 @@ func (o *Observer) FetchDuties(ctx context.Context, epoch uint64, validatorIndic
 			Slot                    string `json:"slot"`
 			CommitteeIndex          string `json:"committee_index"`
 			CommitteeLength         string `json:"committee_length"`
+			CommitteesAtSlot        string `json:"committees_at_slot"`
 			ValidatorCommitteeIndex string `json:"validator_committee_index"`
 		} `json:"data"`
 	}
@@ -155,13 +192,17 @@ func (o *Observer) FetchDuties(ctx context.Context, epoch uint64, validatorIndic
 		slot, err1 := strconv.ParseUint(entry.Slot, 10, 64)
 		ci, err2 := strconv.ParseUint(entry.CommitteeIndex, 10, 64)
 		cl, err3 := strconv.ParseUint(entry.CommitteeLength, 10, 64)
-		vci, err4 := strconv.ParseUint(entry.ValidatorCommitteeIndex, 10, 64)
-		if err := errors.Join(err0, err1, err2, err3, err4); err != nil {
+		cs, err4 := strconv.ParseUint(entry.CommitteesAtSlot, 10, 64)
+		vci, err5 := strconv.ParseUint(entry.ValidatorCommitteeIndex, 10, 64)
+		if err := errors.Join(err0, err1, err2, err3, err4, err5); err != nil {
 			return nil, time.Time{}, fmt.Errorf("parse duty fields in epoch %d: %w", epoch, err)
+		}
+		if cl == 0 || cs == 0 || ci >= cs || vci >= cl {
+			return nil, time.Time{}, fmt.Errorf("invalid duty assignment in epoch %d: committee_index=%d committee_length=%d committees_at_slot=%d validator_position=%d", epoch, ci, cl, cs, vci)
 		}
 		out[vi] = dutyAssignment{
 			Slot: slot,
-			Duty: duty{CommitteeIndex: ci, CommitteeLength: cl, ValidatorCommitteeIndex: vci},
+			Duty: duty{CommitteeIndex: ci, CommitteeLength: cl, CommitteesAtSlot: cs, ValidatorCommitteeIndex: vci},
 		}
 	}
 	return out, at, nil
@@ -197,59 +238,176 @@ func (o *Observer) FetchProposers(ctx context.Context, epoch uint64) (map[uint64
 	return out, nil
 }
 
-// blockAttestation is the subset of an Electra-style attestation this tool reads.
-// Committee-bits (EIP-7549 multi-committee aggregation) are deliberately not
-// handled: this devnet's committee-per-slot count is small enough that Lighthouse
-// represents each attestation as a single committee's data plus that committee's
-// aggregation bitlist, which is what CheckInclusion decodes. A devnet with enough
-// validators to produce genuinely multi-committee aggregates would need that
-// added — a real gap, not a hidden one.
-type blockAttestation struct {
-	AggregationBits string `json:"aggregation_bits"`
-	Data            struct {
-		Slot  string `json:"slot"`
-		Index string `json:"index"`
-	} `json:"data"`
+type blockAttestation = apiAttestation
+
+type blockStatus struct {
+	Root          string
+	ProposerIndex uint64
+	At            time.Time
+	Found         bool
+	Skipped       bool
 }
 
 // PollBlockSeen polls for slot's block until it appears or deadline passes,
-// returning the instant the poll loop first observed it.
-func (o *Observer) PollBlockSeen(ctx context.Context, slot uint64, deadline time.Time) (blockRoot string, proposerIndex uint64, seenAt time.Time, found bool, err error) {
+// returning the instant the poll loop first observed it. At the deadline it
+// reports Skipped only after a fully synced, execution-online node has advanced
+// past the slot and a repeated canonical-header lookup still returns 404.
+func (o *Observer) PollBlockSeen(ctx context.Context, slot uint64, deadline time.Time) (blockStatus, error) {
 	const pollInterval = 500 * time.Millisecond
 
 	for {
-		block, root, ok, ferr := o.fetchBlock(ctx, slot)
+		header, ok, ferr := o.fetchBlockHeader(ctx, slot)
 		if ferr != nil {
-			return "", 0, time.Time{}, false, ferr
+			return blockStatus{}, ferr
 		}
 		if ok {
-			pi, perr := strconv.ParseUint(block.Message.ProposerIndex, 10, 64)
-			if perr != nil {
-				return "", 0, time.Time{}, false, fmt.Errorf("parse proposer_index %q: %w", block.Message.ProposerIndex, perr)
-			}
-			return root, pi, time.Now().UTC(), true, nil
+			return observedBlockStatus(slot, header)
 		}
 		if !time.Now().Before(deadline) {
-			return "", 0, time.Time{}, false, nil
+			return o.blockStatusAtDeadline(ctx, slot)
 		}
 		select {
 		case <-ctx.Done():
-			return "", 0, time.Time{}, false, ctx.Err()
+			return blockStatus{}, ctx.Err()
 		case <-time.After(pollInterval):
 		}
 	}
 }
 
-// poolAttestation is the subset of the attestation-pool response this tool reads.
-// Same Electra-style, single-committee-per-attestation shape as blockAttestation
-// — see that type's doc comment for the scope this implies.
-type poolAttestation struct {
-	AggregationBits string `json:"aggregation_bits"`
-	Data            struct {
-		Slot  string `json:"slot"`
-		Index string `json:"index"`
-	} `json:"data"`
+func observedBlockStatus(slot uint64, header beaconHeader) (blockStatus, error) {
+	pi, err := strconv.ParseUint(header.ProposerIndex, 10, 64)
+	if err != nil {
+		return blockStatus{}, fmt.Errorf("parse proposer_index %q: %w", header.ProposerIndex, err)
+	}
+	if err := validateBeaconRoot(header.Root); err != nil {
+		return blockStatus{}, fmt.Errorf("block %d: %w", slot, err)
+	}
+	return blockStatus{Root: header.Root, ProposerIndex: pi, At: time.Now().UTC(), Found: true}, nil
 }
+
+func (o *Observer) blockStatusAtDeadline(ctx context.Context, slot uint64) (blockStatus, error) {
+	const recoveryPoll = 2 * time.Second
+
+	budget := o.NodeRecoveryBudget
+	if budget <= 0 {
+		budget = defaultNodeRecoveryBudget
+	}
+	giveUpAt := time.Now().Add(budget)
+
+	for {
+		status, err := o.fetchNodeSyncStatus(ctx)
+		if err != nil {
+			return blockStatus{}, fmt.Errorf("confirm node sync before checking skipped slot %d: %w", slot, err)
+		}
+		if status.ready() && status.HeadSlot > slot {
+			break
+		}
+		if !time.Now().Before(giveUpAt) {
+			return blockStatus{}, fmt.Errorf("cannot confirm slot %d as seen or skipped: node is not fully synced, execution-valid, and past the slot after waiting %s for it to recover", slot, budget)
+		}
+		select {
+		case <-ctx.Done():
+			return blockStatus{}, ctx.Err()
+		case <-time.After(recoveryPoll):
+		}
+	}
+
+	header, found, err := o.fetchBlockHeader(ctx, slot)
+	if err != nil {
+		return blockStatus{}, err
+	}
+	if found {
+		return observedBlockStatus(slot, header)
+	}
+	return blockStatus{At: time.Now().UTC(), Skipped: true}, nil
+}
+
+type nodeSyncStatus struct {
+	HeadSlot     uint64
+	SyncDistance uint64
+	IsSyncing    bool
+	IsOptimistic bool
+	ELOffline    bool
+}
+
+func (s nodeSyncStatus) ready() bool {
+	return !s.IsSyncing && !s.IsOptimistic && !s.ELOffline && s.SyncDistance == 0
+}
+
+func (o *Observer) fetchNodeSyncStatus(ctx context.Context) (nodeSyncStatus, error) {
+	var response struct {
+		Data struct {
+			HeadSlot     string `json:"head_slot"`
+			SyncDistance string `json:"sync_distance"`
+			IsSyncing    bool   `json:"is_syncing"`
+			IsOptimistic bool   `json:"is_optimistic"`
+			ELOffline    bool   `json:"el_offline"`
+		} `json:"data"`
+	}
+	if err := getJSON(ctx, o.Client, o.BeaconAPI+"/eth/v1/node/syncing", &response); err != nil {
+		return nodeSyncStatus{}, err
+	}
+	headSlot, err := strconv.ParseUint(response.Data.HeadSlot, 10, 64)
+	if err != nil {
+		return nodeSyncStatus{}, fmt.Errorf("parse head_slot %q: %w", response.Data.HeadSlot, err)
+	}
+	distance, err := strconv.ParseUint(response.Data.SyncDistance, 10, 64)
+	if err != nil {
+		return nodeSyncStatus{}, fmt.Errorf("parse sync_distance %q: %w", response.Data.SyncDistance, err)
+	}
+	return nodeSyncStatus{
+		HeadSlot: headSlot, SyncDistance: distance, IsSyncing: response.Data.IsSyncing,
+		IsOptimistic: response.Data.IsOptimistic, ELOffline: response.Data.ELOffline,
+	}, nil
+}
+
+type beaconHeader struct {
+	Root          string
+	ProposerIndex string
+}
+
+func (o *Observer) fetchBlockHeader(ctx context.Context, slot uint64) (beaconHeader, bool, error) {
+	endpoint := fmt.Sprintf("%s/eth/v1/beacon/headers/%d", o.BeaconAPI, slot)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return beaconHeader{}, false, fmt.Errorf("build block header request: %w", err)
+	}
+	resp, err := o.Client.Do(req)
+	if err != nil {
+		return beaconHeader{}, false, fmt.Errorf("fetch block header %d: %w", slot, err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // read-only response body
+	if resp.StatusCode == http.StatusNotFound {
+		return beaconHeader{}, false, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return beaconHeader{}, false, fmt.Errorf("fetch block header %d: unexpected status %d", slot, resp.StatusCode)
+	}
+	var out struct {
+		ExecutionOptimistic *bool `json:"execution_optimistic"`
+		Data                struct {
+			Root      string `json:"root"`
+			Canonical bool   `json:"canonical"`
+			Header    struct {
+				Message struct {
+					ProposerIndex string `json:"proposer_index"`
+				} `json:"message"`
+			} `json:"header"`
+		} `json:"data"`
+	}
+	if err := decodeJSONBody(resp, &out); err != nil {
+		return beaconHeader{}, false, fmt.Errorf("decode block header %d: %w", slot, err)
+	}
+	if out.ExecutionOptimistic == nil {
+		return beaconHeader{}, false, fmt.Errorf("block header %d has no execution_optimistic status", slot)
+	}
+	if *out.ExecutionOptimistic || !out.Data.Canonical {
+		return beaconHeader{}, false, nil
+	}
+	return beaconHeader{Root: out.Data.Root, ProposerIndex: out.Data.Header.Message.ProposerIndex}, true, nil
+}
+
+type poolAttestation = apiAttestation
 
 // PollAttestationPublished polls the beacon node's attestation pool
 // (GET /eth/v1/beacon/pool/attestations) for dutySlot until d's validator's bit
@@ -263,37 +421,37 @@ type poolAttestation struct {
 // the attestation deadline should keep that slack in mind — this is the same
 // kind of honestly-stated coarseness ObsBlockSeen's doc comment describes for
 // [Observer].
-func (o *Observer) PollAttestationPublished(ctx context.Context, dutySlot uint64, d duty, deadline time.Time) (publishedAt time.Time, found bool, err error) {
+func (o *Observer) PollAttestationPublished(ctx context.Context, dutySlot uint64, d duty, deadline time.Time) (publishedAt time.Time, blockRoot string, found bool, err error) {
 	const pollInterval = 500 * time.Millisecond
 
 	for {
-		ok, ferr := o.poolIncludesAttestation(ctx, dutySlot, d)
+		ok, match, ferr := o.poolIncludesAttestation(ctx, dutySlot, d)
 		if ferr != nil {
-			return time.Time{}, false, ferr
+			return time.Time{}, "", false, ferr
 		}
 		if ok {
-			return time.Now().UTC(), true, nil
+			return time.Now().UTC(), match.Data.BeaconBlockRoot, true, nil
 		}
 		if !time.Now().Before(deadline) {
-			return time.Time{}, false, nil
+			return time.Time{}, "", false, nil
 		}
 		select {
 		case <-ctx.Done():
-			return time.Time{}, false, ctx.Err()
+			return time.Time{}, "", false, ctx.Err()
 		case <-time.After(pollInterval):
 		}
 	}
 }
 
-func (o *Observer) poolIncludesAttestation(ctx context.Context, dutySlot uint64, d duty) (bool, error) {
+func (o *Observer) poolIncludesAttestation(ctx context.Context, dutySlot uint64, d duty) (bool, apiAttestation, error) {
 	url := fmt.Sprintf("%s/eth/v1/beacon/pool/attestations?slot=%d", o.BeaconAPI, dutySlot)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return false, fmt.Errorf("build attestation pool request for slot %d: %w", dutySlot, err)
+		return false, apiAttestation{}, fmt.Errorf("build attestation pool request for slot %d: %w", dutySlot, err)
 	}
 	httpResp, err := o.Client.Do(req)
 	if err != nil {
-		return false, fmt.Errorf("fetch attestation pool for slot %d: %w", dutySlot, err)
+		return false, apiAttestation{}, fmt.Errorf("fetch attestation pool for slot %d: %w", dutySlot, err)
 	}
 	defer httpResp.Body.Close() //nolint:errcheck // read-only response body; nothing to act on if Close fails
 
@@ -303,80 +461,87 @@ func (o *Observer) poolIncludesAttestation(ctx context.Context, dutySlot uint64,
 	// report: it means the window for seeing this validator publish here has
 	// closed, the same as a 404 on a block that was never produced.
 	if httpResp.StatusCode == http.StatusGone || httpResp.StatusCode == http.StatusNotFound {
-		return false, nil
+		return false, apiAttestation{}, nil
 	}
 	if httpResp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("fetch attestation pool for slot %d: unexpected status %d", dutySlot, httpResp.StatusCode)
+		return false, apiAttestation{}, fmt.Errorf("fetch attestation pool for slot %d: unexpected status %d", dutySlot, httpResp.StatusCode)
 	}
 
 	var resp struct {
 		Data []poolAttestation `json:"data"`
 	}
-	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
-		return false, fmt.Errorf("decode attestation pool for slot %d: %w", dutySlot, err)
+	if err := decodeJSONBody(httpResp, &resp); err != nil {
+		return false, apiAttestation{}, fmt.Errorf("decode attestation pool for slot %d: %w", dutySlot, err)
 	}
 
-	wantIndexStr := strconv.FormatUint(d.CommitteeIndex, 10)
-	for _, att := range resp.Data {
-		if att.Data.Index != wantIndexStr {
-			continue
-		}
-		included, err := bitSet(att.AggregationBits, d.ValidatorCommitteeIndex)
-		if err != nil {
-			return false, fmt.Errorf("decode aggregation_bits for slot %d: %w", dutySlot, err)
-		}
-		if included {
-			return true, nil
-		}
+	included, needCommittees, match, err := attestationsIncludeValidator(resp.Data, dutySlot, d, nil)
+	if err != nil || included || !needCommittees {
+		return included, match, err
 	}
-	return false, nil
+	lengths, err := o.fetchCommitteeLengths(ctx, "head", dutySlot, d.CommitteesAtSlot)
+	if err != nil {
+		return false, apiAttestation{}, fmt.Errorf("fetch committee lengths for duty slot %d: %w", dutySlot, err)
+	}
+	included, _, match, err = attestationsIncludeValidator(resp.Data, dutySlot, d, lengths)
+	return included, match, err
 }
 
 // CheckInclusion looks for d's validator's attestation bit set in any block from
 // dutySlot+1 up to and including untilSlot, returning the slot and instant it was
 // found included.
-func (o *Observer) CheckInclusion(ctx context.Context, dutySlot uint64, d duty, untilSlot uint64, deadline time.Time) (includedInSlot uint64, includedAt time.Time, found bool, err error) {
+func (o *Observer) CheckInclusion(ctx context.Context, dutySlot uint64, d duty, untilSlot uint64, deadline time.Time) (includedInSlot uint64, includedAt time.Time, blockRoot string, headCorrect, targetCorrect, found bool, err error) {
+	if untilSlot <= dutySlot {
+		return 0, time.Time{}, "", false, false, false, fmt.Errorf("inclusion window for slot %d ends at invalid slot %d", dutySlot, untilSlot)
+	}
 	for {
-		for s := dutySlot + 1; s <= untilSlot; s++ {
-			ok, ferr := o.blockIncludesAttestation(ctx, s, dutySlot, d)
-			if ferr != nil {
-				return 0, time.Time{}, false, ferr
-			}
-			if ok {
-				return s, time.Now().UTC(), true, nil
-			}
+		status, statusErr := o.fetchNodeSyncStatus(ctx)
+		if statusErr != nil {
+			return 0, time.Time{}, "", false, false, false, fmt.Errorf("wait for inclusion window head %d: %w", untilSlot, statusErr)
+		}
+		if status.ready() && status.HeadSlot >= untilSlot {
+			break
 		}
 		if !time.Now().Before(deadline) {
-			return 0, time.Time{}, false, nil
+			return 0, time.Time{}, "", false, false, false, fmt.Errorf("validated head did not reach inclusion-window slot %d before deadline", untilSlot)
 		}
 		select {
 		case <-ctx.Done():
-			return 0, time.Time{}, false, ctx.Err()
+			return 0, time.Time{}, "", false, false, false, ctx.Err()
 		case <-time.After(time.Second):
 		}
 	}
-}
-
-func (o *Observer) blockIncludesAttestation(ctx context.Context, blockSlot, wantSlot uint64, d duty) (bool, error) {
-	block, _, ok, err := o.fetchBlock(ctx, blockSlot)
-	if err != nil || !ok {
-		return false, err
-	}
-	wantSlotStr := strconv.FormatUint(wantSlot, 10)
-	wantIndexStr := strconv.FormatUint(d.CommitteeIndex, 10)
-	for _, att := range block.Message.Body.Attestations {
-		if att.Data.Slot != wantSlotStr || att.Data.Index != wantIndexStr {
+	for s := dutySlot + 1; s <= untilSlot; s++ {
+		ok, match, ferr := o.blockIncludesAttestation(ctx, s, dutySlot, d)
+		if ferr != nil {
+			return 0, time.Time{}, "", false, false, false, ferr
+		}
+		if !ok {
 			continue
 		}
-		included, err := bitSet(att.AggregationBits, d.ValidatorCommitteeIndex)
+		headCorrect, targetCorrect, err := o.attestationRewardEvidence(ctx, dutySlot, match)
 		if err != nil {
-			return false, fmt.Errorf("decode aggregation_bits for slot %d: %w", blockSlot, err)
+			return 0, time.Time{}, "", false, false, false, err
 		}
-		if included {
-			return true, nil
-		}
+		return s, time.Now().UTC(), match.Data.BeaconBlockRoot, headCorrect, targetCorrect, true, nil
 	}
-	return false, nil
+	return 0, time.Time{}, "", false, false, false, nil
+}
+
+func (o *Observer) blockIncludesAttestation(ctx context.Context, blockSlot, wantSlot uint64, d duty) (bool, apiAttestation, error) {
+	block, ok, err := o.fetchBlock(ctx, blockSlot)
+	if err != nil || !ok {
+		return false, apiAttestation{}, err
+	}
+	included, needCommittees, match, err := attestationsIncludeValidator(block.Message.Body.Attestations, wantSlot, d, nil)
+	if err != nil || included || !needCommittees {
+		return included, match, err
+	}
+	lengths, err := o.fetchCommitteeLengths(ctx, strconv.FormatUint(blockSlot, 10), wantSlot, d.CommitteesAtSlot)
+	if err != nil {
+		return false, apiAttestation{}, fmt.Errorf("fetch committee lengths for duty slot %d: %w", wantSlot, err)
+	}
+	included, _, match, err = attestationsIncludeValidator(block.Message.Body.Attestations, wantSlot, d, lengths)
+	return included, match, err
 }
 
 type beaconBlock struct {
@@ -389,36 +554,42 @@ type beaconBlock struct {
 }
 
 // fetchBlock fetches slot's block, treating "not found" (slot empty or not yet
-// produced) as a normal, non-error outcome — that absence is itself evidence
-// (docs/causes.md, network.proposer_missed).
-func (o *Observer) fetchBlock(ctx context.Context, slot uint64) (beaconBlock, string, bool, error) {
+// produced) as a normal, non-error outcome. Absence here is not skipped-slot
+// evidence; PollBlockSeen performs the stronger canonical check separately.
+func (o *Observer) fetchBlock(ctx context.Context, slot uint64) (beaconBlock, bool, error) {
 	url := fmt.Sprintf("%s/eth/v2/beacon/blocks/%d", o.BeaconAPI, slot)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return beaconBlock{}, "", false, fmt.Errorf("build block request: %w", err)
+		return beaconBlock{}, false, fmt.Errorf("build block request: %w", err)
 	}
 
 	resp, err := o.Client.Do(req)
 	if err != nil {
-		return beaconBlock{}, "", false, fmt.Errorf("fetch block %d: %w", slot, err)
+		return beaconBlock{}, false, fmt.Errorf("fetch block %d: %w", slot, err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // read-only response body; nothing to act on if Close fails
 
 	if resp.StatusCode == http.StatusNotFound {
-		return beaconBlock{}, "", false, nil
+		return beaconBlock{}, false, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return beaconBlock{}, "", false, fmt.Errorf("fetch block %d: unexpected status %d", slot, resp.StatusCode)
+		return beaconBlock{}, false, fmt.Errorf("fetch block %d: unexpected status %d", slot, resp.StatusCode)
 	}
 
 	var out struct {
-		Data beaconBlock `json:"data"`
+		ExecutionOptimistic *bool       `json:"execution_optimistic"`
+		Data                beaconBlock `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return beaconBlock{}, "", false, fmt.Errorf("decode block %d: %w", slot, err)
+	if err := decodeJSONBody(resp, &out); err != nil {
+		return beaconBlock{}, false, fmt.Errorf("decode block %d: %w", slot, err)
 	}
-	root := resp.Header.Get("Eth-Consensus-Block-Root")
-	return out.Data, root, true, nil
+	if out.ExecutionOptimistic == nil {
+		return beaconBlock{}, false, fmt.Errorf("block %d has no execution_optimistic status", slot)
+	}
+	if *out.ExecutionOptimistic {
+		return beaconBlock{}, false, nil
+	}
+	return out.Data, true, nil
 }
 
 // bitSet decodes an SSZ Bitlist (hex-encoded, as the Beacon API returns it) and
@@ -478,8 +649,27 @@ func doJSON(client *http.Client, req *http.Request, out any) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("request %s: unexpected status %d", req.URL, resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := decodeJSONBody(resp, out); err != nil {
 		return fmt.Errorf("decode response from %s: %w", req.URL, err)
+	}
+	return nil
+}
+
+const maxDevnetResponseBodyBytes = 64 << 20
+
+func decodeJSONBody(resp *http.Response, out any) error {
+	if resp.ContentLength > maxDevnetResponseBodyBytes {
+		return fmt.Errorf("response body is %d bytes, limit is %d", resp.ContentLength, maxDevnetResponseBodyBytes)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxDevnetResponseBodyBytes+1))
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+	if len(body) > maxDevnetResponseBodyBytes {
+		return fmt.Errorf("response body exceeds %d bytes", maxDevnetResponseBodyBytes)
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode JSON: %w", err)
 	}
 	return nil
 }
@@ -490,43 +680,57 @@ func doJSON(client *http.Client, req *http.Request, out any) error {
 // RunScenario's doc comment.
 // dutyOutcome carries everything RunScenario measured about how one duty slot
 // resolved — the input buildObservations turns into domain.Observation values.
-// One field per fact, grown as new evidence kinds (SampleIOPressure,
-// SampleEngineCallDurations) were added, so extending what a scenario can
+// One field per fact, grown as new evidence kinds were added, so extending what a scenario can
 // record means adding a field here rather than another positional parameter
 // to buildObservations.
 type dutyOutcome struct {
-	BlockFound    bool
-	BlockRoot     string
-	ProposerIndex uint64
-	BlockSeenAt   time.Time
+	BlockFound          bool
+	BlockSkipped        bool
+	BlockRoot           string
+	ProposerIndex       uint64
+	ProposerKnown       bool
+	BlockSeenAt         time.Time
+	BlockTimingMeasured bool
 
-	Published   bool
-	PublishedAt time.Time
+	HeadFound     bool
+	HeadRoot      string
+	HeadUpdatedAt time.Time
+	EngineCalls   []source.EngineCallWindow
+
+	Published     bool
+	PublishedAt   time.Time
+	PublishedRoot string
 
 	Included       bool
 	IncludedInSlot uint64
 	IncludedAt     time.Time
+	IncludedRoot   string
+	HeadCorrect    bool
+	TargetCorrect  bool
+
+	CollectionCompletedAt time.Time
 
 	// HostPressure is the sampled "some avg10" PSI percentage, for whichever
-	// file HostPressureMetric names ("iowait_pct" -> io.pressure,
-	// "mem_pressure_pct" -> memory.pressure). Present only when
+	// file HostPressureMetric names ("host_iowait_pct" -> io.pressure,
+	// "host_mem_pressure_pct" -> memory.pressure). Present only when
 	// Scenario.SamplePressure was set.
 	HostPressure       *float64
 	HostPressureMetric string
 	HostSampledAt      time.Time
 
-	// EngineSamples is what SampleEngineCallDurations returned. Present only
-	// when Scenario.MetricsTarget was set.
-	EngineSamples   []EngineCallSample
-	EngineSampledAt time.Time
-
 	// PeerCount is what SamplePeerCount returned. Present only when
 	// Scenario.PeerCountTarget was set.
 	PeerCount          *float64
 	PeerCountSampledAt time.Time
+
+	Network          *domain.NetworkBaseline
+	NetworkSampledAt time.Time
 }
 
-func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o dutyOutcome) ([]domain.Observation, error) {
+func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o dutyOutcome, readings []clock.Reading) ([]domain.Observation, error) {
+	if len(readings) == 0 {
+		return nil, fmt.Errorf("build observations: at least one clock reading is required")
+	}
 	drafts := []domain.Observation{
 		{
 			Slot: domain.Slot(slot), Kind: domain.ObsSlotStart,
@@ -542,35 +746,76 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 	}
 
 	if o.BlockFound {
-		attrs := map[domain.AttrKey]string{
-			domain.AttrProposerIndex: strconv.FormatUint(o.ProposerIndex, 10),
+		attrs := map[domain.AttrKey]string{}
+		if o.ProposerKnown {
+			attrs[domain.AttrProposerIndex] = strconv.FormatUint(o.ProposerIndex, 10)
 		}
 		if o.BlockRoot != "" {
 			attrs[domain.AttrBlockRoot] = o.BlockRoot
 		}
+		source := domain.SourceBeaconAPI
+		if o.BlockTimingMeasured {
+			source = domain.SourcePromScrape
+		}
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsBlockSeen,
-			At: o.BlockSeenAt, Source: domain.SourceBeaconAPI, Attrs: attrs,
+			At: o.BlockSeenAt, Source: source, Attrs: attrs,
+		})
+	}
+	if o.BlockSkipped {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsBlockSkipped,
+			At: o.BlockSeenAt, Source: domain.SourceBeaconAPI,
+		})
+	}
+
+	if o.HeadFound {
+		attrs := map[domain.AttrKey]string{}
+		if o.HeadRoot != "" {
+			attrs[domain.AttrBlockRoot] = o.HeadRoot
+		}
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsHeadUpdated,
+			At: o.HeadUpdatedAt, Source: domain.SourceBeaconAPI, Attrs: attrs,
 		})
 	}
 
 	if o.Published {
+		attrs := map[domain.AttrKey]string{
+			domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
+		}
+		if o.PublishedRoot != "" {
+			attrs[domain.AttrBlockRoot] = o.PublishedRoot
+		}
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsAttestationPublished,
 			At: o.PublishedAt, Source: domain.SourceBeaconAPI,
-			Attrs: map[domain.AttrKey]string{
-				domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
-			},
+			Attrs: attrs,
 		})
 	}
 
 	if o.Included {
+		attrs := map[domain.AttrKey]string{
+			domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
+			domain.AttrInclusionDelay: strconv.FormatUint(o.IncludedInSlot-slot, 10),
+			domain.AttrHeadCorrect:    strconv.FormatBool(o.HeadCorrect),
+			domain.AttrTargetCorrect:  strconv.FormatBool(o.TargetCorrect),
+		}
+		if o.IncludedRoot != "" {
+			attrs[domain.AttrBlockRoot] = o.IncludedRoot
+		}
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsAttestationIncluded,
 			At: o.IncludedAt, Source: domain.SourceBeaconAPI,
+			Attrs: attrs,
+		})
+	}
+	if !o.CollectionCompletedAt.IsZero() {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsCollectionCompleted,
+			At: o.CollectionCompletedAt, Source: domain.SourceDerived,
 			Attrs: map[domain.AttrKey]string{
 				domain.AttrValidatorIndex: strconv.FormatUint(s.ValidatorIndex, 10),
-				domain.AttrInclusionDelay: strconv.FormatUint(o.IncludedInSlot-slot, 10),
 			},
 		})
 	}
@@ -586,17 +831,6 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 		})
 	}
 
-	for _, sample := range o.EngineSamples {
-		drafts = append(drafts, domain.Observation{
-			Slot: domain.Slot(slot), Kind: domain.ObsEngineCall,
-			At: o.EngineSampledAt, Source: domain.SourcePromScrape,
-			Attrs: map[domain.AttrKey]string{
-				domain.AttrEngineMethod: sample.Method,
-				domain.AttrDurationMS:   strconv.FormatFloat(sample.DurationMS, 'f', -1, 64),
-			},
-		})
-	}
-
 	if o.PeerCount != nil {
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsPeerCountSampled,
@@ -606,7 +840,42 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 			},
 		})
 	}
+	if o.Network != nil {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsNetworkBaselineSampled,
+			At: o.NetworkSampledAt, Source: o.Network.Source,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrBlockArrivalP50MS: strconv.FormatFloat(o.Network.BlockArrivalP50.Seconds()*1000, 'f', -1, 64),
+				domain.AttrBlockArrivalP90MS: strconv.FormatFloat(o.Network.BlockArrivalP90.Seconds()*1000, 'f', -1, 64),
+				domain.AttrSampleCount:       strconv.Itoa(o.Network.SampleCount),
+			},
+		})
+	}
 
+	for _, call := range o.EngineCalls {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsEngineCall,
+			At: call.At, Source: domain.SourcePromScrape,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrEngineMethod: call.Method,
+				domain.AttrDurationMS:   strconv.FormatFloat(call.DurationMS, 'f', -1, 64),
+				domain.AttrSampleCount:  strconv.FormatUint(call.Count, 10),
+			},
+		})
+	}
+
+	for i := range drafts {
+		// Use the real reading nearest this observation. One sample cannot stay
+		// fresh across the full EIP-7045 inclusion window, so early slot facts
+		// and late inclusion facts intentionally carry different provenance.
+		reading := nearestClockReading(drafts[i].At, readings)
+		drafts[i].ClockOffset = reading.Offset
+		drafts[i].ClockMeasured = true
+		drafts[i].ClockSampleAt = reading.At.Add(reading.Offset).UTC()
+		if drafts[i].Kind != domain.ObsSlotStart && drafts[i].Kind != domain.ObsNetworkBaselineSampled && (drafts[i].Kind != domain.ObsBlockSeen || drafts[i].Source != domain.SourcePromScrape) {
+			drafts[i].At = drafts[i].At.Add(reading.Offset).UTC()
+		}
+	}
 	sort.SliceStable(drafts, func(i, j int) bool { return drafts[i].At.Before(drafts[j].At) })
 
 	out := make([]domain.Observation, 0, len(drafts))
@@ -621,4 +890,16 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 		out = append(out, obs)
 	}
 	return out, nil
+}
+
+func nearestClockReading(at time.Time, readings []clock.Reading) clock.Reading {
+	best := readings[0]
+	bestDistance := absoluteDuration(at.Sub(best.At))
+	for _, candidate := range readings[1:] {
+		distance := absoluteDuration(at.Sub(candidate.At))
+		if distance < bestDistance {
+			best, bestDistance = candidate, distance
+		}
+	}
+	return best
 }

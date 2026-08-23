@@ -1,0 +1,17 @@
+id: proposer-missed-concurrent-vc-pause-prysm
+description: >
+  The Prysm validator client is paused across a slot where the Prysm validator
+  set owns both the watched attester duty and proposer duty. This independently
+  reproduces the positive canonical skipped-slot evidence required by R-100 on
+  the second supported client.
+target: vc-2-geth-prysm
+timing_target: cl-2-prysm-geth
+validator_candidates: [32, 63]
+duration: 20s
+require_proposer_validators: [32, 63]
+fault:
+  kind: pause
+  pause: {}
+expect:
+  cause: network.proposer_missed
+  confidence: high

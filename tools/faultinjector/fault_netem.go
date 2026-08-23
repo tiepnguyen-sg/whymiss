@@ -2,12 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // NetemParams configures a network-degradation fault via `tc netem`.
@@ -16,6 +20,10 @@ type NetemParams struct {
 	Delay string `yaml:"delay,omitempty"`
 	// LossPercent is packet loss, 0-100.
 	LossPercent float64 `yaml:"loss_percent,omitempty"`
+	// PeerTarget optionally scopes the fault to packets arriving from one
+	// Kurtosis service. This keeps Beacon API, metrics, and Engine traffic
+	// observable while degrading only the P2P path under test.
+	PeerTarget string `yaml:"peer_target,omitempty"`
 }
 
 // NetemFault degrades the network path to a service's container by attaching a
@@ -34,16 +42,12 @@ type NetemParams struct {
 //
 // # Verified against a real devnet
 //
-// Confirmed on a native Linux host (I-13's release target): pinging a target
-// container measured ~0.05ms baseline, then exactly ~500ms after attaching
-// `netem delay 500ms` to its host-side veth, reverting cleanly to baseline on
-// removal. An earlier prototype against this project's Docker-Desktop-for-Mac
-// development sandbox could not confirm this — that platform's networking is
-// not a plain Linux bridge+veth topology, so veth discovery there found
-// interfaces that did not carry the container's actual traffic. This
-// implementation requires running faultinjector with the privileges to invoke
-// `nsenter` and `tc` (root, or CAP_SYS_ADMIN + CAP_NET_ADMIN) on the host it runs
-// on — expected for a fault-injection tool, unlike the shipped whymiss binary.
+// Confirmed on native Linux and Docker Desktop: attaching `netem delay` to the
+// resolved host-side veth measurably adds the requested latency and reverts to
+// baseline. Native Linux requires root (or CAP_SYS_ADMIN + CAP_NET_ADMIN).
+// Docker Desktop uses a short-lived privileged helper inside its Linux VM.
+// These privileges belong only to this development tool, never the shipped
+// whymiss binary.
 type NetemFault struct {
 	Params NetemParams
 }
@@ -53,6 +57,22 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 	id, err := dockerContainerID(ctx, target)
 	if err != nil {
 		return nil, err
+	}
+	peerIP, err := netemPeerIP(ctx, f.Params.PeerTarget)
+	if err != nil {
+		return nil, err
+	}
+	if runtime.GOOS == "darwin" {
+		loss := ""
+		if f.Params.LossPercent > 0 {
+			loss = strconv.FormatFloat(f.Params.LossPercent, 'f', -1, 64) + "%"
+		}
+		if err := runDockerDesktopNetem(ctx, id, "add", f.Params.Delay, loss, peerIP); err != nil {
+			return nil, err
+		}
+		return func(ctx context.Context) error {
+			return runDockerDesktopNetem(ctx, id, "del", "", "", "")
+		}, nil
 	}
 
 	veth, err := hostVethFor(ctx, id)
@@ -71,10 +91,6 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 		return nil, fmt.Errorf("netem: neither delay nor loss_percent set")
 	}
 
-	if out, err := exec.CommandContext(ctx, "tc", args...).CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("tc %s: %w\n%s", strings.Join(args, " "), err, out)
-	}
-
 	revert := func(ctx context.Context) error {
 		out, err := exec.CommandContext(ctx, "tc", "qdisc", "del", "dev", veth, "root").CombinedOutput()
 		if err != nil {
@@ -82,7 +98,79 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 		}
 		return nil
 	}
+	if peerIP == "" {
+		if err := runTC(ctx, args...); err != nil {
+			return nil, err
+		}
+		return revert, nil
+	}
+
+	prioArgs := []string{
+		"qdisc", "add", "dev", veth, "root", "handle", "1:", "prio", "bands", "4", "priomap",
+		"0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0",
+	}
+	if err := runTC(ctx, prioArgs...); err != nil {
+		return nil, err
+	}
+	cleanupOnError := func(applyErr error) (func(context.Context) error, error) {
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		if cleanupErr := revert(cleanupCtx); cleanupErr != nil {
+			return nil, errors.Join(applyErr, fmt.Errorf("cleanup scoped netem: %w", cleanupErr))
+		}
+		return nil, applyErr
+	}
+	netemArgs := []string{"qdisc", "add", "dev", veth, "parent", "1:4", "handle", "40:", "netem"}
+	if f.Params.Delay != "" {
+		netemArgs = append(netemArgs, "delay", f.Params.Delay)
+	}
+	if f.Params.LossPercent > 0 {
+		netemArgs = append(netemArgs, "loss", strconv.FormatFloat(f.Params.LossPercent, 'f', -1, 64)+"%")
+	}
+	if err := runTC(ctx, netemArgs...); err != nil {
+		return cleanupOnError(err)
+	}
+	filterArgs := []string{"filter", "add", "dev", veth, "protocol", "ip", "parent", "1:", "prio", "1", "u32", "match", "ip", "src", peerIP + "/32", "flowid", "1:4"}
+	if err := runTC(ctx, filterArgs...); err != nil {
+		return cleanupOnError(err)
+	}
 	return revert, nil
+}
+
+func runTC(ctx context.Context, args ...string) error {
+	if out, err := exec.CommandContext(ctx, "tc", args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("tc %s: %w\n%s", strings.Join(args, " "), err, out)
+	}
+	return nil
+}
+
+func netemPeerIP(ctx context.Context, peerTarget string) (string, error) {
+	if peerTarget == "" {
+		return "", nil
+	}
+	id, err := dockerContainerID(ctx, peerTarget)
+	if err != nil {
+		return "", fmt.Errorf("resolve netem peer target %s: %w", peerTarget, err)
+	}
+	ip, err := dockerContainerIPv4(ctx, id)
+	if err != nil {
+		return "", fmt.Errorf("resolve netem peer IP for %s: %w", peerTarget, err)
+	}
+	return ip, nil
+}
+
+func dockerContainerIPv4(ctx context.Context, containerID string) (string, error) {
+	out, err := exec.CommandContext(ctx, "docker", "inspect", containerID,
+		"--format", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}").Output()
+	if err != nil {
+		return "", err
+	}
+	ip := strings.TrimSpace(string(out))
+	parsed := net.ParseIP(ip)
+	if parsed == nil || parsed.To4() == nil {
+		return "", fmt.Errorf("invalid IPv4 address %q", ip)
+	}
+	return ip, nil
 }
 
 // hostVethFor resolves the host-side veth interface carrying containerID's

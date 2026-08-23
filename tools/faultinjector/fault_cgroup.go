@@ -68,6 +68,14 @@ func (f *CgroupIOFault) Apply(ctx context.Context, enclave, target string) (func
 	if err != nil {
 		return nil, err
 	}
+	original, err := os.ReadFile(filepath.Join(cgroupDir, "io.max"))
+	if err != nil {
+		return nil, fmt.Errorf("snapshot io.max: %w", err)
+	}
+	originalLine, ok := cgroupIOMaxDeviceLine(string(original), dev)
+	if !ok {
+		originalLine = cgroupIOMaxLine(dev, 0, 0)
+	}
 
 	limitLine := cgroupIOMaxLine(dev, f.Params.ReadBytesPerSec, f.Params.WriteBytesPerSec)
 	if err := writeCgroupFile(cgroupDir, "io.max", limitLine); err != nil {
@@ -75,7 +83,7 @@ func (f *CgroupIOFault) Apply(ctx context.Context, enclave, target string) (func
 	}
 
 	revert := func(context.Context) error {
-		return writeCgroupFile(cgroupDir, "io.max", cgroupIOMaxLine(dev, 0, 0))
+		return writeCgroupFile(cgroupDir, "io.max", originalLine)
 	}
 	return revert, nil
 }
@@ -159,6 +167,16 @@ func cgroupIOMaxLine(dev string, readBps, writeBps uint64) string {
 		w = fmt.Sprintf("%d", writeBps)
 	}
 	return fmt.Sprintf("%s rbps=%s wbps=%s", dev, r, w)
+}
+
+func cgroupIOMaxDeviceLine(content, dev string) (string, bool) {
+	for _, line := range strings.Split(content, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == dev {
+			return strings.Join(fields, " "), true
+		}
+	}
+	return "", false
 }
 
 // writeCgroupFile writes content to <cgroupDir>/<file>, direct os.WriteFile —

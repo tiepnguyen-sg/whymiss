@@ -10,6 +10,10 @@ participants:
   - el_type: geth
     cl_type: lighthouse
     vc_type: lighthouse
+    # Devnet-only derivative of the digest-pinned Lighthouse image. The
+    # validator process starts with libfaketime preloaded so clock_skew can
+    # update its perceived wall-clock offset without restarting it.
+    vc_image: whymiss/lighthouse-faketime:local
     use_separate_vc: true
     count: 1
 

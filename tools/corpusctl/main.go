@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 
@@ -76,6 +79,17 @@ func validateScenario(dir, wantID string) error {
 	if len(observations) == 0 {
 		return fmt.Errorf("observations.jsonl has no observations")
 	}
+	if err := validateObservationProvenance(m, observations); err != nil {
+		return err
+	}
+	observationsBytes, err := os.ReadFile(filepath.Join(dir, "observations.jsonl"))
+	if err != nil {
+		return fmt.Errorf("read observations.jsonl for checksum: %w", err)
+	}
+	hash := sha256.Sum256(observationsBytes)
+	if got := hex.EncodeToString(hash[:]); got != m.ObservationsSHA256 {
+		return fmt.Errorf("observations.jsonl sha256 %s does not match manifest %s", got, m.ObservationsSHA256)
+	}
 
 	if _, err := os.Stat(filepath.Join(dir, "README.md")); err != nil {
 		return fmt.Errorf("README.md: %w", err)
@@ -96,14 +110,41 @@ func loadManifest(path string) (manifest, error) {
 }
 
 func validateManifest(m manifest, wantID string) error {
+	if m.CorpusFormatVersion != 2 {
+		return fmt.Errorf("manifest.yaml: corpus_format_version = %d, want 2; regenerate this scenario", m.CorpusFormatVersion)
+	}
+	if m.GeneratorEngineVersion == "" {
+		return fmt.Errorf("manifest.yaml: generator_engine_version is required")
+	}
 	if m.ID == "" {
 		return fmt.Errorf("manifest.yaml: id is required")
+	}
+	if !validCorpusID(m.ID) {
+		return fmt.Errorf("manifest.yaml: id %q is invalid", m.ID)
 	}
 	if m.ID != wantID {
 		return fmt.Errorf("manifest.yaml: id %q does not match directory name %q", m.ID, wantID)
 	}
+	if m.RecipeID != "" && !validCorpusID(m.RecipeID) {
+		return fmt.Errorf("manifest.yaml: recipe_id %q is invalid", m.RecipeID)
+	}
 	if m.Description == "" {
 		return fmt.Errorf("manifest.yaml: description is required")
+	}
+	if m.FaultKind == "" || m.FaultTarget == "" || m.Duration <= 0 || m.GeneratedAt.IsZero() {
+		return fmt.Errorf("manifest.yaml: fault_kind, fault_target, positive duration, and generated_at are required")
+	}
+	if len(m.ClockSamples) == 0 {
+		return fmt.Errorf("manifest.yaml: complete clock provenance with a positive round_trip is required")
+	}
+	for i, sample := range m.ClockSamples {
+		if sample.Server == "" || sample.SampleAt.IsZero() || sample.RoundTrip <= 0 {
+			return fmt.Errorf("manifest.yaml: clock_samples[%d] is incomplete", i)
+		}
+	}
+	decodedHash, err := hex.DecodeString(m.ObservationsSHA256)
+	if err != nil || len(decodedHash) != sha256.Size {
+		return fmt.Errorf("manifest.yaml: observations_sha256 must be a 64-character SHA-256 digest")
 	}
 
 	cause := domain.CauseID(m.Expect.Cause)
@@ -132,6 +173,42 @@ func validateManifest(m manifest, wantID string) error {
 	return nil
 }
 
+func validCorpusID(id string) bool {
+	if id == "" || id[0] == '-' || id[len(id)-1] == '-' {
+		return false
+	}
+	for i := range len(id) {
+		c := id[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+		if c == '-' && i > 0 && id[i-1] == '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func validateObservationProvenance(m manifest, observations []domain.Observation) error {
+	knownClockSamples := make(map[string]struct{}, len(m.ClockSamples))
+	for _, sample := range m.ClockSamples {
+		knownClockSamples[clockSampleKey(sample.SampleAt, sample.Offset)] = struct{}{}
+	}
+	for i, obs := range observations {
+		if !obs.ClockMeasured {
+			return fmt.Errorf("observations.jsonl line %d: clock was not measured; regenerate this scenario", i+1)
+		}
+		if _, ok := knownClockSamples[clockSampleKey(obs.ClockSampleAt, obs.ClockOffset)]; !ok {
+			return fmt.Errorf("observations.jsonl line %d: clock provenance does not match manifest", i+1)
+		}
+	}
+	return nil
+}
+
+func clockSampleKey(sampleAt time.Time, offset time.Duration) string {
+	return sampleAt.UTC().Format(time.RFC3339Nano) + "\x00" + offset.String()
+}
+
 // loadObservations decodes observations.jsonl and enforces the same invariants
 // domain.Timeline will (ascending timestamps, every observation belongs to
 // slot) — catching a malformed corpus fixture here is cheaper than watching
@@ -158,7 +235,7 @@ func loadObservations(path string, slot domain.Slot) ([]domain.Observation, erro
 		if err != nil {
 			return nil, fmt.Errorf("observations.jsonl line %d: %w", lineNum, err)
 		}
-		if obs.Slot != slot {
+		if obs.Slot != slot && (obs.Kind != domain.ObsReorg || obs.Slot <= slot || obs.Slot > slot.LastAttestationInclusionSlot()) {
 			return nil, fmt.Errorf("observations.jsonl line %d: slot %d does not match manifest slot %d",
 				lineNum, obs.Slot, slot)
 		}

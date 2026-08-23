@@ -1,0 +1,18 @@
+id: vc-slow-cpu-prysm
+description: >
+  The Prysm validator client's CPU is capped to 1% of one core for the full
+  duty window while its beacon node remains healthy. Prysm-side proposers are
+  excluded, isolating late attestation publication from proposal production
+  and providing the second-client counterpart to vc-slow-cpu.
+target: vc-2-geth-prysm
+timing_target: cl-2-prysm-geth
+validator_candidates: [32, 63]
+avoid_proposer_validators: [32, 63]
+duration: 35s
+fault:
+  kind: cgroup_cpu
+  cgroup_cpu:
+    quota_percent: 1
+expect:
+  cause: local.vc_slow
+  confidence: medium
