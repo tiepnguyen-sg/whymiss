@@ -29,9 +29,8 @@ func (d DutyKind) Valid() bool {
 	}
 }
 
-// CommitteeIndex identifies an attestation committee within a slot. It determines
-// the subnet the attestation is published on, which is why a peer-count check can be
-// subnet-specific (docs/causes.md §7, local.p2p_degraded).
+// CommitteeIndex identifies an attestation committee within a slot. It is used to
+// locate the validator's aggregation bit in pre-Electra and Electra attestations.
 type CommitteeIndex uint64
 
 // Duty is what the validator owed for one slot. A nil *Duty on a [Timeline] means

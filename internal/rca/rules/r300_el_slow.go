@@ -4,49 +4,50 @@ import (
 	"fmt"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
-	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
-// ELSlow is R-300: the execution client responded slowly to Engine API
-// calls, consuming the validation budget.
-//
-// docs/causes.md's rule compares Engine API duration against
-// cfg.EngineSpikeMultiplier times the node's own rolling p99 — a baseline
-// nothing in this codebase computes yet (it would live as a derived
-// domain.MetricSample on the Timeline, per domain.MetricSample's own doc
-// comment, but internal/timeline.Assembler doesn't produce one). Absent
-// that baseline, this rule uses direct engine_call evidence as its own
-// corroboration: any engine_call observation for this slot is evidence EL
-// was on the critical path at all (R-310, immediately after this rule in
-// the order, is what fires when validation was slow and *no* engine_call
-// evidence exists — the elimination case).
+const metricELEngineCallsP99MS domain.MetricName = "el_engine_calls_p99_ms"
+
+// ELSlow requires per-slot Engine evidence and a rolling p99 baseline.
 type ELSlow struct{}
 
 // ID returns R-300.
 func (ELSlow) ID() string { return "R-300" }
 
 // Evaluate implements rca.Rule.
-func (ELSlow) Evaluate(tl domain.Timeline, cfg rca.Config) (*domain.Verdict, bool) {
-	if !postPropagationDominant(tl, cfg) {
+func (ELSlow) Evaluate(tl domain.Timeline, cfg Config) (*domain.Verdict, bool) {
+	head, hasHead := tl.First(domain.ObsHeadUpdated)
+	if !hasHead || !head.At.After(tl.AttestationDeadline()) {
+		return nil, false
+	}
+	stages := ComputeStages(tl)
+	dominant, ok := stages.Dominant(cfg)
+	if !ok || dominant != domain.StageValidation || !stages.HasValidation {
 		return nil, false
 	}
 
-	calls := engineCalls(tl)
-	if len(calls) == 0 {
+	calls, complete := completeEngineCalls(tl)
+	if !complete {
 		return nil, false
 	}
-
-	subCause, subSignal := elSubCause(tl)
-	confidence := domain.ConfidenceMedium
-	if subCause != "" {
-		confidence = domain.ConfidenceHigh
+	total := engineCallTotal(calls)
+	if total < stages.Validation/2 {
+		return nil, false
+	}
+	baselineMS, ok := tl.SampleValue(domain.ComponentEL, metricELEngineCallsP99MS)
+	if !ok || baselineMS <= 0 {
+		return nil, false
+	}
+	thresholdMS := cfg.EngineSpikeMultiplier * baselineMS
+	if total.Seconds()*1000 <= thresholdMS {
+		return nil, false
 	}
 
 	evidence := make([]domain.Evidence, 0, len(calls)+1)
 	for _, c := range calls {
 		evidence = append(evidence, domain.Evidence{
 			At:        c.at,
-			Statement: fmt.Sprintf("execution client's %s call took %.2fms", c.method, c.durationMS),
+			Statement: fmt.Sprintf("execution client's %d %s call(s) totaled %.2fms in the canonical-head window", c.count, c.method, c.durationMS),
 			Source:    domain.SourcePromScrape,
 			Comparison: &domain.Comparison{
 				Label:    c.method + " duration",
@@ -55,23 +56,24 @@ func (ELSlow) Evaluate(tl domain.Timeline, cfg rca.Config) (*domain.Verdict, boo
 			},
 		})
 	}
-	if subSignal != "" {
-		evidence = append(evidence, domain.Evidence{At: tl.SlotStart, Statement: subSignal, Source: domain.SourceHostMetrics})
-	}
-
-	remediation := []string{"check the execution client version against the latest release"}
-	switch subCause {
-	case domain.CauseELSlowSyncing:
-		remediation = []string{"wait for sync to complete; do not attest from an unsynced node"}
-	case domain.CauseELSlowDiskSaturation:
-		remediation = []string{"this box needs a faster NVMe drive — consumer SATA SSDs are the most common cause of chronic attestation loss"}
-	}
-
+	evidence = append(evidence, domain.Evidence{
+		At:        calls[len(calls)-1].at,
+		Statement: fmt.Sprintf("Engine API calls totaled %s against a %.2fms rolling p99 and consumed at least half of validation", total, baselineMS),
+		Source:    domain.SourceDerived,
+		Comparison: &domain.Comparison{
+			Label:    "Engine API total vs spike threshold",
+			Observed: total.Seconds() * 1000,
+			Expected: thresholdMS,
+			Unit:     domain.UnitMilliseconds,
+		},
+	})
 	return &domain.Verdict{
-		Cause:       domain.CauseELSlow,
-		SubCause:    subCause,
-		Confidence:  confidence,
-		Evidence:    evidence,
-		Remediation: remediation,
+		Cause:      domain.CauseELSlow,
+		Confidence: domain.ConfidenceMedium,
+		Evidence:   evidence,
+		Remediation: []string{
+			"check the execution client version against the latest release",
+			"inspect execution-client logs and host I/O telemetry for the exact canonical-head window before assigning a sub-cause",
+		},
 	}, true
 }

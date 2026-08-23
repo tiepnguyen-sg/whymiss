@@ -66,10 +66,20 @@ func Replay(observations []domain.Observation, schedule domain.SlotSchedule) (do
 		return domain.Timeline{}, fmt.Errorf("replay: no observations")
 	}
 
-	slot := observations[0].Slot
+	var slot domain.Slot
+	havePrimarySlot := false
+	for _, obs := range observations {
+		if obs.Kind == domain.ObsSlotStart {
+			slot, havePrimarySlot = obs.Slot, true
+			break
+		}
+	}
+	if !havePrimarySlot {
+		return domain.Timeline{}, fmt.Errorf("replay: no slot_start observation")
+	}
 	for i, obs := range observations {
-		if obs.Slot != slot {
-			return domain.Timeline{}, fmt.Errorf("replay: observation %d is for slot %d, want slot %d (replay does not mix slots)", i, obs.Slot, slot)
+		if obs.Slot != slot && (obs.Kind != domain.ObsReorg || obs.Slot <= slot || obs.Slot > slot.LastAttestationInclusionSlot()) {
+			return domain.Timeline{}, fmt.Errorf("replay: observation %d for slot %d is not part of duty slot %d or its reorg window", i, obs.Slot, slot)
 		}
 	}
 
@@ -78,6 +88,13 @@ func Replay(observations []domain.Observation, schedule domain.SlotSchedule) (do
 	haveSlotStart := false
 	for _, obs := range observations {
 		a.AddObservation(obs)
+		if obs.Kind == domain.ObsNetworkBaselineSampled {
+			baseline, err := domain.NetworkBaselineFromObservation(obs)
+			if err != nil {
+				return domain.Timeline{}, fmt.Errorf("replay: decode network baseline: %w", err)
+			}
+			a.SetNetwork(baseline)
+		}
 		if obs.Kind == domain.ObsSlotStart {
 			slotStart, haveSlotStart = obs, true
 		}

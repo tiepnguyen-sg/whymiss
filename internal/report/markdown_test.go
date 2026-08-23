@@ -30,6 +30,7 @@ func TestMarkdown_DegradedWithComparison(t *testing.T) {
 		Confidence: domain.ConfidenceHigh,
 		Evidence: []domain.Evidence{{
 			At:        at,
+			Offset:    2500 * time.Millisecond,
 			Statement: "execution client's engine_newPayloadV3 call took 2500.00ms",
 			Source:    domain.SourcePromScrape,
 			Comparison: &domain.Comparison{
@@ -46,6 +47,7 @@ func TestMarkdown_DegradedWithComparison(t *testing.T) {
 		"local.el_slow.disk_saturation",
 		"degraded (lost: timely_head)",
 		"high",
+		"[+2.5s]",
 		"execution client's engine_newPayloadV3 call took 2500.00ms",
 		"2500 vs 720 ms",
 		"1. this box needs a faster NVMe drive",

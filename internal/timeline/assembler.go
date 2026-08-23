@@ -3,6 +3,7 @@ package timeline
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -28,6 +29,7 @@ type Assembler struct {
 	duties       map[domain.Slot]domain.Duty
 	observations map[domain.Slot][]domain.Observation
 	samples      []domain.MetricSample
+	networks     map[domain.Slot]domain.NetworkBaseline
 }
 
 // NewAssembler returns an Assembler that builds timelines against schedule.
@@ -36,7 +38,13 @@ func NewAssembler(schedule domain.SlotSchedule) *Assembler {
 		schedule:     schedule,
 		duties:       make(map[domain.Slot]domain.Duty),
 		observations: make(map[domain.Slot][]domain.Observation),
+		networks:     make(map[domain.Slot]domain.NetworkBaseline),
 	}
+}
+
+// SetNetwork records the network-wide baseline for its slot.
+func (a *Assembler) SetNetwork(baseline domain.NetworkBaseline) {
+	a.networks[baseline.Slot] = baseline
 }
 
 // AddObservation files obs under its own Slot field.
@@ -70,6 +78,18 @@ func (a *Assembler) SetDuty(d domain.Duty) {
 func (a *Assembler) Build(slot domain.Slot, slotStart time.Time) (domain.Timeline, error) {
 	obs := slices.Clone(a.observations[slot])
 	sortObservations(obs)
+	var reorgs []domain.Observation
+	for observedSlot, observations := range a.observations {
+		if observedSlot <= slot || observedSlot > slot.LastAttestationInclusionSlot() {
+			continue
+		}
+		for _, observation := range observations {
+			if observation.Kind == domain.ObsReorg {
+				reorgs = append(reorgs, observation)
+			}
+		}
+	}
+	sortObservations(reorgs)
 
 	samples := slices.Clone(a.samples)
 	sortSamples(samples)
@@ -78,14 +98,29 @@ func (a *Assembler) Build(slot domain.Slot, slotStart time.Time) (domain.Timelin
 	if d, ok := a.duties[slot]; ok {
 		duty = &d
 	}
+	var network *domain.NetworkBaseline
+	if value, ok := a.networks[slot]; ok {
+		baseline := value
+		network = &baseline
+	}
+	collectionComplete := false
+	for _, observation := range obs {
+		if observation.Kind == domain.ObsCollectionCompleted {
+			collectionComplete = true
+			break
+		}
+	}
 
 	tl, err := domain.NewTimeline(domain.Timeline{
-		Slot:         slot,
-		SlotStart:    slotStart,
-		Schedule:     a.schedule,
-		Duty:         duty,
-		Observations: obs,
-		Samples:      samples,
+		Slot:               slot,
+		SlotStart:          slotStart,
+		Schedule:           a.schedule,
+		Duty:               duty,
+		Observations:       obs,
+		Reorgs:             reorgs,
+		Samples:            samples,
+		Network:            network,
+		CollectionComplete: collectionComplete,
 	})
 	if err != nil {
 		return domain.Timeline{}, fmt.Errorf("build timeline for slot %d: %w", slot, err)
@@ -108,11 +143,20 @@ func sortObservations(obs []domain.Observation) {
 		if a.Source != b.Source {
 			return a.Source < b.Source
 		}
-		return encodeAttrs(a.Attrs) < encodeAttrs(b.Attrs)
+		if encodedA, encodedB := encodeAttrs(a.Attrs), encodeAttrs(b.Attrs); encodedA != encodedB {
+			return encodedA < encodedB
+		}
+		if a.ClockMeasured != b.ClockMeasured {
+			return !a.ClockMeasured
+		}
+		if a.ClockOffset != b.ClockOffset {
+			return a.ClockOffset < b.ClockOffset
+		}
+		return a.ClockSampleAt.Before(b.ClockSampleAt)
 	})
 }
 
-// sortSamples orders by At, then Component, then Name — the same
+// sortSamples orders by every persisted field — the same
 // determinism guarantee as sortObservations, for the same reason.
 func sortSamples(samples []domain.MetricSample) {
 	sort.SliceStable(samples, func(i, j int) bool {
@@ -123,7 +167,25 @@ func sortSamples(samples []domain.MetricSample) {
 		if a.Component != b.Component {
 			return a.Component < b.Component
 		}
-		return a.Name < b.Name
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		if a.Source != b.Source {
+			return a.Source < b.Source
+		}
+		if a.Value != b.Value {
+			return a.Value < b.Value
+		}
+		if bitsA, bitsB := math.Float64bits(a.Value), math.Float64bits(b.Value); bitsA != bitsB {
+			return bitsA < bitsB
+		}
+		if a.ClockMeasured != b.ClockMeasured {
+			return !a.ClockMeasured
+		}
+		if a.ClockOffset != b.ClockOffset {
+			return a.ClockOffset < b.ClockOffset
+		}
+		return a.ClockSampleAt.Before(b.ClockSampleAt)
 	})
 }
 
@@ -141,10 +203,8 @@ func encodeAttrs(attrs map[domain.AttrKey]string) string {
 	slices.SortFunc(keys, func(a, b domain.AttrKey) int { return cmp.Compare(a, b) })
 	var b strings.Builder
 	for _, k := range keys {
-		b.WriteString(string(k))
-		b.WriteByte('=')
-		b.WriteString(attrs[k])
-		b.WriteByte(';')
+		key, value := string(k), attrs[k]
+		fmt.Fprintf(&b, "%d:%s%d:%s", len(key), key, len(value), value)
 	}
 	return b.String()
 }

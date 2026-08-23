@@ -3,6 +3,7 @@ package report
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
@@ -19,7 +20,7 @@ func Markdown(v domain.Verdict) string {
 
 	b.WriteString("## Evidence\n\n")
 	for _, e := range v.Evidence {
-		fmt.Fprintf(&b, "- [%s] %s", e.At.Format("15:04:05.000Z"), e.Statement)
+		fmt.Fprintf(&b, "- [%s] %s", formatOffset(e.Offset), e.Statement)
 		if e.Comparison != nil {
 			fmt.Fprintf(&b, " (%s: %s vs %s %s)", e.Comparison.Label, formatValue(e.Comparison.Observed), formatValue(e.Comparison.Expected), e.Comparison.Unit)
 		}
@@ -36,6 +37,13 @@ func Markdown(v domain.Verdict) string {
 	fmt.Fprintf(&b, "\n---\nEngine %s · Taxonomy %s\n", v.EngineVersion, v.TaxonomyVersion)
 
 	return b.String()
+}
+
+func formatOffset(offset time.Duration) string {
+	if offset >= 0 {
+		return "+" + offset.String()
+	}
+	return offset.String()
 }
 
 func headline(v domain.Verdict) string {

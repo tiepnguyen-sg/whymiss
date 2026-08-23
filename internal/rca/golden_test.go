@@ -9,7 +9,6 @@ import (
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/rca"
-	_ "github.com/tiepnguyen-sg/whymiss/internal/rca/rules" // registers rca.Order via init
 	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 )
 

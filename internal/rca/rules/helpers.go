@@ -1,41 +1,59 @@
 package rules
 
 import (
+	"math"
 	"strconv"
 	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
-	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 )
 
-// postPropagationDominant reports whether the "post-propagation" span
-// (validation, possibly combined with signing — see
-// rca.ComputeStages's doc comment on the head_updated data gap) is the
-// dominant stage. R-300 and R-310 both gate on this: EL/CL slowness is a
-// validation-stage phenomenon, and with head_updated never populated by
-// this codebase's collectors today, Validation is the only field carrying
-// that span.
-func postPropagationDominant(tl domain.Timeline, cfg rca.Config) bool {
-	stages := rca.ComputeStages(tl)
+// postPropagationDominant reports whether validation dominates known stages.
+func postPropagationDominant(tl domain.Timeline, cfg Config) bool {
+	stages := ComputeStages(tl)
 	dominant, ok := stages.Dominant(cfg)
 	return ok && dominant == domain.StageValidation
+}
+
+// propagationOverspent reports that measured local block arrival consumed the
+// entire attestation budget and, when another stage is known, propagation was
+// also dominant. A lone late propagation stage still proves where the local
+// budget was spent; a network baseline is required separately to say why.
+func propagationOverspent(tl domain.Timeline, cfg Config) (Stages, bool) {
+	stages := ComputeStages(tl)
+	if !stages.HasPropagation || stages.Propagation <= tl.AttestationDeadline().Sub(tl.SlotStart) {
+		return stages, false
+	}
+	if stages.HasValidation || stages.HasSigning {
+		dominant, ok := stages.Dominant(cfg)
+		return stages, ok && dominant == domain.StagePropagation
+	}
+	return stages, true
+}
+
+// timedBlockSeen returns a block-arrival timestamp measured by client metrics.
+func timedBlockSeen(tl domain.Timeline) (domain.Observation, bool) {
+	for _, obs := range tl.Observations {
+		if obs.Kind == domain.ObsBlockSeen && obs.Source == domain.SourcePromScrape {
+			return obs, true
+		}
+	}
+	return domain.Observation{}, false
 }
 
 // engineCall is the parsed form of one engine_call observation.
 type engineCall struct {
 	at         time.Time
 	method     string
+	count      uint64
 	durationMS float64
 }
 
-// engineCalls returns every engine_call observation on tl, parsed.
-// Unparseable entries are skipped rather than erroring — a rule reading
-// this is already past the point where a malformed attribute should abort
-// attribution (I-8: degrade, don't refuse).
+// engineCalls parses valid Engine call observations.
 func engineCalls(tl domain.Timeline) []engineCall {
 	var out []engineCall
 	for _, obs := range tl.Observations {
-		if obs.Kind != domain.ObsEngineCall {
+		if obs.Kind != domain.ObsEngineCall || obs.Source != domain.SourcePromScrape {
 			continue
 		}
 		method, ok := obs.Attr(domain.AttrEngineMethod)
@@ -47,22 +65,83 @@ func engineCalls(tl domain.Timeline) []engineCall {
 			continue
 		}
 		duration, err := strconv.ParseFloat(durationStr, 64)
-		if err != nil {
+		if err != nil || duration < 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
 			continue
 		}
-		out = append(out, engineCall{at: obs.At, method: method, durationMS: duration})
+		if method != domain.EngineMethodNewPayload && method != domain.EngineMethodForkchoiceUpdated {
+			continue
+		}
+		countStr, ok := obs.Attr(domain.AttrSampleCount)
+		if !ok {
+			continue
+		}
+		count, err := strconv.ParseUint(countStr, 10, 64)
+		if err != nil || count == 0 {
+			continue
+		}
+		out = append(out, engineCall{at: obs.At, method: method, count: count, durationMS: duration})
 	}
 	return out
 }
 
-// hostSampledValue reads a host_sampled observation's value for the named
-// metric — the format tools/faultinjector's corpus scenarios actually
-// produce (ObsHostSampled with AttrMetric/AttrValue), distinct from
-// internal/source/hostmetrics's MetricSample form that whymiss watch
-// produces for live collection. Checks both: Observations first (what the
-// corpus has), Samples second (what a live Timeline would have) — see
-// hostSampleNames below for the name mapping between the two forms.
-func hostSampledValue(tl domain.Timeline, obsMetricName, sampleMetricName string) (float64, bool) {
+func completeEngineCalls(tl domain.Timeline) ([]engineCall, bool) {
+	calls := engineCalls(tl)
+	if len(calls) != 2 {
+		return calls, false
+	}
+	var newPayload, forkchoice int
+	for _, call := range calls {
+		switch call.method {
+		case domain.EngineMethodNewPayload:
+			newPayload++
+		case domain.EngineMethodForkchoiceUpdated:
+			forkchoice++
+		}
+	}
+	return calls, newPayload == 1 && forkchoice == 1
+}
+
+// dutyHasObservableLoss reports whether the closed timeline proves the duty
+// lost reward. Host pressure alone is never a root cause for a healthy duty.
+func dutyHasObservableLoss(tl domain.Timeline) bool {
+	if tl.Duty == nil {
+		return false
+	}
+	if tl.Duty.Kind == domain.DutyProposer {
+		return !tl.Has(domain.ObsBlockProposed)
+	}
+	included, ok := tl.Last(domain.ObsAttestationIncluded)
+	if !ok {
+		return true
+	}
+	delayStr, ok := included.Attr(domain.AttrInclusionDelay)
+	if !ok {
+		return true
+	}
+	delay, err := strconv.ParseUint(delayStr, 10, 64)
+	if err != nil || delay != 1 {
+		return true
+	}
+	headCorrect, haveHead := included.Attr(domain.AttrHeadCorrect)
+	targetCorrect, haveTarget := included.Attr(domain.AttrTargetCorrect)
+	return !haveHead || !haveTarget || headCorrect != "true" || targetCorrect != "true"
+}
+
+func engineCallTotal(calls []engineCall) time.Duration {
+	var totalMS float64
+	for _, call := range calls {
+		totalMS += call.durationMS
+	}
+	maxMilliseconds := float64(time.Duration(1<<63-1)) / float64(time.Millisecond)
+	if math.IsInf(totalMS, 0) || totalMS >= maxMilliseconds {
+		return time.Duration(1<<63 - 1)
+	}
+	return time.Duration(totalMS * float64(time.Millisecond))
+}
+
+// hostSampleFact reads the newest corpus observation or live metric sample
+// without discarding the timestamp and source needed for auditable evidence.
+func hostSampleFact(tl domain.Timeline, obsMetricName, sampleMetricName string) (value float64, at time.Time, source domain.SourceID, ok bool) {
 	for i := len(tl.Observations) - 1; i >= 0; i-- {
 		obs := tl.Observations[i]
 		if obs.Kind != domain.ObsHostSampled {
@@ -80,21 +159,19 @@ func hostSampledValue(tl domain.Timeline, obsMetricName, sampleMetricName string
 		if err != nil {
 			continue
 		}
-		return value, true
+		return value, obs.At, obs.Source, true
 	}
-	return tl.SampleValue(domain.ComponentHost, domain.MetricName(sampleMetricName))
+	for i := len(tl.Samples) - 1; i >= 0; i-- {
+		sample := tl.Samples[i]
+		if sample.Component == domain.ComponentHost && sample.Name == domain.MetricName(sampleMetricName) {
+			return sample.Value, sample.At, sample.Source, true
+		}
+	}
+	return 0, time.Time{}, "", false
 }
 
-// peerCountValue reads a peer-count sample, checking both forms the same
-// way hostSampledValue does: Observations first (domain.ObsPeerCountSampled
-// with AttrPeerCount — the format tools/faultinjector's corpus scenarios
-// produce), falling back to Samples (metricCLPeerCount — the
-// live-collection form internal/source/promscrape produces for whymiss
-// watch). Without this dual check, R-200's peer-count corroboration
-// branch was unreachable by any real corpus scenario: faultinjector never
-// wrote a MetricSample, only Observations, and Timeline.SampleValue only
-// ever reads Samples.
-func peerCountValue(tl domain.Timeline) (float64, bool) {
+// peerCountFact reads the newest corpus observation or live metric sample.
+func peerCountFact(tl domain.Timeline) (value float64, at time.Time, source domain.SourceID, ok bool) {
 	for i := len(tl.Observations) - 1; i >= 0; i-- {
 		obs := tl.Observations[i]
 		if obs.Kind != domain.ObsPeerCountSampled {
@@ -108,59 +185,13 @@ func peerCountValue(tl domain.Timeline) (float64, bool) {
 		if err != nil {
 			continue
 		}
-		return value, true
+		return value, obs.At, obs.Source, true
 	}
-	return tl.SampleValue(domain.ComponentCL, metricCLPeerCount)
-}
-
-// elSubCause selects local.el_slow's sub-cause per docs/causes.md §7's
-// first-match-wins table. syncing/snapshot/pruning need signals this
-// codebase's collectors don't produce yet (no observation or metric kind
-// carries EL sync status or snapshot/pruning activity) — only
-// disk_saturation is checkable today, via host_sampled's iowait_pct.
-func elSubCause(tl domain.Timeline) (domain.CauseID, string) {
-	iowait, ok := hostSampledValue(tl, "iowait_pct", "host_iowait_pct")
-	if !ok || iowait <= 0 {
-		return "", ""
+	for i := len(tl.Samples) - 1; i >= 0; i-- {
+		sample := tl.Samples[i]
+		if sample.Component == domain.ComponentCL && sample.Name == metricCLPeerCount {
+			return sample.Value, sample.At, sample.Source, true
+		}
 	}
-	return domain.CauseELSlowDiskSaturation, ""
-}
-
-// vcTimingShapeMatches reports whether tl carries R-410's exact evidence
-// shape (block available before the attestation deadline, attestation not
-// published until after it) — the direct signal VCSlow.Evaluate itself
-// matches on. R-310 checks this to defer to R-410 rather than claiming
-// local.cl_slow: "validation-plus-signing span dominant with no engine_call
-// evidence" is a coarse elimination fallback, and shouldn't outrank direct
-// timing evidence that the delay specifically happened in the signing step
-// (a real corpus scenario, vc-slow-cpu, has exactly this shape — R-310's
-// fallback branch matched it first purely because it's ordered first,
-// before R-410 ever got a chance, even though R-410's evidence is strictly
-// more specific).
-func vcTimingShapeMatches(tl domain.Timeline) bool {
-	blockSeen, hasBlockSeen := tl.First(domain.ObsBlockSeen)
-	published, hasPublished := tl.First(domain.ObsAttestationPublished)
-	if !hasBlockSeen || !hasPublished {
-		return false
-	}
-	deadline := tl.AttestationDeadline()
-	return blockSeen.At.Before(deadline) && published.At.After(deadline)
-}
-
-// inclusionDelay returns the parsed inclusion_delay attribute of tl's
-// attestation_included observation, if any.
-func inclusionDelay(tl domain.Timeline) (uint64, bool) {
-	included, ok := tl.Last(domain.ObsAttestationIncluded)
-	if !ok {
-		return 0, false
-	}
-	delayStr, ok := included.Attr(domain.AttrInclusionDelay)
-	if !ok {
-		return 0, false
-	}
-	delay, err := strconv.ParseUint(delayStr, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-	return delay, true
+	return 0, time.Time{}, "", false
 }

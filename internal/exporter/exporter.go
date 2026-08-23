@@ -9,10 +9,9 @@ import (
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
-// causeNone is the cause label value recorded for domain.OutcomeNoDuty,
-// where domain.Verdict.ReportedCause() returns "" (the taxonomy has no
-// cause ID for "nothing was owed") — an empty Prometheus label value is
-// legal but confusing to write an alert against, so it's spelled out.
+// causeNone is the label value for a causeless verdict: no duty was owed, or
+// the completed duty was healthy. An empty Prometheus label is legal but
+// confusing to alert on, so both cases are spelled out.
 const causeNone = "none"
 
 // Exporter turns Record calls into a Prometheus counter, one time series
@@ -32,7 +31,7 @@ func New() *Exporter {
 	registry := prometheus.NewRegistry()
 	verdicts := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "whymiss_duty_verdicts_total",
-		Help: "Count of RCA verdicts by cause and outcome. cause is bounded to domain.CauseIDs() plus \"none\" (no duty); outcome to domain.Outcome's four values — see docs/adr/0009-prometheus-exporter.md.",
+		Help: "Count of RCA verdicts by cause and outcome. cause is bounded to domain.CauseIDs() plus \"none\" (no fault to attribute); outcome to domain.Outcome's four values — see docs/adr/0009-prometheus-exporter.md.",
 	}, []string{"cause", "outcome"})
 	registry.MustRegister(verdicts)
 	return &Exporter{registry: registry, verdicts: verdicts}

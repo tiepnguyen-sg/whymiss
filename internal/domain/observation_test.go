@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 // time.Now keeps every assertion reproducible, which is the property the whole
 // engine rests on (I-6).
 var at = time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+
+var (
+	rootA = "0x" + strings.Repeat("a", 64)
+	rootB = "0x" + strings.Repeat("b", 64)
+)
 
 func TestNewObservationValid(t *testing.T) {
 	t.Parallel()
@@ -37,7 +43,7 @@ func TestNewObservationValid(t *testing.T) {
 				At:     at,
 				Source: domain.SourceBeaconAPI,
 				Attrs: map[domain.AttrKey]string{
-					domain.AttrBlockRoot:     "0xabc",
+					domain.AttrBlockRoot:     rootA,
 					domain.AttrProposerIndex: "123456",
 				},
 			},
@@ -45,12 +51,14 @@ func TestNewObservationValid(t *testing.T) {
 		{
 			name: "clock sample carries a negative offset",
 			draft: domain.Observation{
-				Slot:        100,
-				Kind:        domain.ObsClockSampled,
-				At:          at,
-				ClockOffset: -42 * time.Millisecond,
-				Source:      domain.SourceClock,
-				Attrs:       map[domain.AttrKey]string{domain.AttrValue: "-42"},
+				Slot:          100,
+				Kind:          domain.ObsClockSampled,
+				At:            at,
+				ClockOffset:   -42 * time.Millisecond,
+				ClockMeasured: true,
+				ClockSampleAt: at,
+				Source:        domain.SourceClock,
+				Attrs:         map[domain.AttrKey]string{domain.AttrValue: "-42"},
 			},
 		},
 	}
@@ -115,6 +123,22 @@ func TestNewObservationRejects(t *testing.T) {
 			want: domain.ErrMissingSource,
 		},
 		{
+			name: "measured clock without sample timestamp",
+			draft: domain.Observation{
+				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
+				ClockMeasured: true,
+			},
+			want: domain.ErrInvalidClock,
+		},
+		{
+			name: "unmeasured observation with clock offset",
+			draft: domain.Observation{
+				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
+				ClockOffset: time.Millisecond,
+			},
+			want: domain.ErrInvalidClock,
+		},
+		{
 			name: "undocumented attribute key",
 			draft: domain.Observation{
 				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
@@ -127,6 +151,95 @@ func TestNewObservationRejects(t *testing.T) {
 			draft: domain.Observation{
 				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
 				Attrs: map[domain.AttrKey]string{domain.AttrPeerCount: "62"},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "known source on the wrong kind",
+			draft: domain.Observation{
+				Kind: domain.ObsHostSampled, At: at, Source: domain.SourceBeaconAPI,
+			},
+			want: domain.ErrInvalidSource,
+		},
+		{
+			name: "empty attribute value",
+			draft: domain.Observation{
+				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
+				Attrs: map[domain.AttrKey]string{domain.AttrBlockRoot: ""},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "oversized attribute value",
+			draft: domain.Observation{
+				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
+				Attrs: map[domain.AttrKey]string{domain.AttrBlockRoot: strings.Repeat("a", 257)},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "malformed block root",
+			draft: domain.Observation{
+				Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
+				Attrs: map[domain.AttrKey]string{domain.AttrBlockRoot: "0xabc"},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "nan peer count",
+			draft: domain.Observation{
+				Kind: domain.ObsPeerCountSampled, At: at, Source: domain.SourcePromScrape,
+				Attrs: map[domain.AttrKey]string{domain.AttrPeerCount: "NaN"},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "negative peer count",
+			draft: domain.Observation{
+				Kind: domain.ObsPeerCountSampled, At: at, Source: domain.SourcePromScrape,
+				Attrs: map[domain.AttrKey]string{domain.AttrPeerCount: "-1"},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "infinite host value",
+			draft: domain.Observation{
+				Kind: domain.ObsHostSampled, At: at, Source: domain.SourceHostMetrics,
+				Attrs: map[domain.AttrKey]string{domain.AttrMetric: "iowait_pct", domain.AttrValue: "+Inf"},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "nan engine duration",
+			draft: domain.Observation{
+				Kind: domain.ObsEngineCall, At: at, Source: domain.SourcePromScrape,
+				Attrs: map[domain.AttrKey]string{
+					domain.AttrEngineMethod: domain.EngineMethodNewPayload,
+					domain.AttrDurationMS:   "NaN",
+				},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "zero baseline sample count",
+			draft: domain.Observation{
+				Kind: domain.ObsNetworkBaselineSampled, At: at, Source: domain.SourceXatu,
+				Attrs: map[domain.AttrKey]string{
+					domain.AttrBlockArrivalP50MS: "100",
+					domain.AttrBlockArrivalP90MS: "200",
+					domain.AttrSampleCount:       "0",
+				},
+			},
+			want: domain.ErrInvalidAttr,
+		},
+		{
+			name: "unknown engine method",
+			draft: domain.Observation{
+				Kind: domain.ObsEngineCall, At: at, Source: domain.SourcePromScrape,
+				Attrs: map[domain.AttrKey]string{
+					domain.AttrEngineMethod: "engine_exchangeCapabilities",
+					domain.AttrDurationMS:   "1",
+				},
 			},
 			want: domain.ErrInvalidAttr,
 		},
@@ -150,7 +263,7 @@ func TestNewObservationRejects(t *testing.T) {
 func TestNewObservationCopiesAttrs(t *testing.T) {
 	t.Parallel()
 
-	attrs := map[domain.AttrKey]string{domain.AttrBlockRoot: "0xaaa"}
+	attrs := map[domain.AttrKey]string{domain.AttrBlockRoot: rootA}
 	obs, err := domain.NewObservation(domain.Observation{
 		Slot: 1, Kind: domain.ObsBlockSeen, At: at,
 		Source: domain.SourceBeaconAPI, Attrs: attrs,
@@ -159,10 +272,24 @@ func TestNewObservationCopiesAttrs(t *testing.T) {
 		t.Fatalf("NewObservation() error = %v", err)
 	}
 
-	attrs[domain.AttrBlockRoot] = "0xbbb"
+	attrs[domain.AttrBlockRoot] = rootB
 
-	if got, _ := obs.Attr(domain.AttrBlockRoot); got != "0xaaa" {
-		t.Errorf("block root = %q after caller mutated its map, want %q", got, "0xaaa")
+	if got, _ := obs.Attr(domain.AttrBlockRoot); got != rootA {
+		t.Errorf("block root = %q after caller mutated its map, want %q", got, rootA)
+	}
+}
+
+func TestNewObservationCanonicalizesBlockRootCase(t *testing.T) {
+	t.Parallel()
+	obs, err := domain.NewObservation(domain.Observation{
+		Slot: 1, Kind: domain.ObsBlockSeen, At: at, Source: domain.SourceBeaconAPI,
+		Attrs: map[domain.AttrKey]string{domain.AttrBlockRoot: "0x" + strings.Repeat("A", 64)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := obs.Attr(domain.AttrBlockRoot); got != rootA {
+		t.Fatalf("block root = %q, want canonical %q", got, rootA)
 	}
 }
 
@@ -194,6 +321,8 @@ func TestAttrKeyPermittedFor(t *testing.T) {
 		{domain.AttrProposerIndex, domain.ObsHeadUpdated, false},
 		{domain.AttrInclusionDelay, domain.ObsAttestationIncluded, true},
 		{domain.AttrInclusionDelay, domain.ObsAttestationPublished, false},
+		{domain.AttrHeadCorrect, domain.ObsAttestationIncluded, true},
+		{domain.AttrTargetCorrect, domain.ObsAttestationPublished, false},
 		{domain.AttrValue, domain.ObsClockSampled, true},
 		{domain.AttrValue, domain.ObsHostSampled, true},
 		{domain.AttrPeerCount, domain.ObsPeerCountSampled, true},
@@ -209,6 +338,16 @@ func TestAttrKeyPermittedFor(t *testing.T) {
 				t.Errorf("PermittedFor() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestObservationRejectsInvalidRewardEvidenceBoolean(t *testing.T) {
+	_, err := domain.NewObservation(domain.Observation{
+		Slot: 1, Kind: domain.ObsAttestationIncluded, At: at, Source: domain.SourceBeaconAPI,
+		Attrs: map[domain.AttrKey]string{domain.AttrHeadCorrect: "yes"},
+	})
+	if err == nil {
+		t.Fatal("NewObservation: want invalid boolean error, got nil")
 	}
 }
 

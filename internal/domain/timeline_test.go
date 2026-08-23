@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 func obs(slot domain.Slot, kind domain.ObservationKind, offset time.Duration) domain.Observation {
 	source := domain.SourceBeaconAPI
 	switch kind {
-	case domain.ObsSlotStart:
+	case domain.ObsSlotStart, domain.ObsCollectionCompleted:
 		source = domain.SourceDerived
 	case domain.ObsClockSampled:
 		source = domain.SourceClock
@@ -23,6 +24,18 @@ func obs(slot domain.Slot, kind domain.ObservationKind, offset time.Duration) do
 		source = domain.SourcePromScrape
 	}
 	return domain.Observation{Slot: slot, Kind: kind, At: at.Add(offset), Source: source}
+}
+
+func TestMaxAbsClockOffsetSaturatesMinimumDuration(t *testing.T) {
+	t.Parallel()
+	tl := validTimeline()
+	tl.Observations[1].ClockMeasured = true
+	tl.Observations[1].ClockOffset = time.Duration(math.MinInt64)
+	tl.Observations[1].ClockSampleAt = tl.Observations[1].At
+	got, ok := tl.MaxAbsClockOffset()
+	if !ok || got != time.Duration(math.MaxInt64) {
+		t.Fatalf("MaxAbsClockOffset() = %s, %v, want MaxInt64", got, ok)
+	}
 }
 
 // validTimeline is the happy path every rejection case mutates one field of.
@@ -52,6 +65,45 @@ func TestNewTimelineValid(t *testing.T) {
 	}
 	if len(got.Observations) != 4 {
 		t.Errorf("len(Observations) = %d, want 4", len(got.Observations))
+	}
+}
+
+func TestNewTimelineValidatesAndCopiesWindowReorgs(t *testing.T) {
+	t.Parallel()
+
+	draft := validTimeline()
+	draft.Reorgs = []domain.Observation{obs(101, domain.ObsReorg, 12*time.Second)}
+	timeline, err := domain.NewTimeline(draft)
+	if err != nil {
+		t.Fatalf("NewTimeline() error = %v", err)
+	}
+	draft.Reorgs[0].Slot = 999
+	if timeline.Reorgs[0].Slot != 101 {
+		t.Fatal("timeline reorg changed after caller mutated the draft slice")
+	}
+}
+
+func TestNewTimelineRejectsInvalidWindowReorgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		reorgs []domain.Observation
+	}{
+		{"wrong kind", []domain.Observation{obs(101, domain.ObsBlockSeen, 12*time.Second)}},
+		{"duty slot", []domain.Observation{obs(100, domain.ObsReorg, 12*time.Second)}},
+		{"after window", []domain.Observation{obs(161, domain.ObsReorg, 12*time.Second)}},
+		{"unsorted", []domain.Observation{obs(101, domain.ObsReorg, 24*time.Second), obs(102, domain.ObsReorg, 12*time.Second)}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			draft := validTimeline()
+			draft.Reorgs = tc.reorgs
+			if _, err := domain.NewTimeline(draft); err == nil {
+				t.Fatal("NewTimeline() error = nil, want invalid reorg rejection")
+			}
+		})
 	}
 }
 
@@ -160,6 +212,57 @@ func TestNewTimelineRejects(t *testing.T) {
 	}
 }
 
+func TestNewTimelineRejectsCollectionCompletionMismatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*domain.Timeline)
+	}{
+		{
+			name: "boolean without evidence",
+			mutate: func(tl *domain.Timeline) {
+				tl.CollectionComplete = true
+			},
+		},
+		{
+			name: "evidence without boolean",
+			mutate: func(tl *domain.Timeline) {
+				tl.Observations = append(tl.Observations,
+					obs(tl.Slot, domain.ObsCollectionCompleted, 10*time.Minute))
+			},
+		},
+		{
+			name: "duplicate evidence",
+			mutate: func(tl *domain.Timeline) {
+				tl.CollectionComplete = true
+				tl.Observations = append(tl.Observations,
+					obs(tl.Slot, domain.ObsCollectionCompleted, 15*time.Minute),
+					obs(tl.Slot, domain.ObsCollectionCompleted, 16*time.Minute))
+			},
+		},
+		{
+			name: "evidence before final inclusion window ends",
+			mutate: func(tl *domain.Timeline) {
+				tl.CollectionComplete = true
+				tl.Observations = append(tl.Observations,
+					obs(tl.Slot, domain.ObsCollectionCompleted, 10*time.Minute))
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tl := validTimeline()
+			tc.mutate(&tl)
+			if _, err := domain.NewTimeline(tl); err == nil {
+				t.Fatal("NewTimeline() error = nil, want completion consistency rejection")
+			}
+		})
+	}
+}
+
 // TestNewTimelineRejectsBadSchedule covers the deadline ordering constraints, which
 // would otherwise fail silently by producing impossible attributions.
 func TestNewTimelineRejectsBadSchedule(t *testing.T) {
@@ -257,8 +360,10 @@ func TestTimelineMaxAbsClockOffset(t *testing.T) {
 		t.Parallel()
 
 		tl := validTimeline()
-		tl.Observations[1].ClockOffset = 30 * time.Millisecond
-		tl.Observations[2].ClockOffset = -180 * time.Millisecond
+		tl.Observations[1].ClockOffset, tl.Observations[1].ClockMeasured = 30*time.Millisecond, true
+		tl.Observations[2].ClockOffset, tl.Observations[2].ClockMeasured = -180*time.Millisecond, true
+		tl.Observations[1].ClockSampleAt = tl.Observations[1].At
+		tl.Observations[2].ClockSampleAt = tl.Observations[2].At
 
 		got, ok := tl.MaxAbsClockOffset()
 		if !ok {
@@ -266,6 +371,16 @@ func TestTimelineMaxAbsClockOffset(t *testing.T) {
 		}
 		if want := 180 * time.Millisecond; got != want {
 			t.Errorf("MaxAbsClockOffset() = %s, want %s", got, want)
+		}
+	})
+
+	t.Run("unmeasured observations report nothing measured", func(t *testing.T) {
+		t.Parallel()
+
+		// Every observation carries a zero offset because nothing sampled the
+		// clock — that must not read as a perfect clock (I-9).
+		if _, ok := validTimeline().MaxAbsClockOffset(); ok {
+			t.Error("MaxAbsClockOffset() = measured, want unmeasured")
 		}
 	})
 

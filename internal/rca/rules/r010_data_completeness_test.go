@@ -8,26 +8,56 @@ import (
 )
 
 func TestDataCompleteness(t *testing.T) {
-	t.Run("matches when attestation_included exists with no block_seen", func(t *testing.T) {
-		tl := timelineWith(t,
-			mustObs(t, domain.ObsAttestationIncluded, offset(4*time.Second), map[domain.AttrKey]string{domain.AttrInclusionDelay: "1"}),
-		)
+	t.Run("blocks attribution while the collection window is open", func(t *testing.T) {
+		tl := timelineWith(t, mustObs(t, domain.ObsBlockSeen, offset(time.Second), nil))
+		tl.CollectionComplete = false
 		v, ok := DataCompleteness{}.Evaluate(tl, defaultCfg)
-		if !ok {
-			t.Fatal("want match, got no match")
+		if !ok || v.Cause != domain.CauseInsufficientData {
+			t.Fatalf("verdict = %+v, matched = %v; want insufficient_data", v, ok)
 		}
-		if v.Cause != domain.CauseInsufficientData {
-			t.Errorf("Cause = %q, want %q", v.Cause, domain.CauseInsufficientData)
+	})
+
+	t.Run("blocks attribution when elapsed time has no positive completion record", func(t *testing.T) {
+		tl := timelineWith(t, mustObs(t, domain.ObsBlockSeen, offset(time.Second), nil))
+		tl.Observations = tl.Observations[:len(tl.Observations)-1]
+		tl.CollectionComplete = true
+		v, ok := DataCompleteness{}.Evaluate(tl, defaultCfg)
+		if !ok || v.Cause != domain.CauseInsufficientData {
+			t.Fatalf("verdict = %+v, matched = %v; want insufficient_data", v, ok)
+		}
+	})
+
+	t.Run("does not require block_seen for a skipped proposer slot", func(t *testing.T) {
+		tl := timelineWith(t,
+			mustObs(t, domain.ObsAttestationIncluded, offset(4*time.Second), map[domain.AttrKey]string{
+				domain.AttrInclusionDelay: "1", domain.AttrHeadCorrect: "true", domain.AttrTargetCorrect: "true",
+			}),
+		)
+		if _, ok := (DataCompleteness{}).Evaluate(tl, defaultCfg); ok {
+			t.Fatal("want no match, got a match")
 		}
 	})
 
 	t.Run("does not match when block_seen also exists", func(t *testing.T) {
 		tl := timelineWith(t,
 			mustObs(t, domain.ObsBlockSeen, offset(1*time.Second), nil),
-			mustObs(t, domain.ObsAttestationIncluded, offset(4*time.Second), map[domain.AttrKey]string{domain.AttrInclusionDelay: "1"}),
+			mustObs(t, domain.ObsAttestationIncluded, offset(4*time.Second), map[domain.AttrKey]string{
+				domain.AttrInclusionDelay: "1", domain.AttrHeadCorrect: "true", domain.AttrTargetCorrect: "true",
+			}),
 		)
 		if _, ok := (DataCompleteness{}).Evaluate(tl, defaultCfg); ok {
 			t.Fatal("want no match, got a match")
+		}
+	})
+
+	t.Run("matches when canonical reward evidence is missing", func(t *testing.T) {
+		tl := timelineWith(t,
+			mustObs(t, domain.ObsBlockSeen, offset(time.Second), nil),
+			mustObs(t, domain.ObsAttestationIncluded, offset(4*time.Second), map[domain.AttrKey]string{domain.AttrInclusionDelay: "1"}),
+		)
+		v, ok := (DataCompleteness{}).Evaluate(tl, defaultCfg)
+		if !ok || v.Cause != domain.CauseInsufficientData {
+			t.Fatalf("verdict=%+v matched=%t, want insufficient_data", v, ok)
 		}
 	})
 

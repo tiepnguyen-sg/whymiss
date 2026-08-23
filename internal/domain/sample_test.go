@@ -1,6 +1,8 @@
 package domain_test
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,10 +50,17 @@ func TestMetricSampleValidate(t *testing.T) {
 		mutate func(*domain.MetricSample)
 	}{
 		{"empty name", func(s *domain.MetricSample) { s.Name = "" }},
+		{"oversized name", func(s *domain.MetricSample) { s.Name = domain.MetricName(strings.Repeat("x", 129)) }},
 		{"unknown component", func(s *domain.MetricSample) { s.Component = "relay" }},
 		{"zero timestamp", func(s *domain.MetricSample) { s.At = time.Time{} }},
 		{"not utc", func(s *domain.MetricSample) { s.At = at.In(time.FixedZone("CET", 3600)) }},
 		{"unattributed", func(s *domain.MetricSample) { s.Source = "" }},
+		{"known source on wrong component", func(s *domain.MetricSample) { s.Source = domain.SourceHostMetrics }},
+		{"observation-only source", func(s *domain.MetricSample) { s.Source = domain.SourceBeaconAPI }},
+		{"nan value", func(s *domain.MetricSample) { s.Value = math.NaN() }},
+		{"infinite value", func(s *domain.MetricSample) { s.Value = math.Inf(1) }},
+		{"measured without sample time", func(s *domain.MetricSample) { s.ClockMeasured = true }},
+		{"unmeasured with offset", func(s *domain.MetricSample) { s.ClockOffset = time.Millisecond }},
 	}
 
 	for _, tc := range tests {
@@ -87,8 +96,10 @@ func TestNetworkBaselineValidate(t *testing.T) {
 	}{
 		{"zero sample count", func(b *domain.NetworkBaseline) { b.SampleCount = 0 }},
 		{"negative sample count", func(b *domain.NetworkBaseline) { b.SampleCount = -1 }},
+		{"negative p50", func(b *domain.NetworkBaseline) { b.BlockArrivalP50 = -time.Millisecond }},
 		{"p50 exceeds p90", func(b *domain.NetworkBaseline) { b.BlockArrivalP50, b.BlockArrivalP90 = 3*time.Second, time.Second }},
 		{"unattributed", func(b *domain.NetworkBaseline) { b.Source = "" }},
+		{"known source on wrong value", func(b *domain.NetworkBaseline) { b.Source = domain.SourceBeaconAPI }},
 	}
 
 	for _, tc := range tests {
@@ -101,5 +112,42 @@ func TestNetworkBaselineValidate(t *testing.T) {
 				t.Error("Validate() = nil, want an error")
 			}
 		})
+	}
+}
+
+func TestNetworkBaselineFromObservation(t *testing.T) {
+	obs, err := domain.NewObservation(domain.Observation{
+		Slot: 100, Kind: domain.ObsNetworkBaselineSampled, At: at, Source: domain.SourceXatu,
+		Attrs: map[domain.AttrKey]string{
+			domain.AttrBlockArrivalP50MS: "850.5",
+			domain.AttrBlockArrivalP90MS: "1300",
+			domain.AttrSampleCount:       "42",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := domain.NetworkBaselineFromObservation(obs)
+	if err != nil {
+		t.Fatalf("NetworkBaselineFromObservation: %v", err)
+	}
+	if got.BlockArrivalP50 != 850500*time.Microsecond || got.BlockArrivalP90 != 1300*time.Millisecond || got.SampleCount != 42 {
+		t.Fatalf("baseline = %+v", got)
+	}
+}
+
+func TestNetworkBaselineFromObservationRejectsMalformedValues(t *testing.T) {
+	// Construct the public value directly to keep the decoder defensive even
+	// though NewObservation rejects this malformed wire value earlier.
+	obs := domain.Observation{
+		Slot: 100, Kind: domain.ObsNetworkBaselineSampled, At: at, Source: domain.SourceXatu,
+		Attrs: map[domain.AttrKey]string{
+			domain.AttrBlockArrivalP50MS: "NaN",
+			domain.AttrBlockArrivalP90MS: "1300",
+			domain.AttrSampleCount:       "42",
+		},
+	}
+	if _, err := domain.NetworkBaselineFromObservation(obs); err == nil {
+		t.Fatal("NetworkBaselineFromObservation accepted NaN")
 	}
 }

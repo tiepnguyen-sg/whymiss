@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -52,8 +53,8 @@ type RewardFlags struct {
 	// TimelyTarget is earned for the correct target checkpoint.
 	TimelyTarget bool `json:"timely_target"`
 
-	// TimelyHead is earned for the correct head root with an inclusion delay of
-	// exactly one slot. It is the flag that is lost first and noticed last.
+	// TimelyHead is earned for a correct target and head root with an inclusion
+	// delay of exactly one slot. It is the flag that is lost first and noticed last.
 	TimelyHead bool `json:"timely_head"`
 }
 
@@ -167,8 +168,7 @@ const (
 	// CauseHostCPUSteal means the hypervisor withheld CPU from this guest.
 	CauseHostCPUSteal CauseID = "local.host.cpu_steal"
 
-	// CauseHostMemoryPressure means memory pressure or swap activity delayed
-	// processing.
+	// CauseHostMemoryPressure means elevated PSI memory pressure delayed processing.
 	CauseHostMemoryPressure CauseID = "local.host.memory_pressure"
 
 	// CauseHostClockDrift means the system clock was offset far enough to distort
@@ -184,39 +184,44 @@ const (
 	CauseNoRuleMatched CauseID = "unknown.no_rule_matched"
 )
 
-// causeIDs is the closed set, in the order docs/causes.md §7 documents it.
-var causeIDs = []CauseID{
-	CauseProposerMissed,
-	CauseLateBlock,
-	CauseInclusionFailure,
-	CauseP2PDegraded,
-	CauseCLSlow,
-	CauseELSlow,
-	CauseELSlowSyncing,
-	CauseELSlowSnapshot,
-	CauseELSlowPruning,
-	CauseELSlowDiskSaturation,
-	CauseVCDisconnected,
-	CauseVCSlow,
-	CauseHostDiskIO,
-	CauseHostCPUSteal,
-	CauseHostMemoryPressure,
-	CauseHostClockDrift,
-	CauseInsufficientData,
-	CauseNoRuleMatched,
-}
-
 // CauseIDs returns every cause in the taxonomy, in documentation order. The returned
-// slice is a copy.
+// slice is newly allocated; no mutable package-level registry exists.
 func CauseIDs() []CauseID {
-	out := make([]CauseID, len(causeIDs))
-	copy(out, causeIDs)
-	return out
+	return []CauseID{
+		CauseProposerMissed,
+		CauseLateBlock,
+		CauseInclusionFailure,
+		CauseP2PDegraded,
+		CauseCLSlow,
+		CauseELSlow,
+		CauseELSlowSyncing,
+		CauseELSlowSnapshot,
+		CauseELSlowPruning,
+		CauseELSlowDiskSaturation,
+		CauseVCDisconnected,
+		CauseVCSlow,
+		CauseHostDiskIO,
+		CauseHostCPUSteal,
+		CauseHostMemoryPressure,
+		CauseHostClockDrift,
+		CauseInsufficientData,
+		CauseNoRuleMatched,
+	}
 }
 
 // Valid reports whether the cause is in the taxonomy.
 func (c CauseID) Valid() bool {
-	return slices.Contains(causeIDs, c)
+	switch c {
+	case CauseProposerMissed, CauseLateBlock, CauseInclusionFailure,
+		CauseP2PDegraded, CauseCLSlow, CauseELSlow, CauseELSlowSyncing,
+		CauseELSlowSnapshot, CauseELSlowPruning, CauseELSlowDiskSaturation,
+		CauseVCDisconnected, CauseVCSlow, CauseHostDiskIO, CauseHostCPUSteal,
+		CauseHostMemoryPressure, CauseHostClockDrift, CauseInsufficientData,
+		CauseNoRuleMatched:
+		return true
+	default:
+		return false
+	}
 }
 
 // IsSubCauseOf reports whether c is a documented sub-cause of parent.
@@ -281,6 +286,9 @@ func (c Comparison) Validate() error {
 	}
 	if !c.Unit.Valid() {
 		return fmt.Errorf("comparison %q: unknown unit %q", c.Label, c.Unit)
+	}
+	if math.IsNaN(c.Observed) || math.IsInf(c.Observed, 0) || math.IsNaN(c.Expected) || math.IsInf(c.Expected, 0) {
+		return fmt.Errorf("comparison %q: observed and expected values must be finite", c.Label)
 	}
 	return nil
 }

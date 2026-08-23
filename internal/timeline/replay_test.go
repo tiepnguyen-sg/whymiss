@@ -142,6 +142,19 @@ func TestReplay_MixedSlotsRejected(t *testing.T) {
 	}
 }
 
+func TestReplay_AllowsFutureReorgInInclusionWindow(t *testing.T) {
+	start := timeMustParse(t, "2026-01-01T00:00:00Z")
+	primary := mustObs(t, 100, domain.ObsSlotStart, start, nil)
+	reorg := mustObs(t, 101, domain.ObsReorg, start.Add(12*time.Second), nil)
+	timeline, err := Replay([]domain.Observation{primary, reorg}, domain.MainnetPreEPBS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(timeline.Reorgs) != 1 || timeline.Reorgs[0].Slot != 101 {
+		t.Fatalf("Reorgs = %+v, want slot 101", timeline.Reorgs)
+	}
+}
+
 func TestReplay_NoSlotStartRejected(t *testing.T) {
 	a := mustObs(t, 100, domain.ObsDutyAssigned, timeMustParse(t, "2026-01-01T00:00:00Z"), map[domain.AttrKey]string{domain.AttrValidatorIndex: "1"})
 	if _, err := Replay([]domain.Observation{a}, domain.MainnetPreEPBS()); err == nil {

@@ -44,13 +44,18 @@ func TestRecord_ReportedCausePrefersSubCause(t *testing.T) {
 	}
 }
 
-func TestRecord_NoDutyUsesCauseNone(t *testing.T) {
-	e := exporter.New()
-	e.Record(domain.Verdict{Outcome: domain.OutcomeNoDuty})
+func TestRecord_CauselessVerdictsUseCauseNone(t *testing.T) {
+	for _, outcome := range []domain.Outcome{domain.OutcomeNoDuty, domain.OutcomeOK} {
+		t.Run(string(outcome), func(t *testing.T) {
+			e := exporter.New()
+			e.Record(domain.Verdict{Outcome: outcome})
 
-	body := scrape(t, e)
-	if !strings.Contains(body, `whymiss_duty_verdicts_total{cause="none",outcome="no_duty"} 1`) {
-		t.Errorf("expected cause=\"none\" for a no-duty verdict, got:\n%s", body)
+			body := scrape(t, e)
+			want := `whymiss_duty_verdicts_total{cause="none",outcome="` + string(outcome) + `"} 1`
+			if !strings.Contains(body, want) {
+				t.Errorf("expected cause=\"none\" for a causeless %s verdict, got:\n%s", outcome, body)
+			}
+		})
 	}
 }
 

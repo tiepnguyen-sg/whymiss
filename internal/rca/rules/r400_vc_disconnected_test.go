@@ -8,8 +8,18 @@ import (
 )
 
 func TestVCDisconnected(t *testing.T) {
-	t.Run("matches when neither published nor included exist and there is no block_seen either", func(t *testing.T) {
+	t.Run("does not match without evidence that the beacon node had a timely head", func(t *testing.T) {
 		tl := timelineWith(t)
+		if _, ok := (VCDisconnected{}).Evaluate(tl, defaultCfg); ok {
+			t.Fatal("want no match, got a match")
+		}
+	})
+
+	t.Run("matches when block and head arrived before the deadline but no attestation exists", func(t *testing.T) {
+		tl := timelineWith(t,
+			mustObs(t, domain.ObsBlockSeen, offset(1*time.Second), nil),
+			mustObs(t, domain.ObsHeadUpdated, offset(2*time.Second), nil),
+		)
 		v, ok := VCDisconnected{}.Evaluate(tl, defaultCfg)
 		if !ok {
 			t.Fatal("want match, got no match")
@@ -17,21 +27,32 @@ func TestVCDisconnected(t *testing.T) {
 		if v.Cause != domain.CauseVCDisconnected {
 			t.Errorf("Cause = %q, want %q", v.Cause, domain.CauseVCDisconnected)
 		}
-		if v.Confidence != domain.ConfidenceHigh {
-			t.Errorf("Confidence = %q, want high", v.Confidence)
+		if v.Confidence != domain.ConfidenceMedium {
+			t.Errorf("Confidence = %q, want medium", v.Confidence)
+		}
+		completed, ok := tl.First(domain.ObsCollectionCompleted)
+		if !ok {
+			t.Fatal("test timeline has no collection_completed observation")
+		}
+		if got := v.Evidence[0].At; !got.Equal(completed.At) {
+			t.Errorf("Evidence[0].At = %s, want collection_completed timestamp %s", got, completed.At)
 		}
 	})
 
-	t.Run("matches when block_seen arrived before the deadline but nothing else exists", func(t *testing.T) {
-		// A head was ready in time and the validator client still never
-		// attested — genuine, direct evidence of disconnection.
-		tl := timelineWith(t, mustObs(t, domain.ObsBlockSeen, offset(1*time.Second), nil))
-		v, ok := VCDisconnected{}.Evaluate(tl, defaultCfg)
-		if !ok {
-			t.Fatal("want match, got no match")
+	t.Run("does not blame the validator client when head was never updated", func(t *testing.T) {
+		tl := timelineWith(t, mustObs(t, domain.ObsBlockSeen, offset(time.Second), nil))
+		if _, ok := (VCDisconnected{}).Evaluate(tl, defaultCfg); ok {
+			t.Fatal("want no match without a validated head")
 		}
-		if v.Confidence != domain.ConfidenceHigh {
-			t.Errorf("Confidence = %q, want high", v.Confidence)
+	})
+
+	t.Run("does not blame the validator client when head updated after the deadline", func(t *testing.T) {
+		tl := timelineWith(t,
+			mustObs(t, domain.ObsBlockSeen, offset(time.Second), nil),
+			mustObs(t, domain.ObsHeadUpdated, offset(5*time.Second), nil),
+		)
+		if _, ok := (VCDisconnected{}).Evaluate(tl, defaultCfg); ok {
+			t.Fatal("want no match for a late beacon-node head")
 		}
 	})
 
@@ -48,7 +69,11 @@ func TestVCDisconnected(t *testing.T) {
 	})
 
 	t.Run("does not match when attestation_published exists", func(t *testing.T) {
-		tl := timelineWith(t, mustObs(t, domain.ObsAttestationPublished, offset(2*time.Second), nil))
+		tl := timelineWith(t,
+			mustObs(t, domain.ObsBlockSeen, offset(time.Second), nil),
+			mustObs(t, domain.ObsHeadUpdated, offset(1500*time.Millisecond), nil),
+			mustObs(t, domain.ObsAttestationPublished, offset(2*time.Second), nil),
+		)
 		if _, ok := (VCDisconnected{}).Evaluate(tl, defaultCfg); ok {
 			t.Fatal("want no match, got a match")
 		}

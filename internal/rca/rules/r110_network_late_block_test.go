@@ -32,10 +32,19 @@ func propagationDominantTL(t *testing.T, blockSeenAt time.Duration, network *dom
 }
 
 func TestNetworkLateBlock(t *testing.T) {
-	t.Run("does not match when no baseline exists", func(t *testing.T) {
+	t.Run("returns insufficient data when no baseline exists", func(t *testing.T) {
 		tl := propagationDominantTL(t, 5*time.Second, nil)
-		if _, ok := (NetworkLateBlock{}).Evaluate(tl, defaultCfg); ok {
-			t.Fatal("want no match (falls through to R-200), got a match")
+		v, ok := (NetworkLateBlock{}).Evaluate(tl, defaultCfg)
+		if !ok || v.Cause != domain.CauseInsufficientData {
+			t.Fatalf("verdict=%+v matched=%t, want insufficient_data", v, ok)
+		}
+	})
+
+	t.Run("returns insufficient data for a lone late propagation stage", func(t *testing.T) {
+		tl := timelineWith(t, mustObs(t, domain.ObsBlockSeen, offset(18*time.Second), nil))
+		v, ok := (NetworkLateBlock{}).Evaluate(tl, defaultCfg)
+		if !ok || v.Cause != domain.CauseInsufficientData {
+			t.Fatalf("verdict=%+v matched=%t, want insufficient_data", v, ok)
 		}
 	})
 
@@ -74,6 +83,24 @@ func TestNetworkLateBlock(t *testing.T) {
 		})
 		if _, ok := (NetworkLateBlock{}).Evaluate(tl, defaultCfg); ok {
 			t.Fatal("want no match (deviation too large), got a match")
+		}
+	})
+
+	t.Run("does not match when the local block was timely", func(t *testing.T) {
+		tl := propagationDominantTL(t, 3800*time.Millisecond, &domain.NetworkBaseline{
+			Slot: 100, BlockArrivalP50: 4200 * time.Millisecond, BlockArrivalP90: 5 * time.Second, SampleCount: 50, Source: domain.SourceXatu,
+		})
+		if _, ok := (NetworkLateBlock{}).Evaluate(tl, defaultCfg); ok {
+			t.Fatal("want no match (local block was timely), got a match")
+		}
+	})
+
+	t.Run("does not match when the network baseline was timely", func(t *testing.T) {
+		tl := propagationDominantTL(t, 4200*time.Millisecond, &domain.NetworkBaseline{
+			Slot: 100, BlockArrivalP50: 3800 * time.Millisecond, BlockArrivalP90: 5 * time.Second, SampleCount: 50, Source: domain.SourceXatu,
+		})
+		if _, ok := (NetworkLateBlock{}).Evaluate(tl, defaultCfg); ok {
+			t.Fatal("want no match (network baseline was timely), got a match")
 		}
 	})
 

@@ -6,17 +6,15 @@ import (
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
+// The consensus-spec timely-source bound is integer_squareroot(SLOTS_PER_EPOCH).
+const timelySourceMaxInclusionDelay = 5
+
 // deriveOutcome computes what actually happened to the duty from tl's
 // observations, before any cause rule runs.
 //
-// This is a documented simplification, not a hidden one: the domain model
-// has no observation kind independently confirming a published
-// attestation's source/target checkpoint was correct (docs/causes.md §8's
-// closed vocabulary has no such kind), so TimelySource and TimelyTarget are
-// treated as earned whenever the attestation was included at all — this
-// build does not independently verify checkpoint correctness. TimelyHead is
-// the one flag this data actually distinguishes: earned only when
-// inclusion_delay == 1, per its own definition in docs/causes.md §8.1.
+// Inclusion in a valid block proves the source checkpoint was correct. The
+// adapter separately persists whether the voted target and head match the
+// canonical roots; inclusion delay alone is never treated as that proof.
 func deriveOutcome(tl domain.Timeline) (domain.Outcome, *domain.RewardFlags) {
 	if tl.Duty == nil {
 		return domain.OutcomeNoDuty, nil
@@ -34,19 +32,25 @@ func deriveOutcome(tl domain.Timeline) (domain.Outcome, *domain.RewardFlags) {
 		return domain.OutcomeMissed, nil
 	}
 
-	timelyHead := false
+	var delay uint64
+	haveDelay := false
 	if delayStr, ok := included.Attr(domain.AttrInclusionDelay); ok {
-		if delay, err := strconv.ParseUint(delayStr, 10, 64); err == nil {
-			timelyHead = delay == 1
+		if parsed, err := strconv.ParseUint(delayStr, 10, 64); err == nil {
+			delay, haveDelay = parsed, true
 		}
-		// An unparseable inclusion_delay defensively falls to timelyHead =
-		// false: the attestation is confirmed included either way, and
-		// "not confirmed timely" is the safe direction to be wrong in
-		// (I-8) — it never produces a false OutcomeOK.
+	}
+	headCorrect, haveHead := included.Attr(domain.AttrHeadCorrect)
+	targetCorrect, haveTarget := included.Attr(domain.AttrTargetCorrect)
+	matchingTarget := haveTarget && targetCorrect == "true"
+
+	flags := &domain.RewardFlags{
+		TimelySource: haveDelay && delay <= timelySourceMaxInclusionDelay,
+		TimelyTarget: haveDelay && matchingTarget,
+		TimelyHead:   haveDelay && delay == 1 && matchingTarget && haveHead && headCorrect == "true",
 	}
 
-	if timelyHead {
-		return domain.OutcomeOK, &domain.RewardFlags{TimelySource: true, TimelyTarget: true, TimelyHead: true}
+	if flags.AllEarned() {
+		return domain.OutcomeOK, flags
 	}
-	return domain.OutcomeDegraded, &domain.RewardFlags{TimelySource: true, TimelyTarget: true, TimelyHead: false}
+	return domain.OutcomeDegraded, flags
 }

@@ -77,7 +77,9 @@ func TestDeriveOutcome_Attester(t *testing.T) {
 		{
 			name: "included with delay 1 (timely head)",
 			obs: []domain.Observation{
-				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), map[domain.AttrKey]string{domain.AttrInclusionDelay: "1"}),
+				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), map[domain.AttrKey]string{
+					domain.AttrInclusionDelay: "1", domain.AttrHeadCorrect: "true", domain.AttrTargetCorrect: "true",
+				}),
 			},
 			wantOutcome: domain.OutcomeOK,
 			wantFlags:   &domain.RewardFlags{TimelySource: true, TimelyTarget: true, TimelyHead: true},
@@ -85,18 +87,50 @@ func TestDeriveOutcome_Attester(t *testing.T) {
 		{
 			name: "included with delay 2 (degraded)",
 			obs: []domain.Observation{
-				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), map[domain.AttrKey]string{domain.AttrInclusionDelay: "2"}),
+				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), map[domain.AttrKey]string{
+					domain.AttrInclusionDelay: "2", domain.AttrHeadCorrect: "true", domain.AttrTargetCorrect: "true",
+				}),
 			},
 			wantOutcome: domain.OutcomeDegraded,
 			wantFlags:   &domain.RewardFlags{TimelySource: true, TimelyTarget: true, TimelyHead: false},
 		},
 		{
-			name: "included with unparseable delay defensively treated as not timely",
+			name: "included without reward evidence defensively treated as degraded",
 			obs: []domain.Observation{
 				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), nil),
 			},
 			wantOutcome: domain.OutcomeDegraded,
+			wantFlags:   &domain.RewardFlags{},
+		},
+		{
+			name: "included with wrong head",
+			obs: []domain.Observation{
+				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), map[domain.AttrKey]string{
+					domain.AttrInclusionDelay: "1", domain.AttrHeadCorrect: "false", domain.AttrTargetCorrect: "true",
+				}),
+			},
+			wantOutcome: domain.OutcomeDegraded,
 			wantFlags:   &domain.RewardFlags{TimelySource: true, TimelyTarget: true, TimelyHead: false},
+		},
+		{
+			name: "head cannot be timely when target is incorrect",
+			obs: []domain.Observation{
+				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(5*time.Second), map[domain.AttrKey]string{
+					domain.AttrInclusionDelay: "1", domain.AttrHeadCorrect: "true", domain.AttrTargetCorrect: "false",
+				}),
+			},
+			wantOutcome: domain.OutcomeDegraded,
+			wantFlags:   &domain.RewardFlags{TimelySource: true, TimelyTarget: false, TimelyHead: false},
+		},
+		{
+			name: "Deneb target remains timely beyond one epoch",
+			obs: []domain.Observation{
+				mustOutcomeObs(t, domain.ObsAttestationIncluded, outcomeSlotStart.Add(7*time.Minute), map[domain.AttrKey]string{
+					domain.AttrInclusionDelay: "33", domain.AttrHeadCorrect: "false", domain.AttrTargetCorrect: "true",
+				}),
+			},
+			wantOutcome: domain.OutcomeDegraded,
+			wantFlags:   &domain.RewardFlags{TimelyTarget: true},
 		},
 	}
 	for _, tc := range tests {

@@ -2,49 +2,21 @@ package rca
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca/rules"
 )
 
 // EngineVersion is stamped into every Verdict this build produces (I-10) —
 // bump it whenever a rule's logic changes in a way that could change a
 // past slot's verdict if re-analyzed.
-const EngineVersion = "0.1.0"
+const EngineVersion = "0.13.0"
 
-// Rule is one cause-attribution rule, evaluated in the order rules.Order
-// declares (ADR-0003).
-type Rule interface {
-	// ID names the rule for diagnostics and golden-test output, e.g.
-	// "R-300" — matching docs/causes.md §6's numbering.
-	ID() string
-
-	// Evaluate reports whether the rule applies to tl under cfg. A rule
-	// that does not apply returns (nil, false) and has no other effect.
-	//
-	// The returned Verdict is a draft: Slot, Outcome, Flags, EngineVersion,
-	// and TaxonomyVersion are left zero. Analyze fills those in and is the
-	// only place domain.NewVerdict is called, so a rule only ever has to
-	// get Cause/SubCause/Confidence/Evidence/Remediation right.
-	Evaluate(tl domain.Timeline, cfg Config) (*domain.Verdict, bool)
-}
-
-// order is set by rules.go's init-time wiring via SetOrder, avoiding an
-// import cycle between rca (which rules depend on for the Rule interface)
-// and rules (which rca would otherwise need to import to get Order).
-var order []Rule
-
-// SetOrder registers the ordered rule sequence. Called exactly once, from
-// the rules package's init(), per doc comment there — this indirection
-// exists only to break the import cycle Rule's definition would otherwise
-// create (internal/rca/rules needs rca.Rule; internal/rca needs the
-// ordered list to run).
-func SetOrder(rs []Rule) {
-	order = rs
-}
+// Rule is one cause-attribution rule.
+type Rule = rules.Rule
 
 // Analyze turns tl into a Verdict: pure, deterministic, no I/O (I-6,
-// ADR-0003). Rules run in the order rules.init registered via SetOrder,
+// ADR-0003). Rules run in the fixed order returned by rules.Order,
 // first match wins. R-999 (rules.CatchAll) is unconditional, so the loop
 // below always terminates with a match in correctly wired code — the
 // fallback after the loop exists only to satisfy I-15 (no panics outside
@@ -56,6 +28,10 @@ func SetOrder(rs []Rule) {
 // branches below for why the second is decided after the rule loop, not
 // before it.
 func Analyze(tl domain.Timeline, cfg Config) domain.Verdict {
+	return analyze(tl, cfg, rules.Order())
+}
+
+func analyze(tl domain.Timeline, cfg Config, ordered []Rule) domain.Verdict {
 	outcome, flags := deriveOutcome(tl)
 
 	if outcome == domain.OutcomeNoDuty {
@@ -69,7 +45,7 @@ func Analyze(tl domain.Timeline, cfg Config) domain.Verdict {
 		}, outcome, nil)
 	}
 
-	for _, r := range order {
+	for _, r := range ordered {
 		draft, ok := r.Evaluate(tl, cfg)
 		if !ok {
 			continue
@@ -87,10 +63,14 @@ func Analyze(tl domain.Timeline, cfg Config) domain.Verdict {
 		// deadline — test/corpus/vc-slow-cpu is exactly that). Skipping the
 		// loop would silently discard those.
 		if outcome == domain.OutcomeOK && draft.Cause == domain.CauseNoRuleMatched {
+			verdictAt := tl.SlotStart
+			if completed, ok := tl.First(domain.ObsCollectionCompleted); ok {
+				verdictAt = completed.At
+			}
 			return finish(tl, domain.Verdict{
 				Confidence: domain.ConfidenceHigh,
 				Evidence: []domain.Evidence{{
-					At:        tl.SlotStart,
+					At:        verdictAt,
 					Statement: "duty fulfilled with every reward flag earned, and no rule found a problem",
 					Source:    domain.SourceDerived,
 				}},
@@ -123,6 +103,9 @@ func finish(tl domain.Timeline, draft domain.Verdict, outcome domain.Outcome, fl
 	draft.Outcome = outcome
 	draft.Flags = flags
 	draft.EngineVersion = EngineVersion
+	for i := range draft.Evidence {
+		draft.Evidence[i].Offset = draft.Evidence[i].At.Sub(tl.SlotStart)
+	}
 
 	v, err := domain.NewVerdict(draft)
 	if err != nil {
@@ -142,7 +125,8 @@ func safeFallback(tl domain.Timeline, outcome domain.Outcome, flags *domain.Rewa
 		Cause:      domain.CauseNoRuleMatched,
 		Confidence: domain.ConfidenceLow,
 		Evidence: []domain.Evidence{{
-			At:        time.Now().UTC(),
+			// SlotStart, not time.Now: the engine reads no clock (I-6).
+			At:        tl.SlotStart,
 			Statement: fmt.Sprintf("a matching rule produced an invalid verdict (%v) — this is an engine bug, not an attribution", cause),
 			Source:    domain.SourceDerived,
 		}},

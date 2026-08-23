@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -419,6 +420,8 @@ func TestComparisonValidate(t *testing.T) {
 		{"valid", domain.Comparison{Label: "iowait", Observed: 23.4, Expected: 20, Unit: domain.UnitPercent}, false},
 		{"blank label", domain.Comparison{Label: "  ", Unit: domain.UnitPercent}, true},
 		{"unknown unit", domain.Comparison{Label: "iowait", Unit: "seconds"}, true},
+		{"nan observed", domain.Comparison{Label: "iowait", Observed: math.NaN(), Unit: domain.UnitPercent}, true},
+		{"infinite expected", domain.Comparison{Label: "iowait", Expected: math.Inf(1), Unit: domain.UnitPercent}, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

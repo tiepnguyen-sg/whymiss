@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"time"
 )
@@ -35,6 +36,11 @@ type Timeline struct {
 	// timeline of the duty slot N and records the distance in inclusion_delay.
 	Observations []Observation `json:"observations"`
 
+	// Reorgs are canonical-chain reorganisations observed after the duty slot
+	// but within its full attestation-inclusion window. Their own Slot remains
+	// the reorg event's slot; keeping them separate preserves that provenance.
+	Reorgs []Observation `json:"reorgs,omitempty"`
+
 	// Samples are the EL, CL, VC, and host measurements a rule may compare against,
 	// including derived baselines.
 	Samples []MetricSample `json:"samples,omitempty"`
@@ -42,6 +48,10 @@ type Timeline struct {
 	// Network is the network-wide baseline for this slot, or nil when the baseline
 	// is disabled or unavailable (I-4).
 	Network *NetworkBaseline `json:"network,omitempty"`
+
+	// CollectionComplete proves the configured observation and inclusion window
+	// closed before absence-based rules were evaluated.
+	CollectionComplete bool `json:"collection_complete"`
 }
 
 // NewTimeline validates a draft timeline and returns a canonical copy.
@@ -56,6 +66,7 @@ func NewTimeline(draft Timeline) (Timeline, error) {
 	}
 	out := draft
 	out.Observations = slices.Clone(draft.Observations)
+	out.Reorgs = slices.Clone(draft.Reorgs)
 	out.Samples = slices.Clone(draft.Samples)
 	if draft.Duty != nil {
 		duty := *draft.Duty
@@ -88,6 +99,8 @@ func (t Timeline) Validate() error {
 				ErrSlotMismatch, t.Duty.Slot, t.Slot)
 		}
 	}
+	completionCount := 0
+	var completionAt time.Time
 	for i, obs := range t.Observations {
 		if err := obs.Validate(); err != nil {
 			return fmt.Errorf("observation %d: %w", i, err)
@@ -101,10 +114,48 @@ func (t Timeline) Validate() error {
 				ErrUnsorted, i, obs.At.Format(time.RFC3339Nano),
 				i-1, t.Observations[i-1].At.Format(time.RFC3339Nano))
 		}
+		if obs.Kind == ObsCollectionCompleted {
+			completionCount++
+			completionAt = obs.At
+		}
+	}
+	if completionCount > 1 {
+		return fmt.Errorf("timeline for slot %d has %d collection_completed observations, want exactly one", t.Slot, completionCount)
+	}
+	if t.CollectionComplete != (completionCount == 1) {
+		return fmt.Errorf("timeline for slot %d has collection_complete=%t but %d collection_completed observations", t.Slot, t.CollectionComplete, completionCount)
+	}
+	if completionCount == 1 && t.Duty != nil && t.Duty.Kind == DutyAttester {
+		lastInclusionSlot := t.Slot.LastAttestationInclusionSlot()
+		windowSlots := uint64(lastInclusionSlot - t.Slot)
+		if windowSlots > SlotsPerEpoch*2-1 {
+			return fmt.Errorf("timeline for slot %d has an invalid inclusion window of %d slots", t.Slot, windowSlots)
+		}
+		// Completion proves all queries ran through the final valid inclusion
+		// slot, so its timestamp must be at or after that slot ended.
+		windowEnd := t.Slot.CollectionWindowEnd(t.SlotStart, t.Schedule.SecondsPerSlot)
+		if completionAt.Before(windowEnd) {
+			return fmt.Errorf("timeline for slot %d has collection_completed at %s before inclusion window ended at %s",
+				t.Slot, completionAt.Format(time.RFC3339Nano), windowEnd.Format(time.RFC3339Nano))
+		}
 	}
 	for i, sample := range t.Samples {
 		if err := sample.Validate(); err != nil {
 			return fmt.Errorf("sample %d: %w", i, err)
+		}
+	}
+	for i, reorg := range t.Reorgs {
+		if err := reorg.Validate(); err != nil {
+			return fmt.Errorf("reorg %d: %w", i, err)
+		}
+		if reorg.Kind != ObsReorg {
+			return fmt.Errorf("timeline for slot %d reorg %d has kind %q", t.Slot, i, reorg.Kind)
+		}
+		if reorg.Slot <= t.Slot || reorg.Slot > t.Slot.LastAttestationInclusionSlot() {
+			return fmt.Errorf("timeline for slot %d reorg %d is outside its inclusion window at slot %d", t.Slot, i, reorg.Slot)
+		}
+		if i > 0 && reorg.At.Before(t.Reorgs[i-1].At) {
+			return fmt.Errorf("%w: reorg %d (%s) precedes reorg %d (%s)", ErrUnsorted, i, reorg.At.Format(time.RFC3339Nano), i-1, t.Reorgs[i-1].At.Format(time.RFC3339Nano))
 		}
 	}
 	if t.Network != nil {
@@ -169,8 +220,15 @@ func (t Timeline) MaxAbsClockOffset() (time.Duration, bool) {
 	var worst time.Duration
 	found := false
 	for _, obs := range t.Observations {
+		// Only real readings count. An unsampled observation carries a zero
+		// offset that would otherwise read as a perfect clock (I-9).
+		if !obs.ClockMeasured {
+			continue
+		}
 		offset := obs.ClockOffset
-		if offset < 0 {
+		if offset == time.Duration(math.MinInt64) {
+			offset = time.Duration(math.MaxInt64)
+		} else if offset < 0 {
 			offset = -offset
 		}
 		if !found || offset > worst {

@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const maxSupportedSlotDuration = time.Minute
+
 // SlotSchedule is the timing model of a slot, expressed as data.
 //
 // Every deadline whymiss reasons about comes from here. Hard-coding a slot duration
@@ -51,6 +53,8 @@ func (s SlotSchedule) Validate() error {
 	switch {
 	case s.SecondsPerSlot <= 0:
 		return fmt.Errorf("invalid schedule: seconds_per_slot is %s, must be positive", s.SecondsPerSlot)
+	case s.SecondsPerSlot > maxSupportedSlotDuration:
+		return fmt.Errorf("invalid schedule: seconds_per_slot is %s, maximum supported is %s", s.SecondsPerSlot, maxSupportedSlotDuration)
 	case s.AttestationDeadline <= 0:
 		return fmt.Errorf("invalid schedule: attestation_deadline is %s, must be positive", s.AttestationDeadline)
 	case s.AggregationDeadline <= 0:
