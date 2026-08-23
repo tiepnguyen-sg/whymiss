@@ -5,32 +5,41 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/tiepnguyen-sg/whymiss/internal/clock"
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/exporter"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
 	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
 
-// watchDeadlineSlots and inclusionWindowSlots mirror
-// tools/faultinjector/main.go's own margins (that tool's watchDeadline is
-// slotStart + 3*SecondsPerSlot, and it checks inclusion up to
-// dutySlot+2) — the same real-devnet-verified amount of slack between a
-// duty's slot and knowing its outcome.
+// watchDeadlineSlots leaves bounded slack for a skipped final inclusion slot to
+// become provable after the canonical head advances.
 const (
-	watchDeadlineSlots   = 3
-	inclusionWindowSlots = 2
+	watchDeadlineSlots = 3
+	dutyFetchRetry     = 5 * time.Second
+
+	// inclusionPollSlack is extra time beyond domain's own required minimum
+	// (Slot.CollectionWindowEnd) given to CheckInclusion's poll loop, so a
+	// slow-but-healthy poll isn't cut off right at the instant validation
+	// would first accept a completion marker.
+	inclusionPollSlack = 2
 )
 
-// runDutyTracking fetches validatorIndices' attester duties once per
-// epoch and spawns trackDuty for each one returned. Errors fetching
-// duties for one epoch are logged and skipped — the next epoch's fetch is
-// an independent attempt, not a retry of this one (matches
-// beaconapi.Client.FetchAttesterDuties's own doc comment: only the
-// current and next epoch are ever computable, so there is no "try this
-// epoch again later" that would help).
-func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Client, validatorIndices []domain.ValidatorIndex, dbPath string, schedule domain.SlotSchedule, exp *exporter.Exporter, genesis beaconapi.GenesisInfo, logger *slog.Logger) {
+func collectionWindowEnd(slot domain.Slot, slotStart time.Time, slotDuration time.Duration) time.Time {
+	return slot.CollectionWindowEnd(slotStart, slotDuration).Add(inclusionPollSlack * slotDuration)
+}
+
+// runDutyTracking fetches validatorIndices' attester duties once per epoch and
+// spawns trackDuty for each one returned. A failed fetch is retried until the next
+// epoch starts so a transient Beacon API failure does not silently lose every duty
+// in the epoch.
+func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Client, validatorIndices []domain.ValidatorIndex, dbPath string, schedule domain.SlotSchedule, rcaConfig rca.Config, exp *exporter.Exporter, genesis beaconapi.GenesisInfo, timingJobs chan<- domain.Observation, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
+	var active sync.WaitGroup
+	defer active.Wait()
 	for {
 		now := time.Now().UTC()
 		untilGenesis := genesis.GenesisTime.Sub(now)
@@ -49,8 +58,24 @@ func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Cli
 		duties, err := client.FetchAttesterDuties(ctx, epoch, validatorIndices)
 		if err != nil {
 			logger.Error("fetch attester duties", "error", err, "epoch", epoch)
+			nextEpochStart := genesis.SlotStart(uint64((epoch + 1).FirstSlot()))
+			retry := min(dutyFetchRetry, time.Until(nextEpochStart))
+			if retry <= 0 {
+				continue
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(retry):
+			}
+			continue
 		}
 		for _, d := range duties {
+			slotStart := genesis.SlotStart(uint64(d.Slot))
+			if !dutyWindowOpen(time.Now().UTC(), slotStart, genesis.SecondsPerSlot) {
+				logger.Debug("skip duty whose observation window already closed", "slot", d.Slot, "validator_index", d.ValidatorIndex)
+				continue
+			}
 			obs, err := domain.NewObservation(domain.Observation{
 				Slot: d.Slot, Kind: domain.ObsDutyAssigned, At: time.Now().UTC(), Source: domain.SourceBeaconAPI,
 				Attrs: map[domain.AttrKey]string{domain.AttrValidatorIndex: strconv.FormatUint(uint64(d.ValidatorIndex), 10)},
@@ -59,10 +84,15 @@ func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Cli
 				logger.Error("build duty_assigned observation", "error", err, "slot", d.Slot, "validator_index", d.ValidatorIndex)
 				continue
 			}
-			if err := st.WriteObservation(ctx, obs); err != nil {
+			if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
 				logger.Error("write duty_assigned", "error", err, "slot", d.Slot)
+				continue
 			}
-			go trackDuty(ctx, st, client, d, genesis, dbPath, schedule, exp, logger)
+			active.Add(1)
+			go func(d beaconapi.AttesterDuty) {
+				defer active.Done()
+				trackDuty(ctx, st, client, d, genesis, dbPath, schedule, rcaConfig, exp, timingJobs, clk, clockMaxAge, logger)
+			}(d)
 		}
 
 		nextEpochStart := genesis.SlotStart(uint64((epoch + 1).FirstSlot()))
@@ -74,8 +104,12 @@ func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Cli
 	}
 }
 
+func dutyWindowOpen(now, slotStart time.Time, slotDuration time.Duration) bool {
+	return now.Before(slotStart.Add(watchDeadlineSlots * slotDuration))
+}
+
 // trackDuty waits for d's slot to start, polls for its block_seen,
-// attestation_published, and (if a block was seen) attestation_included
+// attestation_published, and attestation_included
 // observations, writes whichever are found to st, then runs the completed
 // slot through Explain and records the result into exp.
 //
@@ -84,7 +118,7 @@ func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Cli
 // (runHostSampling, runPeerSampling, runRetention): one duty's polling
 // failure must never take down the collector daemon, and never blocks
 // another duty's tracking (each runs in its own goroutine).
-func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d beaconapi.AttesterDuty, genesis beaconapi.GenesisInfo, dbPath string, schedule domain.SlotSchedule, exp *exporter.Exporter, logger *slog.Logger) {
+func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d beaconapi.AttesterDuty, genesis beaconapi.GenesisInfo, dbPath string, schedule domain.SlotSchedule, rcaConfig rca.Config, exp *exporter.Exporter, timingJobs chan<- domain.Observation, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	slotStart := genesis.SlotStart(uint64(d.Slot))
 	waitUntil(ctx, slotStart)
 	if ctx.Err() != nil {
@@ -92,53 +126,99 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 	}
 
 	watchDeadline := slotStart.Add(watchDeadlineSlots * genesis.SecondsPerSlot)
+	var collectionFailed atomic.Bool
 
 	var wg sync.WaitGroup
-	var blockFound bool
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		obs, found, err := client.BlockSeen(ctx, d.Slot, watchDeadline)
 		if err != nil {
+			collectionFailed.Store(true)
 			logger.Error("poll block_seen", "error", err, "slot", d.Slot)
 			return
 		}
 		if !found {
 			return
 		}
-		blockFound = true
-		if err := st.WriteObservation(ctx, obs); err != nil {
+		if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
+			collectionFailed.Store(true)
 			logger.Error("write block_seen", "error", err, "slot", d.Slot)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		obs, found, err := client.HeadUpdated(ctx, d.Slot, watchDeadline)
+		if err != nil {
+			collectionFailed.Store(true)
+			logger.Error("poll head_updated", "error", err, "slot", d.Slot)
+			return
+		}
+		if !found {
+			return
+		}
+		trusted := stampClock(clk, clockMaxAge, obs)
+		if err := st.WriteObservation(ctx, trusted); err != nil {
+			collectionFailed.Store(true)
+			logger.Error("write head_updated", "error", err, "slot", d.Slot)
+			return
+		}
+		if timingJobs != nil {
+			select {
+			case timingJobs <- trusted:
+			default:
+				logger.Warn("drop REST-fallback block timing sample; previous scrape still pending", "slot", d.Slot)
+			}
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		obs, found, err := client.AttestationPublished(ctx, d, watchDeadline)
 		if err != nil {
+			collectionFailed.Store(true)
 			logger.Error("poll attestation_published", "error", err, "slot", d.Slot)
 			return
 		}
 		if !found {
 			return
 		}
-		if err := st.WriteObservation(ctx, obs); err != nil {
+		if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
+			collectionFailed.Store(true)
 			logger.Error("write attestation_published", "error", err, "slot", d.Slot)
 		}
 	}()
 	wg.Wait()
 
-	if blockFound {
-		obs, found, err := client.CheckInclusion(ctx, d.Slot, d, d.Slot+inclusionWindowSlots, watchDeadline.Add(inclusionWindowSlots*genesis.SecondsPerSlot))
-		if err != nil {
-			logger.Error("check inclusion", "error", err, "slot", d.Slot)
-		} else if found {
-			if err := st.WriteObservation(ctx, obs); err != nil {
-				logger.Error("write attestation_included", "error", err, "slot", d.Slot)
-			}
+	inclusionEndSlot := d.Slot.LastAttestationInclusionSlot()
+	collectionDeadline := collectionWindowEnd(d.Slot, slotStart, genesis.SecondsPerSlot)
+	obs, found, err := client.CheckInclusion(ctx, d.Slot, d, inclusionEndSlot, collectionDeadline)
+	if err != nil {
+		collectionFailed.Store(true)
+		logger.Error("check inclusion", "error", err, "slot", d.Slot)
+	} else if found {
+		if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
+			collectionFailed.Store(true)
+			logger.Error("write attestation_included", "error", err, "slot", d.Slot)
 		}
 	}
 
-	v, err := Explain(ctx, dbPath, d.Slot, schedule)
+	waitUntil(ctx, collectionDeadline)
+	if ctx.Err() != nil {
+		return
+	}
+	if !collectionFailed.Load() {
+		completed, err := domain.NewObservation(domain.Observation{
+			Slot: d.Slot, Kind: domain.ObsCollectionCompleted, At: time.Now().UTC(), Source: domain.SourceDerived,
+			Attrs: map[domain.AttrKey]string{domain.AttrValidatorIndex: strconv.FormatUint(uint64(d.ValidatorIndex), 10)},
+		})
+		if err != nil {
+			logger.Error("build collection_completed", "error", err, "slot", d.Slot)
+		} else if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, completed)); err != nil {
+			logger.Error("write collection_completed", "error", err, "slot", d.Slot)
+		}
+	}
+
+	v, err := ExplainForValidator(ctx, dbPath, d.Slot, d.ValidatorIndex, schedule, rcaConfig)
 	if err != nil {
 		logger.Error("explain slot", "error", err, "slot", d.Slot)
 		return

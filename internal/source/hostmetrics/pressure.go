@@ -2,6 +2,7 @@ package hostmetrics
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -15,7 +16,8 @@ import (
 // (R-600) read these via their thresholds.iowait_pct and
 // thresholds.psi_mem_avg10 configuration.
 const (
-	// MetricIOWaitPct is the host-wide io.pressure "some avg10" figure.
+	// MetricIOWaitPct is the legacy wire name for the host-wide io.pressure
+	// "some avg10" figure. It is PSI I/O stall pressure, not /proc/stat iowait.
 	MetricIOWaitPct domain.MetricName = "host_iowait_pct"
 
 	// MetricMemPressurePct is the host-wide memory.pressure "some avg10"
@@ -24,13 +26,10 @@ const (
 )
 
 // ioPressurePath and memPressurePath are Linux's host-wide PSI files
-// (kernel >= 4.20, CONFIG_PSI). Package variables rather than constants so
-// tests can point at a fixture file instead of the real /proc — the PSI
-// format itself is a stable kernel ABI (documented in man 5 proc, and
-// already verified identical at the cgroup-scoped level against a live
-// devnet — see tools/faultinjector/observe_host.go), so a fixture carrying
-// that same format is a faithful stand-in, not a guess.
-var (
+// (kernel >= 4.20, CONFIG_PSI). The PSI format is a stable kernel ABI;
+// tests pass fixture paths directly to samplePressure without mutating these
+// production paths.
+const (
 	ioPressurePath  = "/proc/pressure/io"
 	memPressurePath = "/proc/pressure/memory"
 )
@@ -88,6 +87,9 @@ func parsePSISomeAvg10(psiOutput string) (float64, error) {
 			avg10, err := strconv.ParseFloat(value, 64)
 			if err != nil {
 				return 0, fmt.Errorf("parse avg10 value %q: %w", value, err)
+			}
+			if math.IsNaN(avg10) || math.IsInf(avg10, 0) || avg10 < 0 || avg10 > 100 {
+				return 0, fmt.Errorf("avg10 value %q must be finite and between 0 and 100", value)
 			}
 			return avg10, nil
 		}

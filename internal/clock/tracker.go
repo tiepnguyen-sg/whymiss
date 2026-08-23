@@ -2,6 +2,7 @@ package clock
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -19,7 +20,7 @@ import (
 // goroutine while LastKnownGood is read from others (a report renderer, a
 // Prometheus collector).
 type Tracker struct {
-	sampler *Sampler
+	sampler offsetSampler
 
 	mu     sync.Mutex
 	last   Reading
@@ -27,9 +28,18 @@ type Tracker struct {
 	have   bool
 }
 
-// NewTracker wraps sampler. sampler must not be nil.
-func NewTracker(sampler *Sampler) *Tracker {
-	return &Tracker{sampler: sampler}
+// offsetSampler is the one method Tracker consumes. Keeping it small makes the
+// long-lived state machine testable without a network socket.
+type offsetSampler interface {
+	Sample(context.Context) (Reading, error)
+}
+
+// NewTracker validates and wraps sampler.
+func NewTracker(sampler offsetSampler) (*Tracker, error) {
+	if sampler == nil {
+		return nil, fmt.Errorf("%w: clock tracker sampler is nil", ErrInvalidConfig)
+	}
+	return &Tracker{sampler: sampler}, nil
 }
 
 // Sample measures once through the wrapped Sampler. On success it records the
@@ -43,7 +53,7 @@ func (t *Tracker) Sample(ctx context.Context) (Reading, error) {
 	}
 
 	t.mu.Lock()
-	t.last, t.syncAt, t.have = reading, time.Now().UTC(), true
+	t.last, t.syncAt, t.have = reading, reading.At, true
 	t.mu.Unlock()
 
 	return reading, nil

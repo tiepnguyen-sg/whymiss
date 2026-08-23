@@ -41,6 +41,19 @@ func TestNTPTimeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestNTPTimeRoundTripAcrossEraRollover(t *testing.T) {
+	t.Parallel()
+	for _, at := range []time.Time{
+		time.Date(2036, 2, 7, 6, 28, 17, 123_456_000, time.UTC),
+		time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		got := fromNTPNear(toNTP(at), at)
+		if diff := got.Sub(at); diff < -time.Microsecond || diff > time.Microsecond {
+			t.Errorf("fromNTPNear(toNTP(%v)) = %v, diff %s", at, got, diff)
+		}
+	}
+}
+
 func TestPacketFields(t *testing.T) {
 	t.Parallel()
 

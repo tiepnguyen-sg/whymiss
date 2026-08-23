@@ -1,5 +1,5 @@
 // Package hostmetrics is the inbound adapter for the machine whymiss runs
-// on: disk I/O pressure, CPU steal, and memory pressure (BUILD_PROMPT.md §4,
+// on: Linux PSI I/O pressure, CPU steal, and memory pressure (BUILD_PROMPT.md §4,
 // task 2.3). Clock drift is internal/clock's job (task 1.4), not this
 // package's — a caller assembling a domain.Timeline combines both.
 //

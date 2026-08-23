@@ -2,6 +2,7 @@ package clock
 
 import (
 	"encoding/binary"
+	"math"
 	"time"
 )
 
@@ -38,6 +39,7 @@ func newRequest(t1 time.Time) packet {
 }
 
 func (p packet) leapIndicator() byte      { return p[0] >> 6 }
+func (p packet) version() byte            { return (p[0] >> 3) & 0x07 }
 func (p packet) mode() byte               { return p[0] & 0x07 }
 func (p packet) stratum() byte            { return p[1] }
 func (p packet) originTimestamp() uint64  { return binary.BigEndian.Uint64(p[24:32]) }
@@ -50,10 +52,8 @@ func (p packet) transmitTimestamp() uint64 {
 // upper 32 bits are seconds since the NTP epoch, the lower 32 bits are a binary
 // fraction of a second.
 //
-// The 32-bit seconds field wraps in 2036 (NTP "era" rollover, RFC 5905 §7.2). This
-// package does not disambiguate eras — every timestamp it handles is assumed to be
-// within the current one, which holds for whymiss's realistic operating window.
-// Revisit before 2036 if the project is still running.
+// The 32-bit seconds field wraps in 2036 (NTP "era" rollover, RFC 5905 §7.2).
+// Decoding uses fromNTPNear and the local exchange time to disambiguate the era.
 func toNTP(t time.Time) uint64 {
 	// t.Unix()+ntpEpochOffset is negative only for a time before 1900, which no
 	// caller in this package ever passes — every call site here uses time.Now().
@@ -64,9 +64,21 @@ func toNTP(t time.Time) uint64 {
 	return sec<<32 | frac
 }
 
-// fromNTP is the inverse of toNTP. The result is always UTC.
+// fromNTP decodes era zero and exists for packet-level tests. Network responses
+// use fromNTPNear so the 2036 seconds-field rollover is handled correctly.
 func fromNTP(v uint64) time.Time {
 	sec := int64(v>>32) - ntpEpochOffset
+	return ntpTime(sec, v)
+}
+
+func fromNTPNear(v uint64, pivot time.Time) time.Time {
+	const ntpEraSeconds = int64(1) << 32
+	base := int64(v>>32) - ntpEpochOffset
+	era := int64(math.Round(float64(pivot.Unix()-base) / float64(ntpEraSeconds)))
+	return ntpTime(base+era*ntpEraSeconds, v)
+}
+
+func ntpTime(sec int64, v uint64) time.Time {
 	frac := v & 0xffffffff
 	nsec := frac * 1e9 >> 32
 	return time.Unix(sec, int64(nsec)).UTC()

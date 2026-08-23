@@ -35,12 +35,10 @@ func itoa(v uint64) string {
 }
 
 func TestCPUSteal_FirstSampleNotOK(t *testing.T) {
-	restore := statPath
-	statPath = writeStatFixture(t, 100, 900)
-	defer func() { statPath = restore }()
+	t.Parallel()
 
 	var c CPUSteal
-	_, ok, err := c.Sample()
+	_, ok, err := c.sample(writeStatFixture(t, 100, 900))
 	if err != nil {
 		t.Fatalf("Sample: %v", err)
 	}
@@ -50,17 +48,14 @@ func TestCPUSteal_FirstSampleNotOK(t *testing.T) {
 }
 
 func TestCPUSteal_SecondSampleComputesDelta(t *testing.T) {
-	restore := statPath
-	defer func() { statPath = restore }()
+	t.Parallel()
 
 	var c CPUSteal
-	statPath = writeStatFixture(t, 100, 900) // total=1000, steal=100
-	if _, _, err := c.Sample(); err != nil {
+	if _, _, err := c.sample(writeStatFixture(t, 100, 900)); err != nil { // total=1000, steal=100
 		t.Fatalf("Sample (first): %v", err)
 	}
 
-	statPath = writeStatFixture(t, 150, 1850) // total=2000, steal=150: delta steal=50, delta total=1000 -> 5%
-	got, ok, err := c.Sample()
+	got, ok, err := c.sample(writeStatFixture(t, 150, 1850)) // total=2000, steal=150: delta steal=50, delta total=1000 -> 5%
 	if err != nil {
 		t.Fatalf("Sample (second): %v", err)
 	}
@@ -76,12 +71,38 @@ func TestCPUSteal_SecondSampleComputesDelta(t *testing.T) {
 }
 
 func TestCPUSteal_Unavailable(t *testing.T) {
-	restore := statPath
-	statPath = filepath.Join(t.TempDir(), "does-not-exist")
-	defer func() { statPath = restore }()
+	t.Parallel()
 
 	var c CPUSteal
-	if _, _, err := c.Sample(); err == nil {
+	if _, _, err := c.sample(filepath.Join(t.TempDir(), "does-not-exist")); err == nil {
 		t.Error("Sample: want an error when /proc/stat is absent, got nil")
+	}
+}
+
+func TestCPUSteal_RejectsCounterReset(t *testing.T) {
+	t.Parallel()
+
+	var c CPUSteal
+	if _, _, err := c.sample(writeStatFixture(t, 100, 900)); err != nil {
+		t.Fatalf("Sample (first): %v", err)
+	}
+	if _, _, err := c.sample(writeStatFixture(t, 50, 450)); err == nil {
+		t.Fatal("Sample after counter reset: want error")
+	}
+}
+
+func TestReadCPUTicksDoesNotDoubleCountGuest(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "stat")
+	if err := os.WriteFile(path, []byte("cpu  100 20 30 40 5 6 7 8 90 10\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ticks, err := readCPUTicks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticks.total != 216 { // first eight fields only; guest fields are already included
+		t.Fatalf("total = %d, want 216", ticks.total)
 	}
 }

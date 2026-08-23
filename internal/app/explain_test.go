@@ -8,7 +8,6 @@ import (
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/rca"
-	_ "github.com/tiepnguyen-sg/whymiss/internal/rca/rules" // registers rca.Order via init
 	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
 
@@ -25,6 +24,8 @@ func TestExplain(t *testing.T) {
 	for _, obs := range []domain.Observation{
 		mustObs(t, 100, domain.ObsDutyAssigned, slotStart.Add(-6*time.Second), map[domain.AttrKey]string{domain.AttrValidatorIndex: "24"}),
 		mustObs(t, 100, domain.ObsSlotStart, slotStart, nil),
+		mustObs(t, 100, domain.ObsBlockSkipped, slotStart.Add(36*time.Second), nil),
+		mustObs(t, 100, domain.ObsCollectionCompleted, slotStart.Add(15*time.Minute), nil),
 	} {
 		if err := st.WriteObservation(ctx, obs); err != nil {
 			t.Fatalf("WriteObservation: %v", err)
@@ -34,7 +35,7 @@ func TestExplain(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	v, err := Explain(ctx, dbPath, 100, domain.MainnetPreEPBS())
+	v, err := Explain(ctx, dbPath, 100, domain.MainnetPreEPBS(), rca.DefaultConfig())
 	if err != nil {
 		t.Fatalf("Explain: %v", err)
 	}
@@ -42,7 +43,7 @@ func TestExplain(t *testing.T) {
 		t.Errorf("Slot = %d, want 100", v.Slot)
 	}
 	if v.Cause != domain.CauseProposerMissed {
-		t.Errorf("Cause = %q, want %q (no block_seen, no attestation activity at all)", v.Cause, domain.CauseProposerMissed)
+		t.Errorf("Cause = %q, want %q (canonical skipped-slot evidence exists)", v.Cause, domain.CauseProposerMissed)
 	}
 	if v.EngineVersion != rca.EngineVersion {
 		t.Errorf("EngineVersion = %q, want %q", v.EngineVersion, rca.EngineVersion)
@@ -61,7 +62,7 @@ func TestExplain_NoDataForSlot(t *testing.T) {
 		t.Fatalf("Close: %v", err)
 	}
 
-	if _, err := Explain(ctx, dbPath, 999, domain.MainnetPreEPBS()); err == nil {
+	if _, err := Explain(ctx, dbPath, 999, domain.MainnetPreEPBS(), rca.DefaultConfig()); err == nil {
 		t.Error("Explain: want an error for a slot with no recorded observations, got nil")
 	}
 }

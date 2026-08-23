@@ -2,9 +2,13 @@ package beaconapi
 
 import (
 	"bufio"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
@@ -71,5 +75,59 @@ func TestParseEvent_UnsubscribedTopic(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("parseEvent: want ok=false for a topic this package didn't subscribe to")
+	}
+}
+
+func TestParseEventRejectsMalformedHeadRoot(t *testing.T) {
+	_, ok, err := parseEvent("head", `{"slot":"3641","block":"not-a-root","execution_optimistic":false}`)
+	if err == nil {
+		t.Fatal("parseEvent: want malformed root error")
+	}
+	if ok {
+		t.Fatal("parseEvent: malformed head must not produce an observation")
+	}
+}
+
+func TestParseEventRejectsHeadWithoutOptimisticStatus(t *testing.T) {
+	_, ok, err := parseEvent("head", `{"slot":"3641","block":"0xcfdff47b5b03cfe74d933b1e352c300b1e4c0aeabb98373d7d113070b1609214"}`)
+	if err == nil {
+		t.Fatal("parseEvent: want missing execution_optimistic error")
+	}
+	if ok {
+		t.Fatal("parseEvent: unverifiable head must not produce an observation")
+	}
+}
+
+func TestParseEventSuppressesOptimisticHead(t *testing.T) {
+	_, ok, err := parseEvent("head", `{"slot":"3641","block":"0xcfdff47b5b03cfe74d933b1e352c300b1e4c0aeabb98373d7d113070b1609214","execution_optimistic":true}`)
+	if err != nil {
+		t.Fatalf("parseEvent: %v", err)
+	}
+	if ok {
+		t.Fatal("parseEvent: optimistic head must not produce a validated-head observation")
+	}
+}
+
+func TestStreamOnceTimesOutStalledConnection(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, 0)
+	client.streamIdleTimeout = 25 * time.Millisecond
+	started := time.Now()
+	delivered, err := client.streamOnce(context.Background(), make(chan domain.Observation))
+	if err == nil {
+		t.Fatal("streamOnce: want timeout error")
+	}
+	if delivered {
+		t.Fatal("streamOnce: reported an event on a stalled stream")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("streamOnce took %s, want a bounded request", elapsed)
 	}
 }

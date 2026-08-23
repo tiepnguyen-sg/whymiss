@@ -24,6 +24,9 @@ type fakeServer struct {
 	shortLen    int  // if > 0, replies are truncated to this many bytes
 	mode        byte // if nonzero, overrides the reply's Mode field
 	wrongOrigin bool // if true, the reply echoes a bogus Origin Timestamp
+	version     byte // if nonzero, overrides the reply's protocol version
+	zeroReceive bool
+	responseLag time.Duration
 }
 
 func newFakeServer(t *testing.T, skew time.Duration) *fakeServer {
@@ -64,7 +67,7 @@ func (s *fakeServer) serve(t *testing.T) {
 		copy(req[:], buf[:48])
 
 		s.mu.Lock()
-		mode, wrongOrigin := s.mode, s.wrongOrigin
+		mode, wrongOrigin, version, zeroReceive, responseLag := s.mode, s.wrongOrigin, s.version, s.zeroReceive, s.responseLag
 		s.mu.Unlock()
 		if mode == 0 {
 			mode = modeServer
@@ -72,17 +75,25 @@ func (s *fakeServer) serve(t *testing.T) {
 
 		t2 := time.Now().UTC().Add(skew)
 		var resp packet
-		resp[0] = (4 << 3) | mode
+		if version == 0 {
+			version = 4
+		}
+		resp[0] = (version << 3) | mode
 		resp[0] |= leap << 6
 		resp[1] = stratum
 		origin := req.transmitTimestamp()
 		if wrongOrigin {
 			origin ^= 0xff // guaranteed to disagree with what the client sent
 		}
-		binary.BigEndian.PutUint64(resp[24:32], origin)    // echo origin (or not)
-		binary.BigEndian.PutUint64(resp[32:40], toNTP(t2)) // receive
+		binary.BigEndian.PutUint64(resp[24:32], origin) // echo origin (or not)
+		if !zeroReceive {
+			binary.BigEndian.PutUint64(resp[32:40], toNTP(t2)) // receive
+		}
 		t3 := time.Now().UTC().Add(skew)
 		binary.BigEndian.PutUint64(resp[40:48], toNTP(t3)) // transmit
+		if responseLag > 0 {
+			time.Sleep(responseLag)
+		}
 
 		out := resp[:]
 		if shortLen > 0 && shortLen < len(out) {
@@ -128,4 +139,22 @@ func (s *fakeServer) setWrongOrigin() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.wrongOrigin = true
+}
+
+func (s *fakeServer) setVersion(v byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.version = v
+}
+
+func (s *fakeServer) setZeroReceive() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.zeroReceive = true
+}
+
+func (s *fakeServer) setResponseLag(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.responseLag = d
 }

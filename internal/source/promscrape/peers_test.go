@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
@@ -21,6 +22,56 @@ func serveTestdata(t *testing.T, file string) *httptest.Server {
 	}))
 }
 
+func TestMetricsHTTPBounds(t *testing.T) {
+	scraper := New()
+	transport, ok := scraper.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *http.Transport", scraper.httpClient.Transport)
+	}
+	if transport.MaxConnsPerHost != maxMetricConns {
+		t.Fatalf("MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, maxMetricConns)
+	}
+	if transport.Proxy != nil {
+		t.Fatal("metrics transport honors ambient proxy settings; only explicitly configured egress is permitted")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(maxMetricsBodyBytes+1))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	if _, err := New().fetchMetricsLines(context.Background(), srv.URL); err == nil {
+		t.Fatal("fetchMetricsLines: want oversized response error, got nil")
+	}
+}
+
+func TestMetricsClientDoesNotFollowRedirects(t *testing.T) {
+	redirected := false
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { redirected = true }))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+
+	if _, err := New().fetchMetricsLines(context.Background(), source.URL); err == nil {
+		t.Fatal("fetchMetricsLines followed or accepted a redirect")
+	}
+	if redirected {
+		t.Fatal("metrics client followed a redirect outside the configured endpoint")
+	}
+}
+
+func TestPeerCountRejectsImpossibleValues(t *testing.T) {
+	for _, value := range []string{"NaN", "+Inf", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			if _, err := buildPeerCountSample(value); err == nil {
+				t.Fatalf("buildPeerCountSample(%q) accepted an impossible peer count", value)
+			}
+		})
+	}
+}
+
 // testdata/lighthouse_metrics.txt is a real, unmodified /metrics response
 // captured against a live devnet Lighthouse node (BUILD_PROMPT.md §8) —
 // libp2p_peers read 0 at capture time (right after the devnet VM restarted
@@ -30,7 +81,7 @@ func TestSampleLighthousePeerCount(t *testing.T) {
 	srv := serveTestdata(t, "lighthouse_metrics.txt")
 	defer srv.Close()
 
-	got, err := SampleLighthousePeerCount(context.Background(), srv.URL)
+	got, err := New().SampleLighthousePeerCount(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("SampleLighthousePeerCount: %v", err)
 	}
@@ -52,7 +103,7 @@ func TestSamplePrysmPeerCount(t *testing.T) {
 	srv := serveTestdata(t, "prysm_metrics.txt")
 	defer srv.Close()
 
-	got, err := SamplePrysmPeerCount(context.Background(), srv.URL)
+	got, err := New().SamplePrysmPeerCount(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("SamplePrysmPeerCount: %v", err)
 	}
@@ -70,7 +121,7 @@ func TestSampleLighthousePeerCount_MetricAbsent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := SampleLighthousePeerCount(context.Background(), srv.URL); err == nil {
+	if _, err := New().SampleLighthousePeerCount(context.Background(), srv.URL); err == nil {
 		t.Error("SampleLighthousePeerCount: want an error when libp2p_peers is absent, got nil")
 	}
 }

@@ -75,10 +75,14 @@ func TestQueryRejectsBadResponses(t *testing.T) {
 		break_ func(*fakeServer)
 	}{
 		{"stratum 0 kiss-of-death", func(s *fakeServer) { s.setStratum(0) }},
+		{"stratum above primary range", func(s *fakeServer) { s.setStratum(16) }},
 		{"leap indicator unsynchronized", func(s *fakeServer) { s.setLeapUnsync() }},
+		{"unsupported protocol version", func(s *fakeServer) { s.setVersion(2) }},
 		{"truncated reply", func(s *fakeServer) { s.setShortReply(20) }},
 		{"wrong mode in reply", func(s *fakeServer) { s.setMode(modeClient) }},
 		{"origin timestamp does not match what was sent", func(s *fakeServer) { s.setWrongOrigin() }},
+		{"missing receive timestamp", func(s *fakeServer) { s.setZeroReceive() }},
+		{"round trip too large", func(s *fakeServer) { s.setResponseLag(maxTrustedRoundTrip + 100*time.Millisecond) }},
 	}
 
 	for _, tc := range tests {

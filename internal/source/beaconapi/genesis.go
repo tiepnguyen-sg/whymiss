@@ -3,6 +3,7 @@ package beaconapi
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 )
@@ -17,7 +18,10 @@ type GenesisInfo struct {
 
 // SlotStart returns the wall-clock instant slot begins.
 func (g GenesisInfo) SlotStart(slot uint64) time.Time {
-	return g.GenesisTime.Add(time.Duration(slot) * g.SecondsPerSlot) //nolint:gosec // G115: slot values are consensus-layer slot numbers, far below the uint64->duration overflow range
+	if g.SecondsPerSlot <= 0 || slot > uint64(math.MaxInt64/int64(g.SecondsPerSlot)) { //nolint:gosec // positive duration is checked before conversion
+		return g.GenesisTime.Add(time.Duration(math.MaxInt64))
+	}
+	return g.GenesisTime.Add(time.Duration(slot) * g.SecondsPerSlot) //nolint:gosec // slot is proven representable as a duration above
 }
 
 // FetchGenesis reads GET /eth/v1/beacon/genesis and GET /eth/v1/config/spec
@@ -46,6 +50,9 @@ func (c *Client) FetchGenesis(ctx context.Context) (GenesisInfo, error) {
 	secondsPerSlot, err := strconv.ParseInt(spec["SECONDS_PER_SLOT"], 10, 64)
 	if err != nil {
 		return GenesisInfo{}, fmt.Errorf("fetch spec: parse SECONDS_PER_SLOT %q: %w", spec["SECONDS_PER_SLOT"], err)
+	}
+	if secondsPerSlot <= 0 || secondsPerSlot > 60 {
+		return GenesisInfo{}, fmt.Errorf("fetch spec: SECONDS_PER_SLOT %d is outside supported range [1,60]", secondsPerSlot)
 	}
 
 	return GenesisInfo{

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -14,6 +13,7 @@ import (
 
 func newTimelineCmd(flags *globalFlags) *cobra.Command {
 	var format string
+	var validatorIndices []uint
 
 	cmd := &cobra.Command{
 		Use:   "timeline <slot>",
@@ -25,19 +25,23 @@ func newTimelineCmd(flags *globalFlags) *cobra.Command {
 				return fmt.Errorf("invalid slot %q: %w", args[0], err)
 			}
 
-			// MainnetPreEPBS is the schedule this build ships with until
-			// Phase 5's configurable SlotSchedule (docs/causes.md §3.1)
-			// lands; a replayed corpus scenario would carry its own
-			// schedule instead, but the live store has no per-record
-			// schedule to read back.
-			tl, err := app.GetTimeline(cmd.Context(), flags.dbPath, domain.Slot(slotArg), domain.MainnetPreEPBS())
+			validator, err := requestedValidator(validatorIndices)
+			if err != nil {
+				return err
+			}
+			var tl domain.Timeline
+			if validator == nil {
+				tl, err = app.GetTimeline(cmd.Context(), flags.dbPath, domain.Slot(slotArg), flags.schedule)
+			} else {
+				tl, err = app.GetTimelineForValidator(cmd.Context(), flags.dbPath, domain.Slot(slotArg), *validator, flags.schedule)
+			}
 			if err != nil {
 				return err
 			}
 
 			switch format {
 			case "json":
-				enc := json.NewEncoder(os.Stdout)
+				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
 				return enc.Encode(tl)
 			default:
@@ -46,5 +50,6 @@ func newTimelineCmd(flags *globalFlags) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "json", "output format")
+	cmd.Flags().UintSliceVar(&validatorIndices, "validator-index", nil, "validator duty to print when multiple tracked validators share the slot")
 	return cmd
 }

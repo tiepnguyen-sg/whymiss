@@ -3,6 +3,7 @@ package clock
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -21,9 +22,14 @@ func TestConfigValidate(t *testing.T) {
 		want   error
 	}{
 		{"no servers", func(c *Config) { c.Servers = nil }, ErrNoServers},
+		{"empty server", func(c *Config) { c.Servers = []string{" "} }, ErrInvalidConfig},
+		{"too many servers", func(c *Config) { c.Servers = make([]string, maxServers+1) }, ErrInvalidConfig},
+		{"oversized server", func(c *Config) { c.Servers = []string{strings.Repeat("x", maxServerAddress+1)} }, ErrInvalidConfig},
 		{"zero timeout", func(c *Config) { c.Timeout = 0 }, ErrInvalidConfig},
 		{"negative timeout", func(c *Config) { c.Timeout = -time.Second }, ErrInvalidConfig},
+		{"excessive timeout", func(c *Config) { c.Timeout = maxTimeout + time.Second }, ErrInvalidConfig},
 		{"zero max attempts", func(c *Config) { c.MaxAttempts = 0 }, ErrInvalidConfig},
+		{"too many attempts", func(c *Config) { c.MaxAttempts = maxAttempts + 1 }, ErrInvalidConfig},
 	}
 
 	for _, tc := range tests {

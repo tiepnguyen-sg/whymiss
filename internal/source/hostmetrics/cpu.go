@@ -3,6 +3,7 @@ package hostmetrics
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -17,11 +18,9 @@ import (
 // thresholds.cpu_steal_pct.
 const MetricCPUStealPct domain.MetricName = "host_cpu_steal_pct"
 
-// statPath is /proc/stat's fixed kernel location. A package variable for
-// the same reason as ioPressurePath/memPressurePath (see pressure.go): its
-// format is a stable, documented kernel ABI (man 5 proc), not something a
-// fixture risks getting wrong.
-var statPath = "/proc/stat"
+// statPath is /proc/stat's fixed kernel location. Tests pass fixture paths to
+// sample directly instead of mutating the production path.
+const statPath = "/proc/stat"
 
 // cpuStatFields is how many space-separated fields follow "cpu" on
 // /proc/stat's first line, per man 5 proc: user nice system idle iowait irq
@@ -51,9 +50,13 @@ type cpuTicks struct {
 // prior reading yet to compute a delta against — not an error, just not
 // yet meaningful.
 func (c *CPUSteal) Sample() (sample domain.MetricSample, ok bool, err error) {
-	ticks, err := readCPUTicks(statPath)
+	return c.sample(statPath)
+}
+
+func (c *CPUSteal) sample(path string) (sample domain.MetricSample, ok bool, err error) {
+	ticks, err := readCPUTicks(path)
 	if err != nil {
-		return domain.MetricSample{}, false, fmt.Errorf("read %s: %w", statPath, err)
+		return domain.MetricSample{}, false, fmt.Errorf("read %s: %w", path, err)
 	}
 
 	prev := c.prev
@@ -62,11 +65,17 @@ func (c *CPUSteal) Sample() (sample domain.MetricSample, ok bool, err error) {
 	if !hadPrev {
 		return domain.MetricSample{}, false, nil
 	}
+	if ticks.total < prev.total || ticks.steal < prev.steal {
+		return domain.MetricSample{}, false, errors.New("CPU counters decreased between samples")
+	}
 
 	totalDelta := ticks.total - prev.total
 	stealDelta := ticks.steal - prev.steal
 	if totalDelta == 0 {
 		return domain.MetricSample{}, false, errors.New("no CPU ticks elapsed between samples")
+	}
+	if stealDelta > totalDelta {
+		return domain.MetricSample{}, false, errors.New("CPU steal delta exceeds total CPU delta")
 	}
 
 	pct := float64(stealDelta) / float64(totalDelta) * 100
@@ -86,7 +95,7 @@ func (c *CPUSteal) Sample() (sample domain.MetricSample, ok bool, err error) {
 // readCPUTicks parses /proc/stat's first line ("cpu  <fields...>", the
 // aggregate across all cores).
 func readCPUTicks(path string) (cpuTicks, error) {
-	content, err := os.ReadFile(path) //nolint:gosec // G304: path is a fixed package variable, not operator- or attacker-supplied
+	content, err := os.ReadFile(path) //nolint:gosec // G304: production passes a fixed path; tests pass private fixture paths
 	if err != nil {
 		return cpuTicks{}, err
 	}
@@ -110,8 +119,13 @@ func readCPUTicks(path string) (cpuTicks, error) {
 		values[i] = v
 	}
 
+	// guest and guest_nice are already included in user and nice respectively;
+	// summing them again would dilute the reported steal percentage.
 	var total uint64
-	for _, v := range values {
+	for _, v := range values[:stealFieldIndex+1] {
+		if math.MaxUint64-total < v {
+			return cpuTicks{}, errors.New("aggregate CPU tick counter overflow")
+		}
 		total += v
 	}
 	return cpuTicks{total: total, steal: values[stealFieldIndex]}, nil

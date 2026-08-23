@@ -1,16 +1,12 @@
-// Renamed from the CHANGEME placeholder ahead of the v0.1.0 tag (task 4.10)
-// via STRUCTURE.md's documented init step:
-//   grep -rl 'CHANGEME' . | xargs sed -i 's|CHANGEME|tiepnguyen-sg|g'
 module github.com/tiepnguyen-sg/whymiss
 
 // BUILD_PROMPT §3 locks the language at Go 1.23+. CI installs the toolchain from
 // this line (.github/workflows/ci.yml → setup-go go-version-file: go.mod), so it
 // is the single source of truth for the version.
 //
-// Set above the 1.23 floor because `make fmt` installs gofumpt@latest, and
-// gofumpt's own go.mod requirement climbs over time; ci.yml pins GOTOOLCHAIN=local
-// so a mismatch fails outright instead of silently downloading a newer toolchain.
-// Bump this line, not gofumpt's version, when that requirement moves again.
+// CI pins its Go tools and sets GOTOOLCHAIN=local, so an incompatible tool
+// requirement fails outright instead of silently downloading another toolchain.
+// Bump this line and the pinned tools deliberately, not independently.
 go 1.25.14
 
 // New dependencies require an ADR (I-14: fewer than 15 direct dependencies at
@@ -18,9 +14,13 @@ go 1.25.14
 // modernc.org/sqlite, client_golang — land in the phase that first needs them,
 // each with its own ADR merged first.
 
-require gopkg.in/yaml.v3 v3.0.1 // ADR-0006: tools/faultinjector scenario files, test/corpus manifest.yaml
+require (
+	go.uber.org/goleak v1.3.0 // ADR-0013: daemon lifecycle leak verification
+	gopkg.in/yaml.v3 v3.0.1 // ADR-0006: tools/faultinjector scenario files, test/corpus manifest.yaml
+)
 
 require (
+	github.com/knadh/koanf/v2 v2.3.6
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.57.0
@@ -30,9 +30,14 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/knadh/koanf/maps v0.1.2 // indirect
+	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect

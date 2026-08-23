@@ -9,17 +9,24 @@ import (
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
-// poolAttestation is the subset of the attestation-pool response this
-// package reads. Same Electra-style, single-committee-per-attestation shape
-// as blockAttestation — see that type's doc comment for the scope this
-// implies.
-type poolAttestation struct {
+// apiAttestation is the subset shared by pool and block responses. Electra's
+// committee_bits may concatenate several committees into one aggregation
+// bitlist (EIP-7549).
+type apiAttestation struct {
 	AggregationBits string `json:"aggregation_bits"`
+	CommitteeBits   string `json:"committee_bits"`
 	Data            struct {
-		Slot  string `json:"slot"`
-		Index string `json:"index"`
+		Slot            string `json:"slot"`
+		Index           string `json:"index"`
+		BeaconBlockRoot string `json:"beacon_block_root"`
+		Target          struct {
+			Epoch string `json:"epoch"`
+			Root  string `json:"root"`
+		} `json:"target"`
 	} `json:"data"`
 }
+
+type poolAttestation = apiAttestation
 
 // AttestationPublished polls GET /eth/v1/beacon/pool/attestations?slot= every
 // 500ms until d's validator's bit appears set in a matching attestation, or
@@ -35,19 +42,23 @@ type poolAttestation struct {
 func (c *Client) AttestationPublished(ctx context.Context, d AttesterDuty, deadline time.Time) (domain.Observation, bool, error) {
 	const pollInterval = 500 * time.Millisecond
 	for {
-		ok, err := c.poolIncludesAttestation(ctx, d)
+		ok, match, err := c.poolIncludesAttestation(ctx, d)
 		if err != nil {
 			return domain.Observation{}, false, err
 		}
 		if ok {
+			attrs := map[domain.AttrKey]string{
+				domain.AttrValidatorIndex: strconv.FormatUint(uint64(d.ValidatorIndex), 10),
+			}
+			if match.Data.BeaconBlockRoot != "" {
+				attrs[domain.AttrBlockRoot] = match.Data.BeaconBlockRoot
+			}
 			obs, err := domain.NewObservation(domain.Observation{
 				Slot:   d.Slot,
 				Kind:   domain.ObsAttestationPublished,
 				At:     time.Now().UTC(),
 				Source: domain.SourceBeaconAPI,
-				Attrs: map[domain.AttrKey]string{
-					domain.AttrValidatorIndex: strconv.FormatUint(uint64(d.ValidatorIndex), 10),
-				},
+				Attrs:  attrs,
 			})
 			if err != nil {
 				return domain.Observation{}, false, fmt.Errorf("build attestation_published observation for slot %d: %w", d.Slot, err)
@@ -65,29 +76,24 @@ func (c *Client) AttestationPublished(ctx context.Context, d AttesterDuty, deadl
 	}
 }
 
-func (c *Client) poolIncludesAttestation(ctx context.Context, d AttesterDuty) (bool, error) {
+func (c *Client) poolIncludesAttestation(ctx context.Context, d AttesterDuty) (bool, apiAttestation, error) {
 	var atts []poolAttestation
 	found, err := c.get(ctx, fmt.Sprintf("/eth/v1/beacon/pool/attestations?slot=%d", d.Slot), &atts)
 	if err != nil {
-		return false, fmt.Errorf("fetch attestation pool for slot %d: %w", d.Slot, err)
+		return false, apiAttestation{}, fmt.Errorf("fetch attestation pool for slot %d: %w", d.Slot, err)
 	}
 	if !found {
-		return false, nil
+		return false, apiAttestation{}, nil
 	}
 
-	wantSlotStr := strconv.FormatUint(uint64(d.Slot), 10)
-	wantIndexStr := strconv.FormatUint(uint64(d.CommitteeIndex), 10)
-	for _, att := range atts {
-		if att.Data.Slot != wantSlotStr || att.Data.Index != wantIndexStr {
-			continue
-		}
-		included, err := bitSet(att.AggregationBits, d.ValidatorCommitteeIndex)
-		if err != nil {
-			return false, fmt.Errorf("decode aggregation_bits for slot %d: %w", d.Slot, err)
-		}
-		if included {
-			return true, nil
-		}
+	included, needCommittees, match, err := attestationsIncludeValidator(atts, d.Slot, d, nil)
+	if err != nil || included || !needCommittees {
+		return included, match, err
 	}
-	return false, nil
+	lengths, err := c.committeeLengthsForSlot(ctx, d.Slot, d.CommitteesAtSlot)
+	if err != nil {
+		return false, apiAttestation{}, fmt.Errorf("fetch committee lengths for slot %d: %w", d.Slot, err)
+	}
+	included, _, match, err = attestationsIncludeValidator(atts, d.Slot, d, lengths)
+	return included, match, err
 }

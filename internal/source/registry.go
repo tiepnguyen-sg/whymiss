@@ -36,13 +36,8 @@ const (
 // header (a separate, non-spec signal some clients also set, carrying the
 // same value) read "Lighthouse/v8.2.2-e423a66/x86_64-linux".
 //
-// Prysm detection follows the same publicly documented "Prysm/v..."
-// convention but has not yet been verified against a real Prysm node in
-// this project's devnet — no /eth/v1/node/version response or Server
-// header from Prysm has been captured. Treat this arm as unverified until
-// it has (BUILD_PROMPT.md §8's discipline applies to what a test asserts,
-// not just to test fixtures: don't claim confidence this package doesn't
-// have yet).
+// The Lighthouse and Prysm prefixes have both been verified against this
+// project's two-client devnet. Captured fixtures remain in the adapter tests.
 func DetectConsensusClient(versionString string) ConsensusClient {
 	switch {
 	case strings.HasPrefix(versionString, "Lighthouse"):

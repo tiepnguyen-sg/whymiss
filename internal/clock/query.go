@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// A slower exchange cannot establish a precise 100ms clock-trust decision: path
+// asymmetry can dominate the measured offset. Treat it as no reading.
+const maxTrustedRoundTrip = time.Second
+
 // query performs one SNTP round trip against addr and returns the offset it
 // measured.
 //
@@ -70,21 +74,36 @@ func query(ctx context.Context, addr string) (Reading, error) {
 	if resp.stratum() == 0 {
 		return Reading{}, fmt.Errorf("%w: %s replied at stratum 0 (kiss-of-death)", ErrInvalidResponse, addr)
 	}
+	if resp.stratum() > 15 {
+		return Reading{}, fmt.Errorf("%w: %s replied at invalid stratum %d", ErrInvalidResponse, addr, resp.stratum())
+	}
+	if resp.version() < 3 || resp.version() > 4 {
+		return Reading{}, fmt.Errorf("%w: %s replied with unsupported NTP version %d", ErrInvalidResponse, addr, resp.version())
+	}
 	if resp.mode() != modeServer {
 		return Reading{}, fmt.Errorf("%w: %s replied in mode %d, want server mode", ErrInvalidResponse, addr, resp.mode())
 	}
 	if resp.originTimestamp() != toNTP(t1) {
 		return Reading{}, fmt.Errorf("%w: %s echoed the wrong origin timestamp", ErrInvalidResponse, addr)
 	}
+	if resp.receiveTimestamp() == 0 || resp.transmitTimestamp() == 0 {
+		return Reading{}, fmt.Errorf("%w: %s omitted receive or transmit timestamp", ErrInvalidResponse, addr)
+	}
 
-	t2 := fromNTP(resp.receiveTimestamp())
-	t3 := fromNTP(resp.transmitTimestamp())
+	t2 := fromNTPNear(resp.receiveTimestamp(), t4)
+	t3 := fromNTPNear(resp.transmitTimestamp(), t4)
+	if t3.Before(t2) {
+		return Reading{}, fmt.Errorf("%w: %s transmit timestamp precedes receive timestamp", ErrInvalidResponse, addr)
+	}
 
 	// Standard SNTP offset and round-trip-delay formulas (RFC 5905 §8):
 	//   offset = ((T2 − T1) + (T3 − T4)) / 2
 	//   delay  = (T4 − T1) − (T3 − T2)
 	offset := (t2.Sub(t1) + t3.Sub(t4)) / 2
 	delay := t4.Sub(t1) - t3.Sub(t2)
+	if delay < 0 || delay > maxTrustedRoundTrip {
+		return Reading{}, fmt.Errorf("%w: %s round trip %s is outside the trusted range [0,%s]", ErrInvalidResponse, addr, delay, maxTrustedRoundTrip)
+	}
 
 	return Reading{Server: addr, At: t4, Offset: offset, RoundTrip: delay}, nil
 }

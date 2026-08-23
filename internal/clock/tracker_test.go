@@ -16,7 +16,10 @@ func TestTrackerRecordsSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	tr := NewTracker(sampler)
+	tr, err := NewTracker(sampler)
+	if err != nil {
+		t.Fatalf("NewTracker() error = %v", err)
+	}
 
 	if _, _, ok := tr.LastKnownGood(); ok {
 		t.Fatal("LastKnownGood() ok = true before any sample was taken")
@@ -51,7 +54,10 @@ func TestTrackerKeepsLastGoodAfterFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	tr := NewTracker(sampler)
+	tr, err := NewTracker(sampler)
+	if err != nil {
+		t.Fatalf("NewTracker() error = %v", err)
+	}
 
 	firstReading, err := tr.Sample(context.Background())
 	if err != nil {
@@ -85,7 +91,10 @@ func TestTrackerPropagatesFailureWithoutRecording(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	tr := NewTracker(sampler)
+	tr, err := NewTracker(sampler)
+	if err != nil {
+		t.Fatalf("NewTracker() error = %v", err)
+	}
 
 	_, err = tr.Sample(context.Background())
 	if !errors.Is(err, ErrAllAttemptsFailed) {
@@ -106,7 +115,10 @@ func TestTrackerConcurrentAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	tr := NewTracker(sampler)
+	tr, err := NewTracker(sampler)
+	if err != nil {
+		t.Fatalf("NewTracker() error = %v", err)
+	}
 
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
@@ -121,4 +133,11 @@ func TestTrackerConcurrentAccess(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestNewTrackerRejectsNilSampler(t *testing.T) {
+	t.Parallel()
+	if _, err := NewTracker(nil); err == nil {
+		t.Fatal("NewTracker(nil) error = nil, want invalid configuration")
+	}
 }

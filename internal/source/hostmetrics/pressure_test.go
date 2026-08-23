@@ -27,11 +27,9 @@ func writeFixture(t *testing.T, content string) string {
 }
 
 func TestSampleIOPressure(t *testing.T) {
-	restore := ioPressurePath
-	ioPressurePath = writeFixture(t, psiFixture)
-	defer func() { ioPressurePath = restore }()
+	t.Parallel()
 
-	got, err := SampleIOPressure()
+	got, err := samplePressure(writeFixture(t, psiFixture), MetricIOWaitPct)
 	if err != nil {
 		t.Fatalf("SampleIOPressure: %v", err)
 	}
@@ -47,11 +45,9 @@ func TestSampleIOPressure(t *testing.T) {
 }
 
 func TestSampleMemoryPressure(t *testing.T) {
-	restore := memPressurePath
-	memPressurePath = writeFixture(t, psiFixture)
-	defer func() { memPressurePath = restore }()
+	t.Parallel()
 
-	got, err := SampleMemoryPressure()
+	got, err := samplePressure(writeFixture(t, psiFixture), MetricMemPressurePct)
 	if err != nil {
 		t.Fatalf("SampleMemoryPressure: %v", err)
 	}
@@ -64,11 +60,22 @@ func TestSampleMemoryPressure(t *testing.T) {
 }
 
 func TestSampleIOPressure_Unavailable(t *testing.T) {
-	restore := ioPressurePath
-	ioPressurePath = filepath.Join(t.TempDir(), "does-not-exist")
-	defer func() { ioPressurePath = restore }()
+	t.Parallel()
 
-	if _, err := SampleIOPressure(); err == nil {
+	if _, err := samplePressure(filepath.Join(t.TempDir(), "does-not-exist"), MetricIOWaitPct); err == nil {
 		t.Error("SampleIOPressure: want an error when the PSI file is absent (I-3: degrade, don't fabricate), got nil")
+	}
+}
+
+func TestParsePSISomeAvg10RejectsImpossibleValues(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{"-0.01", "100.01", "NaN", "+Inf"} {
+		value := value
+		t.Run(value, func(t *testing.T) {
+			t.Parallel()
+			if _, err := parsePSISomeAvg10("some avg10=" + value + " avg60=0 avg300=0 total=0\n"); err == nil {
+				t.Fatalf("parsePSISomeAvg10(%q): want error", value)
+			}
+		})
 	}
 }

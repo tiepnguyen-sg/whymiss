@@ -67,6 +67,39 @@ func TestRateLimiter_ConcurrentCallersStillSerialize(t *testing.T) {
 	}
 }
 
+func TestRateLimiter_ConcurrentCallersAreFIFO(t *testing.T) {
+	limiter := newRateLimiter(100 * time.Millisecond)
+	if err := limiter.wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	const requests = 8
+	done := make(chan int, requests)
+	for i := range requests {
+		go func(index int) {
+			if err := limiter.wait(context.Background()); err != nil {
+				t.Error(err)
+				return
+			}
+			done <- index
+		}(i)
+		for {
+			limiter.mu.Lock()
+			queued := len(limiter.queue)
+			limiter.mu.Unlock()
+			if queued == i+1 {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	for want := range requests {
+		if got := <-done; got != want {
+			t.Fatalf("grant order[%d] = %d, want FIFO order", want, got)
+		}
+	}
+}
+
 func TestRateLimiter_CancelledContext(t *testing.T) {
 	limiter := newRateLimiter(time.Hour) // long enough that the second wait would block for the test's duration if not cancelled
 	if err := limiter.wait(context.Background()); err != nil {
@@ -77,5 +110,26 @@ func TestRateLimiter_CancelledContext(t *testing.T) {
 	cancel()
 	if err := limiter.wait(ctx); err == nil {
 		t.Error("wait: want an error for an already-cancelled context, got nil")
+	}
+}
+
+func TestRateLimiter_CancelledWaitDoesNotReserveCapacity(t *testing.T) {
+	const interval = 80 * time.Millisecond
+	limiter := newRateLimiter(interval)
+	if err := limiter.wait(context.Background()); err != nil {
+		t.Fatalf("first wait: %v", err)
+	}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := limiter.wait(cancelled); err == nil {
+		t.Fatal("cancelled wait: want error, got nil")
+	}
+
+	time.Sleep(interval + 10*time.Millisecond)
+	ctx, stop := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer stop()
+	if err := limiter.wait(ctx); err != nil {
+		t.Fatalf("wait after cancelled caller left: %v", err)
 	}
 }

@@ -2,75 +2,87 @@ package promscrape
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"sort"
 	"testing"
-
-	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"time"
 )
 
-// testdata/geth_metrics.txt is a real captured response from geth's
-// /debug/metrics/prometheus endpoint against this project's devnet
-// (test/e2e/kurtosis) — see BUILD_PROMPT.md §8: never hand-write a mock
-// response.
-
-func TestSampleEngineCalls(t *testing.T) {
-	srv := serveTestdata(t, "geth_metrics.txt")
-	defer srv.Close()
-
-	samples, err := SampleEngineCalls(context.Background(), srv.URL)
+func TestSampleLighthouseEngineCounters(t *testing.T) {
+	t.Parallel()
+	server := serveTestdata(t, "lighthouse_metrics.txt")
+	t.Cleanup(server.Close)
+	got, err := New().SampleLighthouseEngineCounters(context.Background(), server.URL)
 	if err != nil {
-		t.Fatalf("SampleEngineCalls: %v", err)
+		t.Fatal(err)
 	}
-	sort.Slice(samples, func(i, j int) bool { return samples[i].Name < samples[j].Name })
-
-	if len(samples) != 2 {
-		t.Fatalf("got %d samples, want 2: %+v", len(samples), samples)
+	if got.NewPayload.Count != 2 || abs(got.NewPayload.SumMS-11.881873) > 1e-6 {
+		t.Fatalf("newPayload = %+v, want count 2 sum 11.881873ms", got.NewPayload)
 	}
-
-	for _, s := range samples {
-		if s.Component != domain.ComponentEL {
-			t.Errorf("sample %q: Component = %q, want %q", s.Name, s.Component, domain.ComponentEL)
-		}
-		if s.Source != domain.SourcePromScrape {
-			t.Errorf("sample %q: Source = %q, want %q", s.Name, s.Source, domain.SourcePromScrape)
-		}
-	}
-
-	// forkchoiceUpdated: quantile 0.5 = 2.22248e+06 ns = 2.22248 ms.
-	if got := samples[0]; got.Name != MetricELForkchoiceUpdatedMS || abs(got.Value-2.22248) > 1e-6 {
-		t.Errorf("samples[0] = %+v, want %s = 2.22248", got, MetricELForkchoiceUpdatedMS)
-	}
-	// newPayload: quantile 0.5 = 2.12666e+06 ns = 2.12666 ms.
-	if got := samples[1]; got.Name != MetricELNewPayloadMS || abs(got.Value-2.12666) > 1e-6 {
-		t.Errorf("samples[1] = %+v, want %s = 2.12666", got, MetricELNewPayloadMS)
+	if got.ForkchoiceUpdated.Count != 5 || abs(got.ForkchoiceUpdated.SumMS-23.614143) > 1e-6 {
+		t.Fatalf("forkchoiceUpdated = %+v, want count 5 sum 23.614143ms", got.ForkchoiceUpdated)
 	}
 }
 
-func TestSampleEngineCalls_IgnoresUnrelatedMetrics(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("# TYPE engine_getblobs_available gauge\nengine_getblobs_available 0\n")) //nolint:errcheck // test helper
-	}))
-	defer srv.Close()
-
-	samples, err := SampleEngineCalls(context.Background(), srv.URL)
+func TestSamplePrysmEngineCounters(t *testing.T) {
+	t.Parallel()
+	server := serveTestdata(t, "prysm_metrics.txt")
+	t.Cleanup(server.Close)
+	got, err := New().SamplePrysmEngineCounters(context.Background(), server.URL)
 	if err != nil {
-		t.Fatalf("SampleEngineCalls: %v", err)
+		t.Fatal(err)
 	}
-	if len(samples) != 0 {
-		t.Errorf("SampleEngineCalls = %+v, want none", samples)
+	if got.NewPayload.Count != 0 || got.NewPayload.SumMS != 0 {
+		t.Fatalf("newPayload = %+v, want zero", got.NewPayload)
+	}
+	if got.ForkchoiceUpdated.Count != 1 || got.ForkchoiceUpdated.SumMS != 1 {
+		t.Fatalf("forkchoiceUpdated = %+v, want count 1 sum 1ms", got.ForkchoiceUpdated)
 	}
 }
 
-func TestSampleEngineCalls_RejectsBadStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
+func TestEngineCallsBetween(t *testing.T) {
+	before := EngineCounters{
+		SampledAt:         time.Unix(10, 0),
+		NewPayload:        EngineCounter{Count: 8, SumMS: 100},
+		ForkchoiceUpdated: EngineCounter{Count: 12, SumMS: 50},
+	}
+	after := EngineCounters{
+		SampledAt:         time.Unix(11, 0),
+		NewPayload:        EngineCounter{Count: 9, SumMS: 112.5},
+		ForkchoiceUpdated: EngineCounter{Count: 13, SumMS: 53},
+	}
+	calls, err := EngineCallsBetween(before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[0].Method != EngineMethodNewPayload || calls[0].Count != 1 || calls[0].DurationMS != 12.5 || calls[1].Method != EngineMethodForkchoiceUpdated || calls[1].Count != 1 || calls[1].DurationMS != 3 {
+		t.Fatalf("calls = %+v", calls)
+	}
+}
 
-	if _, err := SampleEngineCalls(context.Background(), srv.URL); err == nil {
-		t.Error("SampleEngineCalls error = nil, want an error for 404")
+func TestEngineCallsBetweenAllowsMultipleCallsPerMethod(t *testing.T) {
+	before := EngineCounters{SampledAt: time.Unix(10, 0)}
+	after := EngineCounters{
+		SampledAt:         time.Unix(11, 0),
+		NewPayload:        EngineCounter{Count: 2, SumMS: 12},
+		ForkchoiceUpdated: EngineCounter{Count: 3, SumMS: 9},
+	}
+	calls, err := EngineCallsBetween(before, after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls[0].Count != 2 || calls[1].Count != 3 {
+		t.Fatalf("calls = %+v, want counts 2 and 3", calls)
+	}
+}
+
+func TestEngineCallsBetweenRejectsMissingMethod(t *testing.T) {
+	before := EngineCounters{SampledAt: time.Unix(10, 0)}
+	after := EngineCounters{
+		SampledAt:         time.Unix(11, 0),
+		NewPayload:        EngineCounter{Count: 1, SumMS: 12},
+		ForkchoiceUpdated: EngineCounter{},
+	}
+	if _, err := EngineCallsBetween(before, after); err == nil {
+		t.Fatal("EngineCallsBetween error = nil, want missing-method error")
 	}
 }
 

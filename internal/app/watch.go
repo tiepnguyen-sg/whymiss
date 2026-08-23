@@ -2,18 +2,29 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/tiepnguyen-sg/whymiss/internal/clock"
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/exporter"
+	"github.com/tiepnguyen-sg/whymiss/internal/rca"
 	"github.com/tiepnguyen-sg/whymiss/internal/source"
 	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
 	"github.com/tiepnguyen-sg/whymiss/internal/source/hostmetrics"
 	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
+
+const maxTrackedValidators = 64
+
+const maxMetricsConnections = 16
 
 // WatchConfig is whymiss watch's runtime configuration.
 type WatchConfig struct {
@@ -44,6 +55,25 @@ type WatchConfig struct {
 	// count, when CLMetricsAPI is set.
 	PeerSampleInterval time.Duration
 
+	// BaselineBeaconAPI and BaselineMetricsAPI point at a second, independent
+	// beacon node — one that does not share this node's peers or host. Its
+	// block-arrival timing is what separates "late for the whole network"
+	// from "late here" (R-110, R-200); without it both rules refuse to
+	// attribute rather than guess. Both empty disables baseline collection,
+	// which is the default: pointing at another node is explicit operator
+	// configuration, never implicit egress (I-4).
+	BaselineBeaconAPI  string
+	BaselineMetricsAPI string
+
+	// NTPServers are the servers the clock sampler queries. Empty disables
+	// clock sampling, which leaves every observation unmeasured and makes
+	// timing rules report insufficient data rather than trust the local
+	// clock (I-9). There is no built-in default: no unconfigured egress (I-4).
+	NTPServers []string
+
+	// ClockSampleInterval is how often NTPServers are queried.
+	ClockSampleInterval time.Duration
+
 	// RetentionMaxAge and RetentionMaxBytes are store.Prune's limits,
 	// applied on RetentionInterval (I-12).
 	RetentionMaxAge   time.Duration
@@ -66,12 +96,163 @@ type WatchConfig struct {
 	MetricsAddr string
 
 	// Schedule is passed to Explain for every completed duty. Defaults to
-	// domain.MainnetPreEPBS() when zero — the schedule this build ships
-	// with until Phase 5's configurable SlotSchedule lands (matches
-	// cmd/whymiss/timeline.go's own default).
+	// domain.MainnetPreEPBS() when zero. Operators can override the schedule
+	// through the strict config file or environment variables.
 	Schedule domain.SlotSchedule
 
+	// RCAConfig contains the documented cause thresholds.
+	RCAConfig rca.Config
+
 	Logger *slog.Logger
+}
+
+// Validate reports configuration that would make Watch unsafe or panic. Zero is
+// accepted only for sampling/retention intervals whose documented meaning is
+// "disabled"; an enabled source always requires a positive interval (I-15).
+func (c WatchConfig) Validate() error {
+	const (
+		minRequestInterval = 100 * time.Millisecond
+		maxRequestInterval = 2 * time.Second
+		minHostInterval    = 5 * time.Second
+		maxHostInterval    = time.Minute
+		minPeerInterval    = 5 * time.Second
+		maxPeerInterval    = time.Minute
+		minClockInterval   = 10 * time.Second
+		maxClockInterval   = time.Minute
+		minRetentionAge    = 24 * time.Hour
+		maxRetentionAge    = 90 * 24 * time.Hour
+		minRetentionBytes  = 100 << 20
+		maxRetentionBytes  = 10 << 30
+		minRetentionPeriod = 5 * time.Minute
+		maxRetentionPeriod = 24 * time.Hour
+	)
+	if c.BeaconAPI == "" {
+		return fmt.Errorf("beacon API is required")
+	}
+	if err := validateHTTPEndpoint("beacon API", c.BeaconAPI); err != nil {
+		return err
+	}
+	if c.DBPath == "" {
+		return fmt.Errorf("database path is required")
+	}
+	if c.MinRequestInterval < minRequestInterval || c.MinRequestInterval > maxRequestInterval {
+		return fmt.Errorf("minimum request interval must be between %s and %s, got %s", minRequestInterval, maxRequestInterval, c.MinRequestInterval)
+	}
+	if c.HostSampleInterval != 0 && (c.HostSampleInterval < minHostInterval || c.HostSampleInterval > maxHostInterval) {
+		return fmt.Errorf("host sample interval must be zero or between %s and %s, got %s", minHostInterval, maxHostInterval, c.HostSampleInterval)
+	}
+	if c.CLMetricsAPI != "" && (c.PeerSampleInterval < minPeerInterval || c.PeerSampleInterval > maxPeerInterval) {
+		return fmt.Errorf("peer sample interval must be between %s and %s when CL metrics are enabled, got %s", minPeerInterval, maxPeerInterval, c.PeerSampleInterval)
+	}
+	if c.CLMetricsAPI != "" {
+		if err := validateHTTPEndpoint("CL metrics API", c.CLMetricsAPI); err != nil {
+			return err
+		}
+	}
+	if (c.BaselineBeaconAPI == "") != (c.BaselineMetricsAPI == "") {
+		return fmt.Errorf("baseline beacon API and baseline metrics API must be set together")
+	}
+	if c.BaselineBeaconAPI != "" {
+		if err := validateHTTPEndpoint("baseline beacon API", c.BaselineBeaconAPI); err != nil {
+			return err
+		}
+		if err := validateHTTPEndpoint("baseline metrics API", c.BaselineMetricsAPI); err != nil {
+			return err
+		}
+		// A baseline that is just this node again proves nothing: it would
+		// report local lateness as network-wide lateness and exonerate a real
+		// local fault.
+		if sameHTTPEndpoint(c.BaselineBeaconAPI, c.BeaconAPI) {
+			return fmt.Errorf("baseline beacon API must be a different node than the watched beacon API")
+		}
+	}
+	if len(c.NTPServers) > 0 && (c.ClockSampleInterval < minClockInterval || c.ClockSampleInterval > maxClockInterval) {
+		return fmt.Errorf("clock sample interval must be between %s and %s when NTP is enabled, got %s", minClockInterval, maxClockInterval, c.ClockSampleInterval)
+	}
+	if c.RetentionInterval > 0 {
+		if c.RetentionInterval < minRetentionPeriod || c.RetentionInterval > maxRetentionPeriod {
+			return fmt.Errorf("retention interval must be zero or between %s and %s, got %s", minRetentionPeriod, maxRetentionPeriod, c.RetentionInterval)
+		}
+		if c.RetentionMaxAge < minRetentionAge || c.RetentionMaxAge > maxRetentionAge {
+			return fmt.Errorf("retention max age must be between %s and %s, got %s", minRetentionAge, maxRetentionAge, c.RetentionMaxAge)
+		}
+		if c.RetentionMaxBytes < minRetentionBytes || c.RetentionMaxBytes > maxRetentionBytes {
+			return fmt.Errorf("retention max bytes must be between %d and %d, got %d", minRetentionBytes, maxRetentionBytes, c.RetentionMaxBytes)
+		}
+	} else if c.RetentionInterval < 0 {
+		return fmt.Errorf("retention interval cannot be negative, got %s", c.RetentionInterval)
+	}
+	schedule := c.Schedule
+	if schedule == (domain.SlotSchedule{}) {
+		schedule = domain.MainnetPreEPBS()
+	}
+	if err := schedule.Validate(); err != nil {
+		return fmt.Errorf("schedule: %w", err)
+	}
+	rcaConfig := c.RCAConfig
+	if rcaConfig == (rca.Config{}) {
+		rcaConfig = rca.DefaultConfig()
+	}
+	if err := rcaConfig.Validate(); err != nil {
+		return fmt.Errorf("RCA config: %w", err)
+	}
+	if len(c.ValidatorIndices) > maxTrackedValidators {
+		return fmt.Errorf("validator index count must not exceed %d, got %d", maxTrackedValidators, len(c.ValidatorIndices))
+	}
+	seenValidators := make(map[domain.ValidatorIndex]struct{}, len(c.ValidatorIndices))
+	for _, index := range c.ValidatorIndices {
+		if _, exists := seenValidators[index]; exists {
+			return fmt.Errorf("validator index %d is configured more than once", index)
+		}
+		seenValidators[index] = struct{}{}
+	}
+	return nil
+}
+
+func validateHTTPEndpoint(name, raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%s is invalid: %w", name, err)
+	}
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("%s must be an absolute http or https URL", name)
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("%s must not contain embedded credentials", name)
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("%s base URL must not contain a query or fragment", name)
+	}
+	return nil
+}
+
+func sameHTTPEndpoint(left, right string) bool {
+	canonical := func(raw string) string {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return raw
+		}
+		port := parsed.Port()
+		if port == "" {
+			switch strings.ToLower(parsed.Scheme) {
+			case "http":
+				port = "80"
+			case "https":
+				port = "443"
+			}
+		}
+		path := strings.TrimRight(parsed.EscapedPath(), "/")
+		return strings.ToLower(parsed.Scheme) + "://" + strings.ToLower(parsed.Hostname()) + ":" + port + path
+	}
+	return canonical(left) == canonical(right)
+}
+
+func validateBaselineGenesis(watched, baseline beaconapi.GenesisInfo) error {
+	if !baseline.GenesisTime.Equal(watched.GenesisTime) || baseline.SecondsPerSlot != watched.SecondsPerSlot {
+		return fmt.Errorf("baseline beacon node is on a different network: genesis_time=%s seconds_per_slot=%s; watched genesis_time=%s seconds_per_slot=%s",
+			baseline.GenesisTime, baseline.SecondsPerSlot, watched.GenesisTime, watched.SecondsPerSlot)
+	}
+	return nil
 }
 
 // Watch runs the collector daemon until ctx is done: it streams the beacon
@@ -81,28 +262,35 @@ type WatchConfig struct {
 // attester duties, polls their outcome, runs every completed duty through
 // rca.Analyze (via Explain), and records the result into a Prometheus
 // exporter — see duty_tracking.go and internal/exporter.
-//
-// The observation-collector half is task 2.7's minimal real daemon — it
-// proves the composition (source adapters -> store) runs end to end
-// against a live node. Per-duty tracking (polling a specific validator's
-// block_seen/attestation_published/attestation_included) landed later,
-// task 4.1, once there was a config surface (--validator-index, plain
-// cobra flags rather than the koanf-backed config file BUILD_PROMPT §3
-// eventually assigns this to) and a consumer for the result (the
-// exporter) to justify it; see CHANGELOG.md.
-func Watch(ctx context.Context, cfg WatchConfig) error {
+func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("validate watch config: %w", err)
+	}
+
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ctx = runCtx
+	rcaConfig := cfg.RCAConfig
+	if rcaConfig == (rca.Config{}) {
+		rcaConfig = rca.DefaultConfig()
 	}
 
 	st, err := store.Open(ctx, cfg.DBPath)
 	if err != nil {
 		return fmt.Errorf("open store: %w", err)
 	}
-	defer st.Close() //nolint:errcheck // best-effort on shutdown; ctx cancellation already determined the exit path
+	defer func() {
+		if err := st.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close store: %w", err))
+		}
+	}()
 
 	client := beaconapi.NewClient(cfg.BeaconAPI, cfg.MinRequestInterval)
+	metricsSampler := source.NewMetricsSampler()
 	genesis, err := client.FetchGenesis(ctx)
 	if err != nil {
 		return fmt.Errorf("fetch genesis: %w", err)
@@ -112,23 +300,94 @@ func Watch(ctx context.Context, cfg WatchConfig) error {
 	events := client.Stream(ctx, func(streamErr error) {
 		logger.Warn("event stream error, reconnecting", "error", streamErr)
 	})
+	var background sync.WaitGroup
+	fatalErrors := make(chan error, 1)
+	start := func(fn func()) {
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			fn()
+		}()
+	}
+	defer func() {
+		cancel()
+		for range events {
+		}
+		background.Wait()
+	}()
+
+	var clk *clock.Tracker
+	var clockMaxAge time.Duration
+	if len(cfg.NTPServers) > 0 {
+		sampler, err := clock.New(clock.Config{
+			Servers: cfg.NTPServers, Timeout: 5 * time.Second, MaxAttempts: 3,
+		})
+		if err != nil {
+			return fmt.Errorf("configure clock sampler: %w", err)
+		}
+		clk, err = clock.NewTracker(sampler)
+		if err != nil {
+			return fmt.Errorf("configure clock tracker: %w", err)
+		}
+		clockMaxAge = rcaConfig.ClockSampleMaxAge
+		start(func() { runClockSampler(ctx, clk, cfg.ClockSampleInterval, logger) })
+	} else {
+		logger.Warn("no NTP server configured; timing attribution will report insufficient data (I-9)")
+	}
 
 	if cfg.RetentionInterval > 0 {
-		go runRetention(ctx, st, cfg, logger)
+		start(func() { runRetention(ctx, st, cfg, logger) })
 	}
 	if cfg.HostSampleInterval > 0 {
-		go runHostSampling(ctx, st, cfg.HostSampleInterval, logger)
+		start(func() { runHostSampling(ctx, st, cfg.HostSampleInterval, clk, clockMaxAge, logger) })
 	}
+	var timingJobs chan domain.Observation
 	if cfg.CLMetricsAPI != "" {
 		versionString, err := client.FetchNodeVersion(ctx)
 		if err != nil {
 			return fmt.Errorf("fetch node version: %w", err)
 		}
 		consensusClient := source.DetectConsensusClient(versionString)
+		if consensusClient == source.ConsensusUnknown {
+			return fmt.Errorf("CL metrics collection is not supported for consensus client version %q", versionString)
+		}
 		logger.Info("detected consensus client", "version", versionString, "client", consensusClient)
-		go runPeerSampling(ctx, st, consensusClient, cfg.CLMetricsAPI, cfg.PeerSampleInterval, logger)
+		start(func() {
+			runPeerSampling(ctx, st, metricsSampler, consensusClient, cfg.CLMetricsAPI, cfg.PeerSampleInterval, clk, clockMaxAge, logger)
+		})
+		// One pending head bounds memory if metrics scraping stalls. Dropped
+		// timing work degrades to unknown rather than delaying collection.
+		timingJobs = make(chan domain.Observation, 1)
+		start(func() {
+			runBlockTiming(ctx, st, metricsSampler, timingJobs, consensusClient, cfg.CLMetricsAPI, genesis, clk, clockMaxAge, logger)
+		})
 	}
-	go runSlotClock(ctx, st, genesis, logger)
+
+	var baselineJobs chan domain.Observation
+	if cfg.BaselineBeaconAPI != "" {
+		baselineClient := beaconapi.NewClient(cfg.BaselineBeaconAPI, cfg.MinRequestInterval)
+		baselineGenesis, err := baselineClient.FetchGenesis(ctx)
+		if err != nil {
+			return fmt.Errorf("fetch baseline genesis: %w", err)
+		}
+		if err := validateBaselineGenesis(genesis, baselineGenesis); err != nil {
+			return err
+		}
+		versionString, err := baselineClient.FetchNodeVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("fetch baseline node version: %w", err)
+		}
+		baselineConsensus := source.DetectConsensusClient(versionString)
+		if baselineConsensus == source.ConsensusUnknown {
+			return fmt.Errorf("network baseline is not supported for consensus client version %q", versionString)
+		}
+		logger.Info("detected baseline consensus client", "version", versionString, "client", baselineConsensus)
+		baselineJobs = make(chan domain.Observation, 1)
+		start(func() {
+			runNetworkBaseline(ctx, st, metricsSampler, baselineJobs, baselineConsensus, cfg.BaselineMetricsAPI, clk, clockMaxAge, logger)
+		})
+	}
+	start(func() { runSlotClock(ctx, st, genesis, clk, clockMaxAge, logger) })
 
 	if len(cfg.ValidatorIndices) > 0 {
 		schedule := cfg.Schedule
@@ -136,31 +395,49 @@ func Watch(ctx context.Context, cfg WatchConfig) error {
 			schedule = domain.MainnetPreEPBS()
 		}
 		exp := exporter.New()
-		go runDutyTracking(ctx, st, client, cfg.ValidatorIndices, cfg.DBPath, schedule, exp, genesis, logger)
+		start(func() {
+			runDutyTracking(ctx, st, client, cfg.ValidatorIndices, cfg.DBPath, schedule, rcaConfig, exp, genesis, timingJobs, clk, clockMaxAge, logger)
+		})
 
 		if cfg.MetricsAddr != "" {
+			var listenConfig net.ListenConfig
+			listener, err := listenConfig.Listen(ctx, "tcp", cfg.MetricsAddr)
+			if err != nil {
+				return fmt.Errorf("listen for metrics on %s: %w", cfg.MetricsAddr, err)
+			}
+			listener, err = newBoundedListener(listener, maxMetricsConnections)
+			if err != nil {
+				return fmt.Errorf("bound metrics listener: %w", err)
+			}
 			mux := http.NewServeMux()
 			mux.Handle("/metrics", exp.Handler())
-			srv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-			//nolint:gosec // G118: context.Background() below is deliberate, see comment there — ctx is already cancelled by the time this goroutine unblocks
-			go func() {
+			srv := &http.Server{
+				Addr: cfg.MetricsAddr, Handler: mux,
+				ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
+				WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second,
+				MaxHeaderBytes: 16 << 10,
+			}
+			start(func() {
 				<-ctx.Done()
-				// context.Background() is deliberate, not an oversight: ctx
-				// is already cancelled at this point (that's what unblocked
-				// this goroutine), so it cannot also bound Shutdown's own
-				// timeout — a cancelled context makes Shutdown return
-				// immediately without waiting for in-flight requests, the
-				// opposite of "graceful."
-				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				// Preserve request-scoped values but remove the cancellation
+				// that triggered shutdown, then apply a fresh graceful deadline.
+				shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 				defer cancel()
-				_ = srv.Shutdown(shutdownCtx) //nolint:errcheck,contextcheck // best-effort on shutdown, matching st.Close() above; contextcheck's "non-inherited context" warning is the same false positive gosec's G118 flags above
-			}()
-			go func() {
-				logger.Info("serving metrics", "addr", cfg.MetricsAddr)
-				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					logger.Error("metrics server", "error", err)
+				if err := srv.Shutdown(shutdownCtx); err != nil {
+					logger.Error("shut down metrics server", "error", err)
 				}
-			}()
+			})
+			start(func() {
+				logger.Info("serving metrics", "addr", cfg.MetricsAddr)
+				if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					serveErr := fmt.Errorf("serve metrics on %s: %w", cfg.MetricsAddr, err)
+					select {
+					case fatalErrors <- serveErr:
+					default:
+						logger.Error("metrics server", "error", serveErr)
+					}
+				}
+			})
 		}
 	}
 
@@ -168,12 +445,32 @@ func Watch(ctx context.Context, cfg WatchConfig) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case err := <-fatalErrors:
+			return err
 		case obs, ok := <-events:
 			if !ok {
-				return nil
+				if ctx.Err() != nil {
+					return nil
+				}
+				return fmt.Errorf("beacon event stream stopped unexpectedly")
 			}
-			if err := st.WriteObservation(ctx, obs); err != nil {
+			trusted := stampClock(clk, clockMaxAge, obs)
+			if err := st.WriteObservation(ctx, trusted); err != nil {
 				logger.Error("write observation", "error", err, "kind", obs.Kind, "slot", obs.Slot)
+			}
+			if timingJobs != nil && obs.Kind == domain.ObsHeadUpdated {
+				select {
+				case timingJobs <- trusted:
+				default:
+					logger.Warn("drop block timing sample; previous scrape still pending", "slot", obs.Slot)
+				}
+			}
+			if baselineJobs != nil && obs.Kind == domain.ObsHeadUpdated {
+				select {
+				case baselineJobs <- trusted:
+				default:
+					logger.Warn("drop network baseline sample; previous scrape still pending", "slot", obs.Slot)
+				}
 			}
 		}
 	}
@@ -191,7 +488,7 @@ func Watch(ctx context.Context, cfg WatchConfig) error {
 // slot watch had actually collected. slot_start is Source: SourceDerived,
 // not SourceBeaconAPI, because it is computed from genesis + the slot
 // schedule, the same as tools/faultinjector's own slot_start observations.
-func runSlotClock(ctx context.Context, st *store.Store, genesis beaconapi.GenesisInfo, logger *slog.Logger) {
+func runSlotClock(ctx context.Context, st *store.Store, genesis beaconapi.GenesisInfo, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	for {
 		now := time.Now().UTC()
 		untilGenesis := genesis.GenesisTime.Sub(now)
@@ -212,7 +509,7 @@ func runSlotClock(ctx context.Context, st *store.Store, genesis beaconapi.Genesi
 		})
 		if err != nil {
 			logger.Error("build slot_start observation", "error", err, "slot", currentSlot)
-		} else if err := st.WriteObservation(ctx, obs); err != nil {
+		} else if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
 			logger.Error("write slot_start", "error", err, "slot", currentSlot)
 		}
 
@@ -226,12 +523,12 @@ func runSlotClock(ctx context.Context, st *store.Store, genesis beaconapi.Genesi
 }
 
 // runPeerSampling periodically scrapes consensusClient's peer count via
-// source.SamplePeerCount — the dispatcher, not a client-named function —
+// source.MetricsSampler.SamplePeerCount — the dispatcher, not a client-named function —
 // so this file itself never needs to know which client it's talking to.
 // See internal/source/peers.go's doc comment: adding a third client means
 // a new case there and a new function in internal/source/promscrape,
 // nothing here.
-func runPeerSampling(ctx context.Context, st *store.Store, consensusClient source.ConsensusClient, metricsURL string, interval time.Duration, logger *slog.Logger) {
+func runPeerSampling(ctx context.Context, st *store.Store, sampler *source.MetricsSampler, consensusClient source.ConsensusClient, metricsURL string, interval time.Duration, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -239,12 +536,12 @@ func runPeerSampling(ctx context.Context, st *store.Store, consensusClient sourc
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sample, err := source.SamplePeerCount(ctx, consensusClient, metricsURL)
+			sample, err := sampler.SamplePeerCount(ctx, consensusClient, metricsURL)
 			if err != nil {
 				logger.Debug("sample peer count unavailable", "error", err)
 				continue
 			}
-			if err := st.WriteSample(ctx, sample); err != nil {
+			if err := st.WriteSample(ctx, stampSampleClock(clk, clockMaxAge, sample)); err != nil {
 				logger.Error("write sample", "error", err)
 			}
 		}
@@ -252,6 +549,9 @@ func runPeerSampling(ctx context.Context, st *store.Store, consensusClient sourc
 }
 
 func runRetention(ctx context.Context, st *store.Store, cfg WatchConfig, logger *slog.Logger) {
+	if err := st.Prune(ctx, cfg.RetentionMaxAge, cfg.RetentionMaxBytes); err != nil && ctx.Err() == nil {
+		logger.Error("initial prune", "error", err)
+	}
 	ticker := time.NewTicker(cfg.RetentionInterval)
 	defer ticker.Stop()
 	for {
@@ -266,7 +566,7 @@ func runRetention(ctx context.Context, st *store.Store, cfg WatchConfig, logger 
 	}
 }
 
-func runHostSampling(ctx context.Context, st *store.Store, interval time.Duration, logger *slog.Logger) {
+func runHostSampling(ctx context.Context, st *store.Store, interval time.Duration, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	var cpu hostmetrics.CPUSteal
@@ -277,18 +577,18 @@ func runHostSampling(ctx context.Context, st *store.Store, interval time.Duratio
 		case <-ticker.C:
 			if sample, err := hostmetrics.SampleIOPressure(); err != nil {
 				logger.Debug("sample io pressure unavailable", "error", err)
-			} else if err := st.WriteSample(ctx, sample); err != nil {
+			} else if err := st.WriteSample(ctx, stampSampleClock(clk, clockMaxAge, sample)); err != nil {
 				logger.Error("write sample", "error", err)
 			}
 			if sample, err := hostmetrics.SampleMemoryPressure(); err != nil {
 				logger.Debug("sample memory pressure unavailable", "error", err)
-			} else if err := st.WriteSample(ctx, sample); err != nil {
+			} else if err := st.WriteSample(ctx, stampSampleClock(clk, clockMaxAge, sample)); err != nil {
 				logger.Error("write sample", "error", err)
 			}
 			if sample, ok, err := cpu.Sample(); err != nil {
 				logger.Debug("sample cpu steal unavailable", "error", err)
 			} else if ok {
-				if err := st.WriteSample(ctx, sample); err != nil {
+				if err := st.WriteSample(ctx, stampSampleClock(clk, clockMaxAge, sample)); err != nil {
 					logger.Error("write sample", "error", err)
 				}
 			}
