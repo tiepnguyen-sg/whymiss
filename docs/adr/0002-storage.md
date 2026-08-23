@@ -34,8 +34,11 @@ age and total byte count.**
 
 Specifics that are part of the decision, not implementation detail:
 
-- WAL journal mode, `synchronous=NORMAL`. Durability of the last few observations is
-  worth less than not competing with the node for disk I/O (I-5).
+- WAL journal mode, `synchronous=NORMAL`, and incremental auto-vacuum for newly
+  created databases. Incremental page reclamation avoids the temporary second
+  full-size database and long rewrite imposed by routine full `VACUUM`. Durability
+  of the last few observations is worth less than not competing with the node for
+  disk I/O (I-5).
 - Migrations are numbered, forward-only, and applied at startup inside a
   transaction. The schema version lives in the database.
 - Retention runs on a timer and deletes oldest-first until **both** the age limit and
@@ -69,8 +72,10 @@ Specifics that are part of the decision, not implementation detail:
   exists. **Removal path:** the store is reached only through consumer-defined
   interfaces, so replacing it means writing one new implementation of those
   interfaces and a migration tool. No other package changes.
-- Concurrent writers need care. Resolved by design: exactly one goroutine owns the
-  write path, readers use a separate connection.
+- Concurrent writers need care. `Store` serializes observation writes, sample
+  writes, and retention; readers may continue through SQLite's WAL connections.
+- Databases created by pre-release builds without incremental auto-vacuum use a
+  compatibility full-`VACUUM` path until recreated; the runbook documents this.
 
 ## Alternatives considered
 

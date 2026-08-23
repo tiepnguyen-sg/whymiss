@@ -1,44 +1,132 @@
 # Configuration
 
-whymiss is configured entirely through command-line flags for now — no
-config file yet. `koanf` (BUILD_PROMPT.md §3) lands with the CLI polish
-phase (Phase 4), once a config file's multi-source precedence (file, env,
-flag) is actually needed; until then, every flag documented here has a
-safe built-in default and a plain string/duration/int value is enough.
+Configuration precedence is deterministic:
 
-This file exists to satisfy BUILD_PROMPT.md §10.3's Phase 2 DoD: every
-option, its default, and its safe range. See [architecture.md](architecture.md)
-for how these pieces fit together.
+1. built-in defaults;
+2. one YAML file selected with `--config`;
+3. `WHYMISS_*` environment variables;
+4. explicitly supplied CLI flags.
 
-## Global flags
+Unknown YAML keys, duplicate keys, multiple YAML documents, malformed values, and
+unsafe RCA thresholds fail startup. Empty optional values disable their source; they
+never trigger implicit network access.
 
-Accepted by every subcommand (`whymiss --beacon-api ... watch`, not just
-`watch --beacon-api ...`).
+## Complete YAML example
 
-| Flag | Default | Safe range | Notes |
-|---|---|---|---|
-| `--beacon-api` | *(none — required by `watch`)* | Any reachable beacon node base URL, e.g. `http://127.0.0.1:5052` | Standard Beacon API only (I-1: read-only). No auth is sent; if your node requires it, put it in the URL or run whymiss behind the same trust boundary as the node. |
-| `--db` | `whymiss.db` | Any writable path on a filesystem with room for the retention budget below | Single SQLite file (ADR-0002, ADR-0007). Back it up with a plain `cp` while whymiss is stopped, or `sqlite3 whymiss.db ".backup ..."` while running. |
+```yaml
+beacon_api: http://127.0.0.1:5052
+db: /var/lib/whymiss/whymiss.db
 
-## `whymiss watch`
+watch:
+  min_request_interval: 200ms
+  host_sample_interval: 10s
+  cl_metrics_api: http://127.0.0.1:5054/metrics
+  peer_sample_interval: 15s
+  baseline_beacon_api: ""
+  baseline_metrics_api: ""
+  ntp_servers: [pool.ntp.org]
+  clock_sample_interval: 1m
+  retention_max_age: 336h
+  retention_max_bytes: 1073741824
+  retention_interval: 1h
+  validator_indices: [24, 40]
+  metrics_addr: 127.0.0.1:9101
 
-The collector daemon. Runs until `SIGINT`/`SIGTERM`.
+schedule:
+  seconds_per_slot: 12s
+  attestation_deadline: 4s
+  aggregation_deadline: 8s
 
-| Flag | Default | Safe range | Notes |
-|---|---|---|---|
-| `--min-request-interval` | `200ms` | `100ms`–`2s` | Floor between successive beacon API requests (I-5). Below ~100ms risks competing with the node's own duties for CPU/IO on a Raspberry Pi 5; above a couple of seconds, per-validator duty polling (below) would miss its own deadlines. |
-| `--host-sample-interval` | `10s` | `0` (disabled) or `5s`–`60s` | How often disk/memory/CPU pressure is sampled (`internal/source/hostmetrics`). `0` disables host sampling entirely — meaningful when whymiss doesn't run on the staking box itself, or on a platform without `/proc` (I-3: this degrades cleanly, not a crash). Below 5s adds sampling overhead for little extra signal on a metric that itself averages over 10s (PSI's own `avg10`). |
-| `--retention-max-age` | `336h` (14 days) | `24h`–`2160h` (90 days) | `store.Prune`'s age limit (I-12). Shorter than a day makes post-mortems on a miss discovered the next morning impossible; longer than ~90 days is rarely useful once the byte cap below has already forced pruning first. |
-| `--retention-max-bytes` | `1073741824` (1 GiB) | `104857600` (100 MiB) – `10737418240` (10 GiB) | `store.Prune`'s byte limit (I-12) — the harder floor on a Raspberry Pi 5's typical SD card/SSD budget. A degraded node emits far more observations per hour than a healthy one, so this is what actually bounds disk use during the incident an operator most wants recorded, not the age limit above. |
-| `--retention-interval` | `1h` | `0` (disabled) or `5m`–`24h` | How often retention runs. `0` disables pruning entirely — do not run this in production; it exists for short-lived debugging sessions where the store is thrown away afterward anyway. |
-| `--validator-index` | *(none)* | Any valid validator index; repeatable | Tracks this validator's attester duties: fetches each one, polls its outcome, runs it through the RCA engine, and records the verdict for `--metrics-addr` to export. Empty (the default) disables duty tracking and the exporter entirely — `watch` still runs as a pure observation collector, exactly as before task 4.1. |
-| `--metrics-addr` | *(none)* | An address `net.Listen` accepts, e.g. `:9101` or `127.0.0.1:9101` | Serves Prometheus metrics (`whymiss_duty_verdicts_total`, see ADR-0009) at `<addr>/metrics`. Ignored unless `--validator-index` is set at least once — there's nothing to export otherwise. Bind to `127.0.0.1` unless your Prometheus scraper is on a different host and you've otherwise secured the port (I-4: no egress by default, but this is an inbound listener the operator opts into). |
+thresholds:
+  dominance: 0.5
+  clock_offset_max: 100ms
+  clock_sample_max_age: 2m
+  network_deviation: 750ms
+  engine_spike_multiplier: 3.0
+  peer_count_min: 40
+  iowait_pct: 20.0
+  cpu_steal_pct: 5.0
+  psi_mem_avg10: 10.0
+```
 
-## `whymiss timeline <slot>`
+Run the same file through preflight and the daemon:
 
-Prints the raw recorded facts for one slot — no interpretation (Phase 3's
-RCA engine is what interprets).
+```sh
+whymiss --config /etc/whymiss/config.yaml doctor
+whymiss --config /etc/whymiss/config.yaml watch
+```
 
-| Flag | Default | Safe range | Notes |
-|---|---|---|---|
-| `--format` | `json` | `json` (only value supported today) | A human-readable table format is Phase 4 scope, alongside `whymiss <slot>`'s full report. |
+## Global options
+
+| YAML / flag | Environment | Default | Constraint |
+|---|---|---:|---|
+| `beacon_api` / `--beacon-api` | `WHYMISS_BEACON_API` | empty | Required by `watch` and `doctor`; absolute HTTP(S) URL without credentials, query, or fragment. |
+| `db` / `--db` | `WHYMISS_DB` | `whymiss.db` | Writable file path. Physical byte accounting includes SQLite WAL and SHM sidecars. |
+| `--config` | — | empty | One strict YAML document. |
+
+Authenticated URLs are rejected so credentials cannot leak into logs. Put whymiss
+inside the node's trust boundary or use a local reverse proxy that injects auth.
+
+## Watch options
+
+| YAML key / flag | Environment | Default | Safe range |
+|---|---|---:|---|
+| `watch.min_request_interval` / `--min-request-interval` | `WHYMISS_MIN_REQUEST_INTERVAL` | `200ms` | `100ms`–`2s` |
+| `watch.host_sample_interval` / `--host-sample-interval` | `WHYMISS_HOST_SAMPLE_INTERVAL` | `10s` | `0` or `5s`–`60s` |
+| `watch.cl_metrics_api` / `--cl-metrics-api` | `WHYMISS_CL_METRICS_API` | empty | Absolute HTTP(S) URL; empty disables peer sampling |
+| `watch.peer_sample_interval` / `--peer-sample-interval` | `WHYMISS_PEER_SAMPLE_INTERVAL` | `15s` | `5s`–`60s` when enabled |
+| `watch.baseline_beacon_api` / `--baseline-beacon-api` | `WHYMISS_BASELINE_BEACON_API` | empty | Absolute HTTP(S) URL of a **different** beacon node; empty disables the network baseline |
+| `watch.baseline_metrics_api` / `--baseline-metrics-api` | `WHYMISS_BASELINE_METRICS_API` | empty | That same node's Prometheus endpoint; required together with `baseline_beacon_api` |
+| `watch.ntp_servers` / `--ntp-server` | `WHYMISS_NTP_SERVERS` | empty | Non-empty hostnames/IPs; YAML list, comma-separated env, repeatable flag |
+| `watch.clock_sample_interval` / `--clock-sample-interval` | `WHYMISS_CLOCK_SAMPLE_INTERVAL` | `1m` | `10s`–`1m` when NTP is enabled |
+| `watch.retention_max_age` / `--retention-max-age` | `WHYMISS_RETENTION_MAX_AGE` | `336h` | `24h`–`2160h` when retention is enabled |
+| `watch.retention_max_bytes` / `--retention-max-bytes` | `WHYMISS_RETENTION_MAX_BYTES` | `1073741824` | 100 MiB–10 GiB when retention is enabled |
+| `watch.retention_interval` / `--retention-interval` | `WHYMISS_RETENTION_INTERVAL` | `1h` | `0` or `5m`–`24h`; `0` disables pruning and is unsafe for long-running production |
+| `watch.validator_indices` / `--validator-index` | `WHYMISS_VALIDATOR_INDICES` | empty | At most 64 unique indices; YAML list, comma-separated env, repeatable flag |
+| `watch.metrics_addr` / `--metrics-addr` | `WHYMISS_METRICS_ADDR` | empty | `net.Listen` address; empty disables metrics; prefer loopback |
+
+No NTP server means no clock egress and no timing attribution: affected verdicts are
+`unknown.insufficient_data`. Host sampling degrades cleanly when `/proc` metrics are
+unavailable. The CL metrics endpoint is optional and only corroborates peer health.
+
+The baseline pair must describe an independent node on the same chain: startup
+rejects equivalent watched/baseline Beacon API URLs and mismatched genesis time or
+slot duration. Its Prometheus response must contain both the arrival gauge and a
+matching `beacon_head_slot`; stale or cross-slot latest-value gauges are discarded.
+
+## Slot schedule
+
+These values are data, not hard-coded RCA constants. Change them only to match the
+active consensus specification.
+
+| YAML key | Environment | Default | Constraint |
+|---|---|---:|---|
+| `schedule.seconds_per_slot` | `WHYMISS_SECONDS_PER_SLOT` | `12s` | Positive |
+| `schedule.attestation_deadline` | `WHYMISS_ATTESTATION_DEADLINE` | `4s` | Positive and not after aggregation deadline |
+| `schedule.aggregation_deadline` | `WHYMISS_AGGREGATION_DEADLINE` | `8s` | At or before slot end |
+
+## RCA thresholds
+
+| YAML key | Environment | Default | Accepted range |
+|---|---|---:|---|
+| `thresholds.dominance` | `WHYMISS_DOMINANCE` | `0.5` | `0.5`–`0.9` |
+| `thresholds.clock_offset_max` | `WHYMISS_CLOCK_OFFSET_MAX` | `100ms` | `10ms`–`1s` |
+| `thresholds.clock_sample_max_age` | `WHYMISS_CLOCK_SAMPLE_MAX_AGE` | `2m` | `30s`–`10m` |
+| `thresholds.network_deviation` | `WHYMISS_NETWORK_DEVIATION` | `750ms` | `50ms`–`5s` |
+| `thresholds.engine_spike_multiplier` | `WHYMISS_ENGINE_SPIKE_MULTIPLIER` | `3.0` | `1.1`–`20` |
+| `thresholds.peer_count_min` | `WHYMISS_PEER_COUNT_MIN` | `40` | `1`–`500` |
+| `thresholds.iowait_pct` | `WHYMISS_IOWAIT_PCT` | `20.0` | `0`–`100` |
+| `thresholds.cpu_steal_pct` | `WHYMISS_CPU_STEAL_PCT` | `5.0` | `0`–`100` |
+| `thresholds.psi_mem_avg10` | `WHYMISS_PSI_MEM_AVG10` | `10.0` | `0`–`100` |
+
+`thresholds.iowait_pct` is a compatibility name: whymiss compares it with Linux
+PSI I/O `some avg10`, not `/proc/stat` CPU iowait.
+
+`doctor` uses the configured request interval and clock-offset threshold, so its
+result matches the settings `watch` will enforce.
+
+## Other commands
+
+`whymiss <slot>` supports `--format markdown|json`. `whymiss timeline <slot>`
+supports `--format json`. Both use the configured database, slot schedule, and RCA
+thresholds; neither performs network access.

@@ -70,7 +70,9 @@ whymiss/
 │   │       ├── manifest.yaml      expected cause, confidence, description
 │   │       ├── observations.jsonl recorded raw observations
 │   │       └── README.md          what was broken and how
-│   └── e2e/                       against a Kurtosis devnet
+│   ├── e2e/                       against a Kurtosis devnet
+│   ├── freshinstall/              isolated Compose operator-path verification
+│   └── soak/                      bounded-resource Hoodi release soak
 │
 ├── tools/
 │   ├── faultinjector/             generates corpus scenarios reproducibly
@@ -124,24 +126,3 @@ application. Treat corpus scenarios with the same review rigour as production co
 **`docs/adr` is written before the code it justifies.** An ADR written afterwards is
 a rationalisation, not a decision record. When an agent proposes a dependency or an
 architectural change, the ADR is the first deliverable.
-
----
-
-## Initialise
-
-```bash
-git init
-go mod init github.com/<your-org>/whymiss
-
-# Replace the module-path placeholder in the bundled config
-grep -rl 'CHANGEME' . | xargs sed -i 's|CHANGEME|<your-org>|g'
-
-lefthook install
-golangci-lint config verify
-make help
-```
-
-Then start the first session with:
-
-> Read `docs/BUILD_PROMPT.md` and `docs/causes.md`. Sections 1–8 of BUILD_PROMPT
-> are LAW. We are executing Phase 1, task 1.1.

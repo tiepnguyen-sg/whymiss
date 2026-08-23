@@ -7,8 +7,8 @@ timestamped evidence.
 The one question the product answers: **"Was it me, or was it the network — and if it
 was me, which layer?"**
 
-Read-only against the beacon node. No validator keys. No egress beyond the beacon node
-(and, optionally, a host-metrics agent) you point it at. Runs unprivileged.
+Read-only against the beacon node. No validator keys. Network access is limited to
+the beacon/metrics/NTP endpoints you explicitly configure. Runs unprivileged.
 
 ## Quickstart
 
@@ -16,10 +16,19 @@ Read-only against the beacon node. No validator keys. No egress beyond the beaco
 non-root with read-only root filesystems):
 
 ```sh
-git clone <this-repo> && cd whymiss
-cp deploy/docker/.env.example deploy/docker/.env   # edit: real BEACON_API, VALIDATOR_INDICES, a Grafana password
-cd deploy/docker && docker compose up -d
+git clone https://github.com/tiepnguyen-sg/whymiss.git && cd whymiss
+cp deploy/docker/.env.example deploy/docker/.env   # set the exact image tag and every required value
+cd deploy/docker
+docker compose pull
+cosign verify \
+    --certificate-identity "https://github.com/tiepnguyen-sg/whymiss/.github/workflows/release.yml@refs/tags/v0.2.0" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    ghcr.io/tiepnguyen-sg/whymiss:v0.2.0
+docker compose up -d
 ```
+
+Set `WHYMISS_IMAGE=ghcr.io/tiepnguyen-sg/whymiss:v0.2.0` in `.env` for this
+release. The verified reference above must match it exactly.
 
 Open `http://127.0.0.1:3000` and log in as `admin` with the password you set
 (`GRAFANA_ADMIN_PASSWORD` — anonymous access is deliberately off). See
@@ -29,43 +38,62 @@ Open `http://127.0.0.1:3000` and log in as `admin` with the password you set
 
 ```sh
 make build
+./bin/whymiss --beacon-api http://127.0.0.1:5052 --db whymiss.db \
+    doctor --ntp-server pool.ntp.org
 ./bin/whymiss watch --beacon-api http://127.0.0.1:5052 --db whymiss.db \
-    --validator-index 24 --metrics-addr :9101 &
+    --validator-index 24 --ntp-server pool.ntp.org --metrics-addr :9101 &
 ./bin/whymiss 2001 --db whymiss.db          # once a duty at slot 2001 has completed
 ```
 
 **systemd**, for running the bare binary as a long-lived unprivileged service on the
 node itself, is in [`deploy/systemd/`](deploy/systemd/).
 
-**Prebuilt binary**, once a release is published (none yet — build from source
-above): download the `linux_amd64` or `linux_arm64` archive from the release's
-GitHub page, then verify it before running anything from it:
+**Prebuilt binary:** download the `linux_amd64` or `linux_arm64` archive from the
+release's GitHub page, then verify it before running anything from it:
 
 ```sh
 # 1. The checksum matches the archive you downloaded.
 sha256sum -c --ignore-missing checksums.txt
 
-# 2. checksums.txt itself is genuinely signed by this project's release workflow —
+# 2. Set this to the exact release tag you downloaded.
+RELEASE=v0.2.0
+
+# checksums.txt itself is genuinely signed by this project's release workflow —
 #    not a stored key, a keyless Sigstore identity bound to the exact GitHub Actions
 #    run that built it (docs/adr/0010-release-supply-chain.md).
 cosign verify-blob \
     --bundle checksums.txt.bundle \
-    --certificate-identity-regexp 'https://github.com/.+/whymiss/\.github/workflows/release\.yml@.+' \
+    --certificate-identity "https://github.com/tiepnguyen-sg/whymiss/.github/workflows/release.yml@refs/tags/${RELEASE}" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     checksums.txt
 
 # 3. (optional) inspect exactly what's inside the archive before running it.
 cat whymiss_*_linux_amd64.tar.gz.sbom.json | jq '.packages[].name'
+
+# 4. Verify that the archive was built from this repository at this exact tag.
+#    The generic generator names multi-artifact provenance multiple.intoto.jsonl.
+slsa-verifier verify-artifact whymiss_*_linux_amd64.tar.gz \
+    --provenance-path multiple.intoto.jsonl \
+    --source-uri github.com/tiepnguyen-sg/whymiss \
+    --source-tag "$RELEASE"
 ```
 
-SLSA provenance is not currently generated: this repository is private, and
-`slsa-framework/slsa-github-generator` refuses to run against a private repo by
-default because publishing provenance means publishing an entry — naming this repo
-— to Sigstore's public transparency log. A deliberate tradeoff, not an oversight;
-see `docs/adr/0010-release-supply-chain.md`. The cosign signature and SBOM above
-already cover "was this artifact tampered with" and "what's inside it" — provenance
-would add "which exact build produced it," which `.github/workflows/release.yml`
-re-enables if this repository ever goes public.
+The same release is published as a signed multi-arch OCI image. Use the exact tag,
+never an implicit floating version:
+
+```sh
+RELEASE=v0.2.0
+docker pull ghcr.io/tiepnguyen-sg/whymiss:${RELEASE}
+cosign verify \
+    --certificate-identity "https://github.com/tiepnguyen-sg/whymiss/.github/workflows/release.yml@refs/tags/${RELEASE}" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    ghcr.io/tiepnguyen-sg/whymiss:${RELEASE}
+```
+
+The release workflow also verifies these same commands against its published assets
+before taking the GitHub release out of draft. Cosign and SLSA use the public GitHub
+workflow identity and transparency logs; see
+[`docs/adr/0010-release-supply-chain.md`](docs/adr/0010-release-supply-chain.md).
 
 ## Usage
 
@@ -74,6 +102,7 @@ whymiss watch --db whymiss.db --beacon-api http://127.0.0.1:5052   # collector d
 whymiss <slot> --db whymiss.db                                     # explain a slot
 whymiss <slot> --db whymiss.db --format json                       # machine-readable
 whymiss timeline <slot> --db whymiss.db                            # raw facts, no interpretation
+whymiss doctor --beacon-api http://127.0.0.1:5052 --ntp-server pool.ntp.org
 ```
 
 ## Sample report
@@ -90,7 +119,7 @@ $ whymiss 2001 --db whymiss.db
 
 ## Evidence
 
-- [02:20:40.000Z] memory pressure (PSI avg10 29.24%) exceeded the 10.00% threshold, sustained across the collection window (local.host.memory_pressure: 29.24 vs 10 pct) — *hostmetrics*
+- [+10m0s] memory pressure (PSI some avg10 29.24%) exceeded the 10.00% threshold (local.host.memory_pressure: 29.24 vs 10 pct) — *hostmetrics*
 
 ## Remediation
 
@@ -98,10 +127,10 @@ $ whymiss 2001 --db whymiss.db
 2. never run a validator on a box that swaps
 
 ---
-Engine 0.1.0 · Taxonomy 1.0.0
+Engine 0.13.0 · Taxonomy 2.0.0
 ```
 
-This is real, unedited output — reproduced by replaying
+This illustrates the operator-facing output shape using the recorded
 [`test/corpus/host-memory-pressure`](test/corpus/host-memory-pressure) through the same
 `Explain` path the CLI calls. RCA accuracy against the current test corpus is tracked in
 [`docs/evaluation.md`](docs/evaluation.md), regenerated by `make eval`.
@@ -121,18 +150,34 @@ Read these before trusting whymiss on a live staking box.
   confident guess. If your failure mode isn't in
   [`docs/causes.md`](docs/causes.md) yet, expect `unknown`, not a plausible-looking
   wrong answer.
-- **Some causes need an optional collector.** Host-level causes (memory pressure, CPU
-  contention, disk I/O) need a host-metrics agent running alongside whymiss; without
-  one, those causes fall back to lower confidence or `unknown` rather than being
-  fabricated from beacon-node data alone.
+- **Host causes require local host access.** Memory pressure, CPU steal, and PSI I/O
+  pressure require whymiss to run on the affected Linux host with host sampling
+  enabled. Without those `/proc` samples, the causes fall back to lower confidence or
+  `unknown`; they are never fabricated from Beacon API data.
+- **EL sub-causes need client-specific evidence.** Host-wide PSI cannot identify the
+  execution client or storage device responsible, so this build reports a proven
+  Engine slowdown as `local.el_slow` at medium confidence without guessing a sub-cause.
+- **Timing attribution requires an explicitly configured NTP server.** Without
+  `--ntp-server`, observations are still collected but timing-based verdicts become
+  `unknown.insufficient_data`; whymiss never assumes the host clock is correct.
+- **Network-vs-local propagation requires an independent baseline node.** Configure
+  both `--baseline-beacon-api` and `--baseline-metrics-api`; without them, a late
+  block that cannot be localized becomes `unknown.insufficient_data`.
 - **No ePBS support yet.** The slot schedule defaults to `MainnetPreEPBS()`; ePBS
   readiness is Phase 5.
+
+## Non-goals
+
+- No signing, validator keys, fleet management, rewards calculation, or block explorer.
+- No custom alert engine: whymiss emits bounded Prometheus signals for existing tooling.
+- No machine learning or opaque scoring; every verdict maps to a documented rule.
 
 ## Building
 
 ```sh
 make build   # binary at bin/whymiss
-make ci      # lint, invariant checks, tests, vuln scan
+make ci      # lint, invariants, tests, vuln scan, corpus/evaluation gates
+make test.image  # build the Linux amd64/arm64 OCI image locally; does not publish
 ```
 
 See [`AGENTS.md`](AGENTS.md) for the full engineering contract and

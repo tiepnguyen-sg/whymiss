@@ -332,7 +332,7 @@ network.proposer_missed        No block was proposed for this slot.
 network.late_block             Block arrived late for the network as a whole.
 network.inclusion_failure      Attestation published on time but not included.
 
-local.p2p_degraded             Peer count or subnet subscription insufficient.
+local.p2p_degraded             Connected peer count insufficient.
 local.cl_slow                  Consensus client processing exceeded budget.
 local.el_slow                  Execution client responded slowly.
   ├─ local.el_slow.snapshot        EL generating state snapshots.
@@ -430,7 +430,7 @@ A repository that builds and lints cleanly, a frozen domain model, and a reprodu
 | 1.4 | `internal/clock`: NTP offset measurement, degradation behaviour per I-9 |
 | 1.5 | `tools/faultinjector`: declarative scenarios (`tc netem`, cgroup `io.max`, container pause, `libfaketime`, peer drop) against a Kurtosis devnet |
 | 1.6 | Corpus format: `manifest.yaml` schema, `observations.jsonl` format, validator command `make corpus.validate` |
-| 1.7 | Generate **≥20 labelled scenarios** covering at least 8 distinct causes. **Revised down to 11 scenarios / 6 causes** after real devnet work — see `CHANGELOG.md`'s "Phase 1 corpus: final state for this pass" entry for which causes were judged not achievable with this project's devnet and toolchain (`local.host.cpu_steal` needs real hypervisor contention a cgroup cannot produce; `network.inclusion_failure`, `network.late_block`, `local.el_slow`, and `local.host.disk_io` were each attempted multiple times against real fault severities and never produced clean evidence, most likely because this two-node devnet's per-slot workload is too light for a passive resource cap to gate). Revisiting this needs either active competing load as the fault mechanism or a devnet with real transaction load — not attempted in this pass |
+| 1.7 | Generate **≥20 labelled scenarios** covering at least 8 distinct causes. **Revised down to 9 scenarios / 6 causes** after real devnet work — see `CHANGELOG.md`'s Phase 1 corpus notes for which causes were judged not achievable with this project's devnet and toolchain (`local.host.cpu_steal` needs real hypervisor contention a cgroup cannot produce; `network.inclusion_failure`, `network.late_block`, `local.el_slow`, and `local.host.disk_io` were each attempted multiple times against real fault severities and never produced clean evidence, most likely because this two-node devnet's per-slot workload is too light for a passive resource cap to gate). Revisiting this needs either active competing load as the fault mechanism or a devnet with real transaction load — not attempted in this pass |
 | 1.8 | ADR-0001 language/runtime, ADR-0002 storage, ADR-0003 pure-engine architecture, ADR-0004 dependency policy, ADR-0005 cause taxonomy governance |
 
 ### 9.3 Definition of Done
@@ -438,7 +438,7 @@ A repository that builds and lints cleanly, a frozen domain model, and a reprodu
 - [x] `make ci` green on a clean checkout
 - [x] Binary cross-compiles to `linux/amd64` and `linux/arm64`
 - [x] `make corpus.generate SCENARIO=vc-frozen-lighthouse BEACON=cl-1-lighthouse-geth` reproduces the scenario end to end on a fresh machine (originally named `el-disk-stall` here; that scenario was removed from the corpus after real devnet runs showed cgroup `io.max` disk throttling has no measurable effect at any severity on this project's devnet workload — see `CHANGELOG.md`. The requirement is unchanged: any one committed scenario ID must reproduce end to end)
-- [x] `make corpus.validate` passes for all committed scenarios (11, not the original ≥20 target — see task 1.7's revision note)
+- [ ] `make corpus.validate` passes for all committed scenarios (9, not the original ≥20 target — format-v2 regeneration is the current release blocker)
 - [x] `internal/domain` imports nothing outside the standard library — enforced by a CI check
 - [x] Five ADRs merged (six: ADR-0001 through ADR-0006, the last for `gopkg.in/yaml.v3`)
 - [x] `docs/architecture.md` describes the pipeline with a diagram
@@ -463,7 +463,7 @@ A daemon that runs beside a node for days without being noticed, and can reconst
 |---|---|
 | 2.1 | `internal/source/beaconapi`: SSE event stream (`head`, `block`, `chain_reorg`, `attestation`) with reconnect, plus REST polling for duties and attestation inclusion |
 | 2.2 | `internal/source/promscrape`: scrape EL/CL/VC Prometheus endpoints; normalise Lighthouse and Prysm metric names into `domain.MetricSample` |
-| 2.3 | `internal/source/hostmetrics`: disk I/O wait, CPU steal, memory pressure, clock drift — degrade gracefully when unavailable (I-3) |
+| 2.3 | `internal/source/hostmetrics`: Linux PSI I/O pressure, CPU steal, memory pressure, clock drift — degrade gracefully when unavailable (I-3) |
 | 2.4 | `internal/source/registry.go`: client detection and adapter selection; the only client-aware file outside adapters (I-11) |
 | 2.5 | `internal/store`: SQLite schema, versioned migrations, rolling retention by **both** time and bytes (I-12) |
 | 2.6 | `internal/timeline`: assemble observations + samples into `domain.Timeline`; deterministic ordering |

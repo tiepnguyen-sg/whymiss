@@ -17,8 +17,10 @@ validated against. It reflects the target shape from
 flowchart LR
     subgraph node["Ethereum node (not ours)"]
         BA["Beacon API<br/>(SSE + REST)"]
-        PM["EL/CL/VC<br/>Prometheus"]
+        PM["CL<br/>Prometheus"]
+        BASE["Independent baseline<br/>Beacon API + metrics"]
         HM["Host<br/>(cgroup, /proc)"]
+        NTP["Configured<br/>NTP server"]
     end
 
     subgraph source["internal/source — client-aware adapters (I-11)"]
@@ -26,6 +28,7 @@ flowchart LR
         promscrape["promscrape"]
         hostmetrics["hostmetrics"]
         registry["registry.go<br/>(client detection)"]
+        clock["internal/clock<br/>SNTP sampling"]
     end
 
     subgraph core["Pure core"]
@@ -42,13 +45,17 @@ flowchart LR
 
     BA --> beaconapi
     PM --> promscrape
+    BASE --> beaconapi
+    BASE --> promscrape
     HM --> hostmetrics
+    NTP --> clock
     registry -.selects adapter.-> beaconapi
     registry -.selects adapter.-> promscrape
 
     beaconapi --> timeline
     promscrape --> timeline
     hostmetrics --> timeline
+    clock --> timeline
     timeline --> store
     store --> rca
     rca --> report
@@ -60,15 +67,16 @@ flowchart LR
 | Stage | Package | Status | Purpose |
 |---|---|---|---|
 | Collect | `internal/source/beaconapi` | Phase 2 | SSE stream (`head`, `block`, `chain_reorg`, `attestation`) + REST polling for duties and inclusion |
-| Collect | `internal/source/promscrape` | Phase 2 | Scrapes EL/CL/VC Prometheus, normalises Lighthouse/Prysm metric names into `domain.MetricSample` |
-| Collect | `internal/source/hostmetrics` | Phase 2 | Disk iowait, CPU steal, memory pressure, clock drift — degrades gracefully when unavailable |
+| Collect | `internal/source/promscrape` | Phase 2 | Scrapes configured CL Prometheus endpoints and normalises Lighthouse/Prysm peer, block-timing, and Engine-call metrics |
+| Collect | `internal/source/hostmetrics` | Phase 2 | Linux PSI I/O/memory pressure and CPU steal — degrades gracefully when unavailable |
+| Collect | `internal/clock` | Phase 2 | Samples configured NTP endpoints and attaches fresh clock provenance to observations |
 | Collect | `internal/source/registry.go` | Phase 2 | The one place client type is detected and an adapter selected (I-11: no other file may know a client's name) |
 | Assemble | `internal/timeline` | Phase 2 | Turns raw Observations + MetricSamples into a `domain.Timeline`, deterministically ordered |
 | Persist | `internal/store` | Phase 2 | SQLite, versioned migrations, retention by both time and bytes (I-12) |
 | Decide | `internal/rca` | Phase 3 | Pure function: `Timeline -> Verdict`. No I/O, no clock, no randomness, no goroutines (I-6). One rule per file under `rules/`, evaluated in the fixed precedence order in [causes.md](causes.md) §6 |
 | Present | `internal/report` | Phase 3 | Renders a `Verdict` as markdown (human) or JSON (machine) |
 | Present | `internal/exporter` | Phase 4 | Exposes verdict outcomes as Prometheus metrics for the operator's existing Grafana |
-| Present | `cmd/whymiss` | Phase 1 stub, Phase 3 (`whymiss <slot>`) + Phase 4 (`doctor`, polish) | The CLI surface: `whymiss <slot>`, `watch`, `timeline <slot>`, `doctor` |
+| Present | `cmd/whymiss` | Phases 2–4 | The CLI surface: `whymiss <slot>`, `watch`, `timeline <slot>`, `doctor` |
 
 `internal/app` (Phase 2+) is the composition root — the only package that
 wires a concrete `source` adapter, `store`, and `rca` engine together. Every
@@ -128,8 +136,9 @@ and the grant evidence simultaneously" (BUILD_PROMPT.md §9).
 ## 4. Cross-cutting boundaries
 
 - **I-1 / I-3 / I-4** — `internal/source` only ever reads from the node; no
-  mutating calls, no root, no outbound egress beyond the node's own APIs the
-  operator configured. Checked in CI (`make check`'s egress boundary test).
+  mutating calls, no root, and no outbound egress beyond watched/baseline Beacon APIs, metrics, and NTP
+  endpoints the operator configured. Checked in CI (`make check`'s egress
+  boundary test); NTP transport is confined to `internal/clock`.
 - **I-9 clock discipline** — `internal/clock` measures NTP offset and
   degrades to a typed error, never a fabricated reading, when every
   configured server fails. `local.host.clock_drift` (R-011) fires *before*
@@ -158,20 +167,20 @@ say) would need, file by file, against the code as it exists today.
 1. **`internal/source/registry.go`** — add `ConsensusTeku` alongside
    `ConsensusLighthouse`/`ConsensusPrysm`, and a `strings.HasPrefix(versionString,
    "Teku")` case in `DetectConsensusClient`.
-2. **`internal/source/promscrape/peers.go`** — add `SampleTekuPeerCount`,
-   reading whatever metric name Teku's own `/metrics` endpoint actually
-   uses for its peer count (captured from a real node first —
+2. **`internal/source/promscrape`** — add Teku adapters for peer count,
+   slot-qualified block timing, and cumulative Engine-call counters, reading metric
+   names captured from a real node first. For example,
    `SampleLighthousePeerCount`/`SamplePrysmPeerCount`'s own doc comments
    record the real, verified metric name each existing client uses,
    `libp2p_peers` vs. label-summed `connected_libp2p_peers{agent="..."}` —
    these two already differ completely from each other, which is the
-   proof this isn't a coincidence that happens to generalise).
-3. **`internal/source/peers.go`** — add a `case ConsensusTeku:` arm to
-   `SamplePeerCount` calling the new function.
+   proof this isn't a coincidence that happens to generalise.
+3. **`internal/source/peers.go`** — add `ConsensusTeku` arms to
+   `SamplePeerCount`, `SampleBlockTiming`, and `SampleEngineCounters`.
 
 That's it. **Every line above is under `internal/source/`.**
 `internal/app/watch.go` — the composition root, the only caller of
-`SamplePeerCount` — is unchanged: it already dispatches through
+these source functions — is unchanged: it already dispatches through
 `ConsensusClient` values it got from `DetectConsensusClient`, never a
 client-named symbol (see §4's I-11 bullet). `internal/domain`,
 `internal/timeline`, `internal/store`, `internal/rca` (Phase 3), and
@@ -179,12 +188,4 @@ client-named symbol (see §4's I-11 bullet). `internal/domain`,
 change. `make check.isolation` — which already runs in `make ci` — is what
 would catch it immediately if a future change violated this by, say,
 special-casing Teku inside `internal/app` instead of adding the dispatch
-arm in step 3.
-
-The same shape applies to a third *execution* client for
-`internal/source/promscrape`'s EL side (`engine.go`): a new EL client's
-Engine API metric names get their own `engineMetricNames`-equivalent map
-and a case in whatever function replaces today's geth-only
-`SampleEngineCalls`, once a second EL client is in scope (BUILD_PROMPT.md
-§3 locks the initial scope to geth alone, so there is no second EL client
-to point at yet — this paragraph names the pattern, not a change made).
+arms in step 3.

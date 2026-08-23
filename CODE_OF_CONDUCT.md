@@ -35,9 +35,11 @@ discussions — and when representing the project in public.
 
 ## Reporting
 
-Report conduct concerns privately to the maintainers at
-**CHANGEME-conduct-contact**. Reports are handled confidentially. The maintainers
-will acknowledge within 3 working days.
+Report conduct concerns through the repository's
+[private advisory form](https://github.com/tiepnguyen-sg/whymiss/security/advisories/new).
+Use a title beginning with `Conduct report` so it is triaged separately from a
+security vulnerability. Reports are handled confidentially. The maintainers will
+acknowledge within 3 working days.
 
 Do not use the public issue tracker for a conduct report.
 

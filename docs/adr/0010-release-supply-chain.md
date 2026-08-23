@@ -1,4 +1,4 @@
-# ADR-0010 · GoReleaser + keyless cosign + SLSA generator + syft SBOM
+# ADR-0010 · GoReleaser + OCI image + keyless cosign + SLSA + SBOM
 
 - **Status:** accepted
 - **Date:** 2026-08-22
@@ -55,28 +55,35 @@ public GoReleaser+cosign example still shows — in favor of one combined
 `signs:` block uses `--bundle=${signature}` accordingly, not the
 deprecated flags.
 
-**SLSA provenance**: designed for, not currently wired in. The plan — a
-second job in `.github/workflows/release.yml` calling
-`slsa-framework/slsa-github-generator`'s reusable
-`generator_generic_slsa3.yml` workflow, pinned by commit SHA, passing it
-the base64-encoded contents of GoReleaser's own `checksums.txt` as
-`base64-subjects` — is correct and was fully wired for the `v0.1.0` tag.
-It failed on the real release run with: *"Repository is private. The
-workflow has halted in order to keep the repository name from being
-exposed in the public transparency log."* That reusable workflow's whole
-trust model (SLSA Build L3) rests on publishing an attestation to
-Sigstore's public Rekor log from an isolated job GitHub controls — and a
-Rekor entry necessarily names the repository it attests for. For a repo
-that's private specifically to stay private, publishing that entry is not
-a bug to route around with `private-repository: true`; it is the same
-privacy tradeoff the rest of this ADR's "keyless" reasoning already
-accepted for cosign (identity is public; here, existence is too). Decided
-with the human, not unilaterally (post-`v0.1.0` follow-up): drop the
-`provenance` job entirely rather than force it — see `CHANGELOG.md`'s
-`v0.1.0` entry. The cosign signature and syft SBOM above still hold; only
-the third property ("which exact build produced this") is missing.
-Re-adding the job (same shape, `private-repository: true` no longer
-needed) is the whole fix if this repository ever goes public.
+**SLSA provenance**: a separate isolated job calls the official generic
+SLSA generator with the base64-encoded contents of GoReleaser's
+`checksums.txt`, then uploads the resulting provenance to the tag's GitHub
+release. The generator deliberately requires a full immutable release tag
+(`@v2.1.0`), rather than a commit SHA, so its verifier can authenticate the
+builder identity; this is the one documented exception to the repository's
+normal action-SHA policy. The private-repository opt-in is deliberately absent:
+the upstream input is only needed to permit a private repository name to be
+published to Rekor and has no effect for this public repository. No workflow run
+or transparency-log entry occurs until a maintainer pushes a release tag.
+After provenance upload, a separate least-privilege job downloads the published
+archive, checksums, signature bundle, SBOMs, and provenance, then executes the same
+cosign and `slsa-verifier` checks documented for operators. A release workflow is
+not green merely because it produced files; the published trust chain must verify.
+
+**Container image**: after the binary artifacts and their provenance verify, the
+release workflow uses Docker's official Buildx actions to publish one multi-platform
+manifest for `linux/amd64` and `linux/arm64` to GHCR at the exact immutable release
+tag. BuildKit attaches SPDX SBOM and provenance attestations to the image index, and
+cosign signs the resulting digest with the same keyless workflow identity used for
+the checksum bundle. The workflow verifies that digest before making the GitHub
+release non-draft. Floating `latest` and major/minor tags are deliberately omitted:
+operator deployments should name the exact version they audited.
+
+The GitHub release remains a draft until binary verification and container
+publication both succeed. A final least-privilege job publishes it. The first step
+also rejects a private repository before any artifact is created: SLSA, Rekor, and
+the public GHCR package are all intentional parts of this public-release contract,
+not private-repository opt-ins to enable silently.
 
 ## Consequences
 
@@ -89,10 +96,10 @@ needed) is the whole fix if this repository ever goes public.
   operator never has to trust "we said we signed it" — `cosign
   verify-blob` against Sigstore's public Rekor log, or the SLSA
   provenance's own verification tooling, checks it independently.
-- All new GitHub Actions (`goreleaser-action`, `cosign-installer`,
-  `sbom-action`, the SLSA generator) are pinned by commit SHA, matching
-  `.github/workflows/ci.yml`'s existing convention ("Pin actions by SHA,
-  not tag — supply-chain hygiene the project preaches").
+- All new GitHub Actions (`goreleaser-action`, `cosign-installer`, and
+  `sbom-action`, plus Docker's `setup-buildx`, `login`, and `build-push`
+  actions) are pinned by commit SHA. The SLSA reusable workflow uses the full
+  immutable release tag its own trust model requires.
 
 **Bad**
 
@@ -107,11 +114,15 @@ needed) is the whole fix if this repository ever goes public.
   artifact from their own machine. Accepted: releases are meant to be
   built reproducibly by CI, not assembled locally, so this is a feature
   (no one's laptop is a trusted signing environment) not a limitation.
+- SLSA and keyless cosign publish the repository/workflow identity to public
+  transparency logs. This is intentional for a public operator release.
+- GHCR becomes a second release surface whose retention and package visibility the
+  maintainer must preserve alongside GitHub Releases.
 
 **Removal path.** Confined to `.goreleaser.yaml` and
-`.github/workflows/release.yml` — no runtime code depends on any of
-these tools; removing the release pipeline removes nothing from the
-binary itself.
+`.github/workflows/release.yml` (and the operator pull example in `README.md`) — no
+runtime code depends on any of these tools; removing the release pipeline removes
+nothing from the binary itself.
 
 ## Alternatives considered
 

@@ -1,6 +1,6 @@
 # Cause Taxonomy
 
-**Taxonomy version: `1.0.0`** · Status: draft until Phase 3 exit
+**Taxonomy version: `2.0.0`** · Status: draft until release gates pass
 
 This document is a contract, not documentation. Every `Verdict` embeds
 `taxonomy_version`, and consumers may depend on cause IDs remaining stable.
@@ -42,7 +42,7 @@ const (
 type RewardFlags struct {
     TimelySource bool // correct source checkpoint, inclusion delay within bound
     TimelyTarget bool // correct target checkpoint
-    TimelyHead   bool // correct head root AND inclusion delay == 1
+    TimelyHead   bool // correct target + head roots AND inclusion delay == 1
 }
 ```
 
@@ -55,7 +55,7 @@ first-class outcome, not a footnote.
 | Duty | v1 | Notes |
 |---|---|---|
 | Attester | ✅ | Primary focus |
-| Proposer | ✅ | Missed proposals are rare but expensive |
+| Proposer | Partial | Canonical proposer absence is diagnosed; automatic local proposer-duty attribution is deferred |
 | Aggregator | ❌ | Deferred — low reward impact |
 | Sync committee | ❌ | Deferred — infrequent assignment |
 | PTC (payload timeliness) | Phase 5 | Post-ePBS only, behind feature flag |
@@ -67,7 +67,7 @@ first-class outcome, not a footnote.
 Every attribution rests on one idea: **a duty has a latency budget, and a miss is a
 budget overrun. Name the stage that overspent.**
 
-### 3.1 Slot schedule (declarative, per `SlotSchedule` config — Phase 5 task 5.4)
+### 3.1 Slot schedule (declarative, per `SlotSchedule` config)
 
 Pre-ePBS mainnet:
 
@@ -143,12 +143,12 @@ never contain magic numbers.
 | Key | Default | Meaning |
 |---|---|---|
 | `thresholds.clock_offset_max` | `100ms` | Above this, timing rules are suppressed |
+| `thresholds.clock_sample_max_age` | `2m` | Older samples cannot establish clock trust |
 | `thresholds.dominance` | `0.5` | Stage share required for dominance |
 | `thresholds.network_deviation` | `750ms` | Local vs network-p50 block-arrival gap |
 | `thresholds.engine_spike_multiplier` | `3.0` | × rolling p99 to count as a spike |
 | `thresholds.peer_count_min` | `40` | Below this, p2p is considered degraded |
-| `thresholds.subnet_peer_min` | `2` | Peers on the relevant attestation subnet |
-| `thresholds.iowait_pct` | `20.0` | Host disk pressure |
+| `thresholds.iowait_pct` | `20.0` | Linux PSI I/O `some avg10` (legacy key name) |
 | `thresholds.cpu_steal_pct` | `5.0` | Host CPU contention |
 | `thresholds.psi_mem_avg10` | `10.0` | Memory pressure stall index |
 
@@ -163,13 +163,13 @@ justifying each position. Changing the order requires an ADR.
 |---|---|---|---|
 | R-001 | duty guard | `no_duty` | Nothing owed — exit before any analysis |
 | R-010 | data completeness | `unknown.insufficient_data` | Cannot reason on missing data |
-| R-011 | clock trust | `unknown.insufficient_data` | I-9 — never time-attribute on a bad clock |
+| R-011 | clock trust | `local.host.clock_drift` or `unknown.insufficient_data` | Direct excessive drift is named; missing/stale clock proof remains unknown |
 | R-100 | proposer absent | `network.proposer_missed` | Exonerates the operator immediately |
 | R-110 | network-wide lateness | `network.late_block` | Needs baseline; skipped when disabled |
 | R-200 | p2p health | `local.p2p_degraded` | Propagation precedes validation |
 | R-300 | execution client | `local.el_slow` | Most common local cause in practice |
 | R-310 | consensus client | `local.cl_slow` | Validation remainder after EL excluded |
-| R-400 | VC reachability | `local.vc_disconnected` | Binary, unambiguous |
+| R-400 | VC reachability | `local.vc_disconnected` | Requires a timely head |
 | R-410 | VC timing | `local.vc_slow` | Last stage in the chain |
 | R-500 | inclusion | `network.inclusion_failure` | Published on time yet absent on chain |
 | R-600 | host fallback | `local.host.*` | Terminal only when no layer above matched |
@@ -201,18 +201,26 @@ Each entry: definition · rule · required evidence · confidence · remediation
 
 ### `network.proposer_missed`
 
-**Definition.** No block was proposed for this slot by anyone.
+**Definition.** The canonical chain contains no block for this slot.
 
-**Rule (R-100).** No `block_seen` observation exists for slot N, and the canonical
-chain shows slot N as skipped.
+**Rule (R-100).** A `block_skipped` observation exists for slot N, and no
+`block_seen`, `head_updated`, or `block_proposed` observation contradicts it. R-100
+does not apply to the operator's own proposer duty because this taxonomy cannot yet
+distinguish a local proposal failure from an upstream network event.
 
-**Required evidence.** Absence of `block_seen`; canonical chain confirmation that
-slot N is empty.
+**Required evidence.** After the collection window closes, the configured Beacon API
+must report all of: the node is fully synced, execution is online and non-optimistic,
+its head has advanced past slot N, and a second canonical-header lookup for N returns
+404.
+Those facts are materialised as `block_skipped`; absence of `block_seen` alone is not
+evidence and never triggers this rule.
 
-**Confidence.** Always `high`. This is an observation, not an inference.
+**Confidence.** `high`: the rule only fires on the positive canonical-chain check
+above. If that check cannot be completed, attribution falls through to an unknown
+cause rather than lowering confidence on an absence-based guess.
 
-**Remediation.** None. The operator did nothing wrong. State this explicitly — an
-exoneration is a valuable output.
+**Remediation.** None for an attester. The operator's attestation path did not cause
+the canonical skip; state this explicitly because exoneration is a valuable output.
 
 ---
 
@@ -248,14 +256,16 @@ community reporting.
 on chain.
 
 **Rule (R-500).** `attestation_published` exists with offset < deadline, and no
-`attestation_included` observation exists within the inclusion window.
+`attestation_included` observation exists by the final valid Deneb inclusion slot:
+the last slot of the epoch following the duty's target epoch.
 
 **Required evidence.** Publish timestamp; absence of inclusion; head root voted;
 canonical head at that slot; reorg observations within the window if any.
 
-**Confidence.** `medium` by default — an aggregator dropping the attestation and a
-local gossip failure are hard to separate. `high` when a reorg is observed in the
-window.
+**Confidence.** `medium` — an aggregator dropping the attestation and a local gossip
+failure are hard to separate. An unlinked reorg in the same window is contextual
+evidence, not proof that this specific attestation was removed, so it never raises
+confidence by itself.
 
 **Remediation.**
 - Verify inbound P2P ports are reachable, since poor connectivity reduces the chance
@@ -269,15 +279,22 @@ window.
 **Definition.** Block propagation to this node was slow because peering was
 insufficient.
 
-**Rule (R-200).** Propagation stage is dominant, **and** at least one holds:
-peer count < `thresholds.peer_count_min`; subnet peers < `thresholds.subnet_peer_min`;
-peer count dropped more than 30% within the preceding 60s.
+**Rule (R-200).** Propagation exceeds the attestation deadline and, when another
+stage boundary is available, is the dominant known stage, **and** the network
+baseline p50 for the slot was within the deadline. When propagation is the only
+measured stage, consuming the full attestation budget is the absolute dominance
+test; no synthetic 100% share is claimed.
+The baseline is mandatory: without it R-110 returns `unknown.insufficient_data`
+because local and network-wide lateness cannot be distinguished. A peer-count
+sample is also mandatory and must be below `thresholds.peer_count_min`. Without
+that corroboration, the engine cannot distinguish insufficient peering from another
+local propagation cause and R-200 does not match.
 
-**Required evidence.** Propagation duration and its share of overspend; peer count at
-slot start; subnet peer count; peer-count delta over the preceding minute.
+**Required evidence.** Local propagation duration and its share when another stage
+is measurable; a timely network p50 for the same slot; peer count at slot start.
 
-**Confidence.** `high` when a peer-count metric corroborates; `medium` when only the
-stage share indicates it.
+**Confidence.** `high` when an adequate network sample and peer-count metric both
+corroborate; `medium` when the network sample is thin.
 
 **Remediation.**
 - Confirm inbound TCP/UDP ports are open and forwarded (typically 30303 for the
@@ -292,12 +309,14 @@ stage share indicates it.
 **Definition.** The consensus client spent an unusual amount of time validating the
 block, and the execution client is not responsible.
 
-**Rule (R-310).** Validation stage is dominant, **and** Engine API duration accounts
-for less than half of that stage.
+**Rule (R-310).** The canonical head update is later than the attestation deadline,
+validation is the dominant stage, **and** Engine API duration accounts for less than
+half of that stage.
 
-**Required evidence.** Validation duration and share; Engine API total for the slot;
-CL-side queue or processing metrics if exposed; comparison against the node's own
-rolling p99.
+**Required evidence.** Validation duration and share; per-method Engine API call
+counts and total durations from an exact consecutive canonical-head window. This
+build has no portable CL processing baseline or queue metric, so it does not claim
+one and caps the verdict at `medium`.
 
 **Confidence.** `medium` by default — CL internals are poorly instrumented across
 clients. `high` only when a client-specific metric directly corroborates.
@@ -319,8 +338,9 @@ the validation budget.
 for at least half of that stage, **and** the Engine API duration exceeds
 `thresholds.engine_spike_multiplier` × the node's rolling p99.
 
-**Required evidence.** `engine_newPayload` and `engine_forkchoiceUpdated` durations
-for the slot; rolling p99 baseline; the computed multiple.
+**Required evidence.** `newPayload` and `forkchoiceUpdated` call counts and total
+durations from the exact canonical-head window; rolling p99 baseline; the computed
+multiple.
 
 **Sub-cause selection** — evaluated in order; the first match wins, and if none
 matches the verdict stays at `local.el_slow` with `confidence: medium`:
@@ -330,17 +350,22 @@ matches the verdict stays at `local.el_slow` with `confidence: medium`:
 | `local.el_slow.syncing` | EL reports not fully synced at slot time |
 | `local.el_slow.snapshot` | EL snapshot-generation metric or log active in the window |
 | `local.el_slow.pruning` | EL pruning metric or log active in the window |
-| `local.el_slow.disk_saturation` | Host iowait > `thresholds.iowait_pct` during the window |
+| `local.el_slow.disk_saturation` | EL-specific device/request telemetry proves saturation in the Engine window |
 
-**Confidence.** `high` when a sub-cause matched; `medium` when only the Engine API
-spike is present.
+**Confidence.** `high` only when direct EL-specific telemetry establishes a
+sub-cause; `medium` when only the Engine API spike is present. This build records
+host-wide PSI as context but does not use it to select an EL sub-cause because PSI
+cannot identify the process or device responsible. The current Lighthouse/Prysm
+collectors do not emit an EL-specific sub-cause signal, so this build emits the
+generic `local.el_slow` at `medium`; the sub-cause IDs remain reserved public
+taxonomy entries rather than inferred labels.
 
 **Remediation** (sub-cause specific — generic advice is worthless here):
 - `syncing` — wait for sync to complete; do not attest from an unsynced node.
 - `snapshot` / `pruning` — schedule offline maintenance outside your duty-dense
   windows; consult your execution client's documented pruning procedure.
-- `disk_saturation` — this box needs a faster NVMe drive. Consumer SATA SSDs are the
-  most common cause of chronic attestation loss.
+- `disk_saturation` — identify the saturated device and competing process before
+  changing storage; host-wide PSI alone is not enough.
 
 ---
 
@@ -349,13 +374,16 @@ spike is present.
 **Definition.** The validator client could not reach the beacon node, so no
 attestation was produced.
 
-**Rule (R-400).** No `attestation_published` observation, **and** VC-to-BN
-connectivity metrics indicate failure during the slot window.
+**Rule (R-400).** A block was seen and the canonical head updated before the
+attestation deadline, but neither `attestation_published` nor
+`attestation_included` was observed. This is an inferred branch until direct VC
+connection-state collection is implemented.
 
-**Required evidence.** Absence of publish; VC connection state; BN availability
-during the window.
+**Required evidence.** Timely `block_seen` and `head_updated`; absence of both
+publish and inclusion.
 
-**Confidence.** `high`. This is directly observed, not inferred.
+**Confidence.** `medium`. `high` is reserved for a future direct VC-to-BN
+connection-failure signal.
 
 **Remediation.**
 - Check the validator client process is running and its beacon-node endpoint is
@@ -392,11 +420,11 @@ signer latency where a remote signer is configured.
 **Definition.** Host disk I/O pressure was the dominant explanation and no
 higher-layer cause matched.
 
-**Rule (R-600).** iowait > `thresholds.iowait_pct` sustained across the slot window,
-and rules R-100 through R-500 did not match.
+**Rule (R-600).** Linux PSI I/O `some avg10` > `thresholds.iowait_pct` in the
+latest sample, and rules R-100 through R-500 did not match. The configuration key
+retains its legacy `iowait_pct` name, but this signal is not `/proc/stat` CPU iowait.
 
-**Required evidence.** iowait percentage; average request latency; the device
-involved.
+**Required evidence.** Host-wide PSI I/O `some avg10` percentage.
 
 **Confidence.** `medium`. Host pressure is correlational; the causal chain to the
 missed duty is inferred rather than observed.
@@ -412,10 +440,10 @@ reviewed. If it is something else, move that workload off the staking box.
 **Definition.** CPU steal time was elevated — the hypervisor withheld CPU from this
 guest.
 
-**Rule (R-600).** steal% > `thresholds.cpu_steal_pct` sustained across the window.
+**Rule (R-600).** steal% > `thresholds.cpu_steal_pct` over the latest interval
+between two `/proc/stat` samples.
 
-**Required evidence.** Steal percentage over the window; comparison against the
-node's own baseline.
+**Required evidence.** Steal percentage over that sampling interval.
 
 **Confidence.** `medium`.
 
@@ -427,13 +455,12 @@ shared VPS is a structural reason not to stake there.
 
 ### `local.host.memory_pressure`
 
-**Definition.** Memory pressure or swap activity delayed processing.
+**Definition.** Linux PSI memory pressure was elevated while the duty failed.
 
-**Rule (R-600).** PSI memory `avg10` > `thresholds.psi_mem_avg10`, or swap-in
-activity observed during the window.
+**Rule (R-600).** PSI memory `some avg10` > `thresholds.psi_mem_avg10` in the
+latest sample.
 
-**Required evidence.** PSI value or swap rate; available memory; the largest resident
-processes if collectable.
+**Required evidence.** Host-wide PSI memory `some avg10` percentage.
 
 **Confidence.** `medium`.
 
@@ -511,16 +538,19 @@ Closed set. Adding a kind is a taxonomy change (minor bump + ADR).
 |---|---|---|
 | `slot_start` | derived | Wall-clock start of the slot |
 | `duty_assigned` | beaconapi | Attester or proposer duty known for this slot |
-| `block_seen` | beaconapi (SSE) | Beacon block first received locally |
+| `block_seen` | beaconapi (REST) / promscrape | Beacon block observed locally |
+| `block_skipped` | beaconapi (REST) | Fully synced node, already past the slot, confirmed no canonical block |
 | `head_updated` | beaconapi (SSE) | Head advanced to this block after validation |
 | `attestation_published` | beaconapi / VC | Attestation broadcast |
 | `attestation_included` | beaconapi (REST) | Attestation observed on chain |
 | `block_proposed` | beaconapi | This node's proposal was broadcast |
 | `reorg` | beaconapi (SSE) | Chain reorganisation observed |
 | `peer_count_sampled` | promscrape | Peer count at a point in time |
-| `engine_call` | promscrape | Engine API call duration |
+| `engine_call` | promscrape | Per-method Engine API call count and total duration in an exact canonical-head window |
 | `host_sampled` | hostmetrics | Host resource sample |
 | `clock_sampled` | clock | NTP offset measurement |
+| `collection_completed` | derived | Every required query completed and the final valid Deneb inclusion slot ended |
+| `network_baseline_sampled` | xatu / promscrape | Network block-arrival p50, p90, and sample count for one slot |
 
 ### 8.1 Attribute keys
 
@@ -528,16 +558,20 @@ Closed set. Adding a kind is a taxonomy change (minor bump + ADR).
 
 | Key | Applies to | Example |
 |---|---|---|
-| `block_root` | `block_seen`, `head_updated` | `0xabc…` |
+| `block_root` | block, head, and attestation observations | `0xabc…` |
 | `proposer_index` | `block_seen` | `123456` |
-| `validator_index` | duty and attestation kinds | `987654` |
+| `validator_index` | duty, attestation, proposal, and collection-completion kinds | `987654` |
 | `engine_method` | `engine_call` | `newPayload` |
 | `duration_ms` | `engine_call` | `2780` |
 | `peer_count` | `peer_count_sampled` | `62` |
-| `subnet_id` | `peer_count_sampled` | `17` |
-| `metric` | `host_sampled` | `iowait_pct` |
+| `metric` | `host_sampled` | `host_iowait_pct` |
 | `value` | `host_sampled`, `clock_sampled` | `23.4` |
 | `inclusion_delay` | `attestation_included` | `1` |
+| `head_correct` | `attestation_included` | `true` |
+| `target_correct` | `attestation_included` | `true` |
+| `block_arrival_p50_ms` | `network_baseline_sampled` | `850.5` |
+| `block_arrival_p90_ms` | `network_baseline_sampled` | `1300` |
+| `sample_count` | `engine_call`, `network_baseline_sampled` | `2` |
 
 ---
 
@@ -546,25 +580,22 @@ Closed set. Adding a kind is a taxonomy change (minor bump + ADR).
 Cardinality is bounded by the taxonomy, which is why the taxonomy is closed.
 
 ```
-whymiss_duty_outcome_total{outcome, duty}                  counter
-whymiss_verdict_total{cause, sub_cause, confidence}        counter
-whymiss_stage_duration_seconds{stage}                      histogram
-whymiss_clock_offset_seconds                               gauge
-whymiss_baseline_available                                 gauge (0|1)
+whymiss_duty_verdicts_total{cause,outcome} counter
 ```
 
-Worst-case `cause × sub_cause × confidence` cardinality is under 60 series. Any
-change that makes cardinality unbounded is a defect.
+`cause` is the reported sub-cause when present, otherwise the cause, or `none` when
+there is nothing to attribute. The closed cause set plus four outcomes bounds the
+surface at 76 possible series. Any unbounded label is a defect.
 
 **This is the feature operators actually adopt**: alert on
-`whymiss_verdict_total{cause="local.el_slow"}` rising, rather than on a missed-
+`whymiss_duty_verdicts_total{cause="local.el_slow"}` rising, rather than on a missed-
 attestation counter that tells you nothing about what to fix.
 
 ---
 
 ## 10. Open questions
 
-Resolve before taxonomy `1.0.0` is declared stable.
+Resolve before the taxonomy is declared stable.
 
 1. Should `network.late_block` distinguish a late proposer from a late builder? Doing
    so needs relay data and may not be worth the dependency.

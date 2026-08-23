@@ -97,7 +97,8 @@ test/corpus/<scenario-id>/
 Generate one reproducibly rather than writing it by hand:
 
 ```sh
-make corpus.generate SCENARIO=el-disk-stall
+make devnet.up
+make corpus.generate SCENARIO=vc-frozen-lighthouse BEACON=cl-1-lighthouse-geth
 make corpus.validate
 ```
 
