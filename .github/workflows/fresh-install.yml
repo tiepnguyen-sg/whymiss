@@ -1,9 +1,9 @@
 name: fresh-install
 
 # Task 4.9 (BUILD_PROMPT.md §12.2): does README.md's instructions actually
-# work, on a clean machine, with no tribal knowledge the README itself
-# doesn't state? Each job below runs the literal commands from README.md,
-# nothing more.
+# work on a clean machine with no tribal knowledge? The source job checks the
+# documented commands and flags; the Compose job supplies captured node responses
+# so the real sidecar and monitoring stack can stay up deterministically.
 
 on:
   push:
@@ -14,6 +14,7 @@ on:
       - "go.mod"
       - "cmd/**"
       - "deploy/**"
+      - "test/freshinstall/**"
       - ".github/workflows/fresh-install.yml"
   pull_request:
     paths:
@@ -22,11 +23,11 @@ on:
       - "go.mod"
       - "cmd/**"
       - "deploy/**"
+      - "test/freshinstall/**"
       - ".github/workflows/fresh-install.yml"
   schedule:
-    # deploy/docker/docker-compose.yml pulls prom/prometheus:latest and
-    # grafana/grafana:latest unpinned — this catches breakage from an
-    # upstream image change even when nothing here does.
+    # Exercise the complete published quickstart weekly, including pinned
+    # upstream images and Docker runtime behavior.
     - cron: "17 6 * * 1"
   workflow_dispatch: {}
 
@@ -40,6 +41,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -67,39 +70,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      # README.md's Docker quickstart, run verbatim from a fresh clone. The
-      # example .env's placeholder values are enough to prove the stack
-      # comes up and provisions itself correctly — they don't need to
-      # point at a real beacon node for that (whymiss itself is expected
-      # to crash-loop here; that's covered by the from-source job's flag
-      # check plus the manual devnet smoke test recorded in CHANGELOG.md's
-      # Phase 4 entries, not this job).
-      - run: cp deploy/docker/.env.example deploy/docker/.env
-
-      - name: docker compose up -d
-        working-directory: deploy/docker
-        run: docker compose up -d
-
-      - name: Grafana becomes healthy
-        run: |
-          for _ in $(seq 1 30); do
-            curl -sf http://127.0.0.1:3000/api/health >/dev/null && exit 0
-            sleep 2
-          done
-          echo "Grafana never became healthy — see README.md's Docker quickstart"
-          exit 1
-
-      - name: whymiss dashboard was auto-provisioned
-        run: |
-          # Anonymous access is deliberately off (docker-compose.yml) — log
-          # in as README.md instructs.
-          . deploy/docker/.env
-          curl -sf -u "admin:${GRAFANA_ADMIN_PASSWORD}" http://127.0.0.1:3000/api/search \
-            | grep -q whymiss-duty-causes \
-            || { echo "dashboard was not provisioned — see deploy/docker/grafana-provisioning/"; exit 1; }
-
-      - name: docker compose down -v
-        if: always()
-        working-directory: deploy/docker
-        run: docker compose down -v
+      # Replays byte-for-byte responses captured from the Kurtosis devnet; the
+      # Make target owns isolated Compose state and cleanup for CI and local use.
+      - name: make test.freshinstall
+        run: make test.freshinstall

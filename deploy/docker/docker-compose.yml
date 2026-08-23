@@ -2,7 +2,9 @@
 # task 4.1) and dashboard (deploy/grafana/, task 4.2) were built for.
 #
 # Quickstart:
-#   cp .env.example .env   # then set BEACON_API, VALIDATOR_INDICES, GRAFANA_ADMIN_PASSWORD
+#   cp .env.example .env   # set the exact image tag and every required value
+#   docker compose pull
+#   # verify the image as documented in README.md, then:
 #   docker compose up -d
 #   open http://127.0.0.1:3000   (Grafana; only port this stack publishes)
 #
@@ -17,7 +19,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: whymiss:local
+    image: ${WHYMISS_IMAGE:?set WHYMISS_IMAGE to an exact release tag, e.g. ghcr.io/tiepnguyen-sg/whymiss:v0.2.0}
     restart: unless-stopped
     read_only: true
     user: "65532:65532"
@@ -25,6 +27,10 @@ services:
     security_opt: ["no-new-privileges:true"]
     mem_limit: 256m
     pids_limit: 64
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command:
       - watch
       - --beacon-api
@@ -33,6 +39,14 @@ services:
       - /data/whymiss.db
       - --validator-index
       - ${VALIDATOR_INDICES:?set VALIDATOR_INDICES in .env, comma-separated, e.g. 24,187}
+      - --cl-metrics-api
+      - ${CL_METRICS_API:-}
+      - --baseline-beacon-api
+      - ${BASELINE_BEACON_API:-}
+      - --baseline-metrics-api
+      - ${BASELINE_METRICS_API:-}
+      - --ntp-server
+      - ${NTP_SERVER:?set NTP_SERVER in .env; this is explicit UDP egress for clock trust}
       - --metrics-addr
       - :9101
     volumes:
@@ -45,7 +59,7 @@ services:
     #   - "127.0.0.1:9101:9101"
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]
@@ -60,7 +74,7 @@ services:
     depends_on: [whymiss]
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.0@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
     restart: unless-stopped
     read_only: true
     cap_drop: ["ALL"]

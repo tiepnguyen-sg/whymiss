@@ -8,10 +8,6 @@ version: 2
 
 project_name: whymiss
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: whymiss
     main: ./cmd/whymiss
@@ -41,7 +37,7 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-# SBOM per archive (CycloneDX JSON, syft's default) — supply-chain
+# SBOM per archive (SPDX JSON via syft) — supply-chain
 # credibility per §3, and lets an operator audit exactly what's inside the
 # archive they downloaded before running it on a staking box.
 sboms:
@@ -73,9 +69,9 @@ signs:
     output: true
 
 # release.github.owner/name deliberately left unset: goreleaser infers them
-# from the git remote rather than a hardcoded value that could drift from
-# it — go.mod's module path (github.com/tiepnguyen-sg/whymiss) already
-# matches the remote as of the CHANGEME rename ahead of task 4.10's tag.
+# from the git remote rather than a second hardcoded value that could drift;
+# go.mod's module path already matches the canonical remote.
 release:
+  draft: true
   prerelease: auto
-  mode: replace
+  mode: keep-existing

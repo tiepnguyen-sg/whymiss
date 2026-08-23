@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  CGO_ENABLED: "0"
+  GOTOOLCHAIN: local
+
 jobs:
   goreleaser:
     name: build, sign, sbom
@@ -17,39 +21,220 @@ jobs:
     permissions:
       contents: write # create the GitHub release and upload assets
       id-token: write # cosign keyless signing via GitHub OIDC (ADR-0010)
+    outputs:
+      hashes: ${{ steps.slsa-subjects.outputs.hashes }}
     steps:
+      - name: require a public repository
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [ "$REPOSITORY_PRIVATE" != "false" ]; then
+            echo "release requires a public repository for SLSA, Rekor, and GHCR"
+            exit 1
+          fi
+
+      - name: require private vulnerability reporting
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          enabled=$(gh api "repos/${GITHUB_REPOSITORY}/private-vulnerability-reporting" --jq .enabled)
+          if [ "$enabled" != "true" ]; then
+            echo "enable private vulnerability reporting before publishing"
+            exit 1
+          fi
+
       # Pin actions by SHA, not tag — matches ci.yml's existing convention.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # goreleaser needs full history for the changelog and tag list
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           check-latest: false
 
+      - name: validate release tag
+        shell: bash
+        run: |
+          [[ "${GITHUB_REF_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
+          grep -qF "## [${GITHUB_REF_NAME#v}]" CHANGELOG.md
+
+      # make ci's toolchain. golangci-lint is pinned to ci.yml's version.
+      - name: install ci tooling
+        run: |
+          go install mvdan.cc/gofumpt@v0.10.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          go install github.com/goreleaser/goreleaser/v2@v2.17.1
+
+      # A tag must not publish artifacts that never passed the gate.
+      - name: make ci
+        run: |
+          make ci
+          git diff --exit-code
+
       - name: install syft (SBOM)
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: v1.51.0
 
       - name: install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           distribution: goreleaser
-          version: "~> 2"
+          version: "v2.17.1"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # SLSA provenance (slsa-framework/slsa-github-generator) is deliberately
-  # not wired in here while this repo is private. That reusable workflow
-  # refuses to run against a private repo unless `private-repository: true`
-  # is set, specifically because publishing provenance means publishing an
-  # entry to Sigstore's public Rekor transparency log — and that entry
-  # would name this repo, defeating its privacy. v0.1.0 shipped without it
-  # for exactly that reason (a deliberate choice, not an oversight — see
-  # ADR-0010 and CHANGELOG.md). Re-add the `provenance` job (same shape as
-  # the `goreleaser` job's checksums.txt → base64 `hashes` output, feeding
-  # `slsa-framework/slsa-github-generator`'s `generator_generic_slsa3.yml`)
-  # if this repo ever goes public.
+      - name: encode SLSA subjects
+        id: slsa-subjects
+        shell: bash
+        run: echo "hashes=$(base64 -w0 dist/checksums.txt)" >> "$GITHUB_OUTPUT"
+
+  provenance:
+    name: slsa provenance
+    needs: [goreleaser]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    # The SLSA generator requires an immutable full release tag rather than a
+    # commit SHA so its verifier can authenticate the builder identity.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.goreleaser.outputs.hashes }}
+      upload-assets: true
+      draft-release: "true"
+
+  verify:
+    name: verify published artifacts
+    needs: [provenance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: false
+
+      - name: install verification tooling
+        run: go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@v2.7.1
+
+      - name: install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: download published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern 'whymiss_*_linux_amd64.tar.gz' \
+            --pattern 'checksums.txt' \
+            --pattern 'checksums.txt.bundle' \
+            --pattern '*.sbom.json' \
+            --pattern 'multiple.intoto.jsonl'
+
+      - name: verify checksums, signature, SBOMs, and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c --ignore-missing checksums.txt
+          cosign verify-blob \
+            --bundle checksums.txt.bundle \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            checksums.txt
+          set -- whymiss_*_linux_amd64.tar.gz
+          [ "$#" -eq 1 ] && [ -f "$1" ]
+          sbom_count=0
+          for sbom in *.sbom.json; do
+            jq -e '.spdxVersion | startswith("SPDX-")' "$sbom" >/dev/null
+            sbom_count=$((sbom_count + 1))
+          done
+          [ "$sbom_count" -eq 2 ]
+          slsa-verifier verify-artifact "$1" \
+            --provenance-path multiple.intoto.jsonl \
+            --source-uri "github.com/${GITHUB_REPOSITORY}" \
+            --source-tag "$GITHUB_REF_NAME"
+
+  container:
+    name: publish and verify multi-arch image
+    needs: [verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: build and publish image
+        id: image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.ref_name }}
+          build-args: VERSION=${{ github.ref_name }}
+          provenance: mode=max
+          sbom: true
+
+      - name: sign and verify image digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${IMAGE}@${{ steps.image.outputs.digest }}"
+          cosign sign --yes "$image"
+          cosign verify \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$image"
+
+  publish:
+    name: publish verified GitHub release
+    needs: [container]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: publish draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false

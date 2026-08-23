@@ -9,7 +9,11 @@ StartLimitBurst=5
 [Service]
 Type=simple
 EnvironmentFile=/etc/whymiss/whymiss.env
-ExecStart=/usr/local/bin/whymiss watch --beacon-api ${BEACON_API} --db ${STATE_DIRECTORY}/whymiss.db --validator-index ${VALIDATOR_INDICES} --metrics-addr ${METRICS_ADDR}
+# Runtime configuration comes from whymiss's native WHYMISS_* environment
+# layer. Keep only the systemd-owned state path as a flag; optional empty
+# values must not disappear from ExecStart and shift the following flag into
+# their value position.
+ExecStart=/usr/local/bin/whymiss watch --db ${STATE_DIRECTORY}/whymiss.db
 Restart=on-failure
 RestartSec=5s
 
@@ -32,7 +36,6 @@ ProtectControlGroups=true
 ProtectClock=true
 ProtectHostname=true
 ProtectProc=invisible
-ProcSubset=pid
 
 # --- Privilege
 NoNewPrivileges=true

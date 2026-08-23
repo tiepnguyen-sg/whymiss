@@ -18,6 +18,7 @@
 *.out
 coverage.*
 /profile.cov
+/soak-results/
 
 # Runtime state. whymiss owns a SQLite database with rolling retention (I-12);
 # it is operator data, never repo content.
