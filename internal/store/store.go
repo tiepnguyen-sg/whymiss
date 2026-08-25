@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"sync"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver (ADR-0007)
@@ -33,7 +34,11 @@ type Store struct {
 // disk I/O, I-5), and applies any migrations not yet recorded in the
 // database's own PRAGMA user_version.
 func Open(ctx context.Context, path string) (*Store, error) {
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	dsn, err := sqliteDSN(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
@@ -110,8 +115,24 @@ WHERE name NOT LIKE 'sqlite_%' AND type IN ('table', 'index')`).Scan(&applicatio
 // sqliteDSN applies connection-local safety settings to every pooled SQLite
 // connection. Executing PRAGMA once after sql.Open only configures whichever
 // connection database/sql happened to choose for that statement.
-func sqliteDSN(path string) string {
-	u := &url.URL{Scheme: "file", Path: path}
+//
+// path is resolved to an absolute path first: url.URL{Path: p} with a
+// relative p and no Host serializes as "file://p" — the RFC 3986 generic
+// syntax reads everything up to the first slash after "//" as the URI's
+// authority, not as part of the path. A single flat filename like
+// "whymiss.db" happens to still open (some SQLite URI parsers tolerate an
+// authority they don't otherwise use), which is why this went unnoticed;
+// any relative path with a directory component, e.g. "results/whymiss.db",
+// fails outright ("invalid uri authority: results") because that first
+// segment is a real, non-empty authority the driver doesn't accept. An
+// absolute path always starts with "/", producing the unambiguous
+// "file:///abs/path" form (empty authority, absolute path).
+func sqliteDSN(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve absolute path: %w", err)
+	}
+	u := &url.URL{Scheme: "file", Path: abs}
 	q := u.Query()
 	q.Set("_auto_vacuum", "INCREMENTAL")
 	q.Set("_busy_timeout", fmt.Sprintf("%d", busyTimeoutMS))
@@ -123,7 +144,7 @@ func sqliteDSN(path string) string {
 	q.Set("_synchronous", "NORMAL")
 	q.Set("_txlock", "immediate")
 	u.RawQuery = q.Encode()
-	return u.String()
+	return u.String(), nil
 }
 
 // Close closes the underlying database connection.

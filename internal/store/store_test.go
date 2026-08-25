@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,7 +95,11 @@ func TestOpen_BoundsAndConfiguresEveryConnection(t *testing.T) {
 
 func TestOpen_RejectsFutureSchemaVersion(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "future.db")
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	dsn, err := sqliteDSN(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +116,11 @@ func TestOpen_RejectsFutureSchemaVersion(t *testing.T) {
 
 func TestOpen_RejectsIncompleteCurrentSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "incomplete.db")
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	dsn, err := sqliteDSN(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +144,11 @@ func TestOpenRejectsIndexWithWrongColumns(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err := sql.Open("sqlite", sqliteDSN(path))
+	dsn, err := sqliteDSN(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +161,35 @@ func TestOpenRejectsIndexWithWrongColumns(t *testing.T) {
 	if _, err := Open(context.Background(), path); err == nil || !strings.Contains(err.Error(), "has columns") {
 		t.Fatalf("Open error = %v, want wrong-index rejection", err)
 	}
+}
+
+// TestOpen_AcceptsRelativePathWithSubdirectory guards against a real
+// regression: url.URL{Path: p} with a relative p and no Host serializes as
+// "file://p", so the RFC 3986 generic syntax reads everything up to the
+// first "/" after "//" as the URI's authority, not the path. A flat filename
+// like "whymiss.db" happened to still open, which hid this for a long time;
+// any relative path with a directory component broke outright ("invalid uri
+// authority: <dir>") — found running the Phase 2 soak test with
+// --db results/<timestamp>/whymiss.db from a relative working directory.
+func TestOpen_AcceptsRelativePathWithSubdirectory(t *testing.T) {
+	dir := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Mkdir("subdir", 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(context.Background(), filepath.Join("subdir", "whymiss.db"))
+	if err != nil {
+		t.Fatalf("Open with a relative path containing a subdirectory: %v", err)
+	}
+	s.Close() //nolint:errcheck // test cleanup
 }
 
 func TestOpen_IsIdempotent(t *testing.T) {
