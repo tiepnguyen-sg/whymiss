@@ -179,7 +179,16 @@ func (c *Client) committeeLengthsForSlot(ctx context.Context, slot domain.Slot, 
 	c.committeeCache[key] = entry
 	c.committeeMu.Unlock()
 
-	lengths, err := c.fetchCommitteeLengths(ctx, "head", slot, expectedCount)
+	// state_id must be a state whose own epoch is slot's epoch, not "head":
+	// committee shuffling is fixed per epoch, but the beacon API rejects a
+	// ?slot= query whose epoch differs from the queried state's own epoch.
+	// "head" drifts forward as real time passes, so any caller running late
+	// enough for the head to cross into a new epoch — exactly what a
+	// CPU-starved or network-degraded node does under the very faults
+	// local.vc_slow and local.cl_slow exist to diagnose — got a hard 400
+	// ("N is not in epoch M") instead of an answer, losing that duty's
+	// evidence. slot's own state always has slot's own epoch, by definition.
+	lengths, err := c.fetchCommitteeLengths(ctx, strconv.FormatUint(uint64(slot), 10), slot, expectedCount)
 	c.committeeMu.Lock()
 	entry.lengths, entry.err, entry.complete, entry.fetched = lengths, err, true, time.Now()
 	close(entry.ready)
