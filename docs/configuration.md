@@ -101,7 +101,7 @@ active consensus specification.
 
 | YAML key | Environment | Default | Constraint |
 |---|---|---:|---|
-| `schedule.seconds_per_slot` | `WHYMISS_SECONDS_PER_SLOT` | `12s` | Positive |
+| `schedule.seconds_per_slot` | `WHYMISS_SECONDS_PER_SLOT` | `12s` | Positive, at most 1m |
 | `schedule.attestation_deadline` | `WHYMISS_ATTESTATION_DEADLINE` | `4s` | Positive and not after aggregation deadline |
 | `schedule.aggregation_deadline` | `WHYMISS_AGGREGATION_DEADLINE` | `8s` | At or before slot end |
 

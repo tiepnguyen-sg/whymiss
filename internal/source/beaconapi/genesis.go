@@ -43,13 +43,24 @@ func (c *Client) FetchGenesis(ctx context.Context) (GenesisInfo, error) {
 		return GenesisInfo{}, fmt.Errorf("fetch genesis: parse genesis_time %q: %w", genesis.GenesisTime, err)
 	}
 
-	var spec map[string]string
+	// Decode only the one field this package needs, not the whole spec
+	// object: /eth/v1/config/spec mixes plain string values with
+	// non-string ones (e.g. BLOB_SCHEDULE, an array of {EPOCH,
+	// MAX_BLOBS_PER_BLOCK} objects added for a later fork), which a
+	// map[string]string can't unmarshal — found by running against a real
+	// beacon node (Hoodi testnet) whose spec response includes that field;
+	// this project's Kurtosis devnet genesis predates it. A struct with
+	// only the field we read lets encoding/json ignore everything else,
+	// whatever shape it takes.
+	var spec struct {
+		SecondsPerSlot string `json:"SECONDS_PER_SLOT"`
+	}
 	if _, err := c.get(ctx, "/eth/v1/config/spec", &spec); err != nil {
 		return GenesisInfo{}, fmt.Errorf("fetch spec: %w", err)
 	}
-	secondsPerSlot, err := strconv.ParseInt(spec["SECONDS_PER_SLOT"], 10, 64)
+	secondsPerSlot, err := strconv.ParseInt(spec.SecondsPerSlot, 10, 64)
 	if err != nil {
-		return GenesisInfo{}, fmt.Errorf("fetch spec: parse SECONDS_PER_SLOT %q: %w", spec["SECONDS_PER_SLOT"], err)
+		return GenesisInfo{}, fmt.Errorf("fetch spec: parse SECONDS_PER_SLOT %q: %w", spec.SecondsPerSlot, err)
 	}
 	if secondsPerSlot <= 0 || secondsPerSlot > 60 {
 		return GenesisInfo{}, fmt.Errorf("fetch spec: SECONDS_PER_SLOT %d is outside supported range [1,60]", secondsPerSlot)
