@@ -126,6 +126,29 @@ func TestSampleLighthousePeerCount_MetricAbsent(t *testing.T) {
 	}
 }
 
+// TestSamplePrysmPeerCount_ZeroPeersOmitsSeries covers the opposite of
+// Lighthouse's bare gauge: connected_libp2p_peers is per-agent labelled, and
+// a Prometheus client only exposes a label combination once it has actually
+// occurred, so zero connected peers means the series is entirely absent —
+// found running a real netem peer-isolation fault against a live Prysm node,
+// which reliably reaches exactly this state (a corpus scenario failure, not
+// invented: p2p-ambiguous-no-baseline-prysm). Unlike the Lighthouse case
+// above, this must resolve to a valid zero-peer sample, not an error.
+func TestSamplePrysmPeerCount_ZeroPeersOmitsSeries(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("# HELP connected_libp2p_peers Tracks the total number of connected libp2p peers by agent string\n# TYPE connected_libp2p_peers gauge\n")) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	got, err := New().SamplePrysmPeerCount(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("SamplePrysmPeerCount: %v", err)
+	}
+	if got.Value != 0 {
+		t.Errorf("Value = %v, want 0 (no agent label has ever connected)", got.Value)
+	}
+}
+
 // The sum-across-agent-labels path (SamplePrysmPeerCount's whole reason to
 // scan every matching line rather than the first) has no test with more
 // than one label: this devnet's real capture only ever had one peer

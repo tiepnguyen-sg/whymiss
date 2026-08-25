@@ -108,8 +108,19 @@ func (s *Scraper) SamplePrysmPeerCount(ctx context.Context, metricsURL string) (
 		total += v
 		found = true
 	}
+	// Unlike SampleLighthousePeerCount's bare, always-registered
+	// "libp2p_peers" gauge, connected_libp2p_peers is a per-agent labelled
+	// vector: a Prometheus client only exposes a label combination once it
+	// has actually occurred, so a Prysm node with zero currently connected
+	// peers omits the series entirely rather than reporting it at 0 — found
+	// running local.p2p_degraded's netem isolation fault against a real
+	// Prysm node, which reliably produces exactly that state (this devnet's
+	// only real capture, testdata/prysm_metrics.txt, happened to have one
+	// peer connected and never exercised the zero case). No matching line
+	// after a successful, well-formed scrape is that legitimate zero, not a
+	// missing or misnamed metric.
 	if !found {
-		return domain.MetricSample{}, fmt.Errorf("connected_libp2p_peers not found in metrics from %s", metricsURL)
+		return buildPeerCountSample("0")
 	}
 	return buildPeerCountSample(strconv.FormatFloat(total, 'f', -1, 64))
 }
