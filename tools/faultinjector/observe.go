@@ -427,7 +427,16 @@ func (o *Observer) PollAttestationPublished(ctx context.Context, dutySlot uint64
 	for {
 		ok, match, ferr := o.poolIncludesAttestation(ctx, dutySlot, d)
 		if ferr != nil {
-			return time.Time{}, "", false, ferr
+			// Same tolerance as beaconapi.Client.AttestationPublished: a
+			// single transient fetch error (a node under this scenario's own
+			// CPU/network fault answering one poll too slowly) must not
+			// abort the whole watch — a real, late publish is exactly what
+			// this fault is meant to produce, and losing it here mislabels
+			// the record as if the validator never attested at all.
+			if ctx.Err() != nil {
+				return time.Time{}, "", false, ferr
+			}
+			ok = false
 		}
 		if ok {
 			return time.Now().UTC(), match.Data.BeaconBlockRoot, true, nil
@@ -478,7 +487,13 @@ func (o *Observer) poolIncludesAttestation(ctx context.Context, dutySlot uint64,
 	if err != nil || included || !needCommittees {
 		return included, match, err
 	}
-	lengths, err := o.fetchCommitteeLengths(ctx, "head", dutySlot, d.CommitteesAtSlot)
+	// state_id must resolve to dutySlot's own epoch, not "head" — see the
+	// slot-anchored state_id used below in fetchCommitteeLengths's other
+	// call site (attestationRewardEvidence's inclusion check) for the same
+	// reason: "head" drifts into a later epoch as real time passes, and the
+	// beacon API rejects a ?slot= query whose epoch differs from the state's
+	// own. dutySlot's own state always has dutySlot's own epoch.
+	lengths, err := o.fetchCommitteeLengths(ctx, strconv.FormatUint(dutySlot, 10), dutySlot, d.CommitteesAtSlot)
 	if err != nil {
 		return false, apiAttestation{}, fmt.Errorf("fetch committee lengths for duty slot %d: %w", dutySlot, err)
 	}

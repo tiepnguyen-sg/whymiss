@@ -308,6 +308,45 @@ func TestCgroupIOMaxDeviceLine(t *testing.T) {
 // gave up on a node that recovered moments later. The first status read here
 // reports el_offline, the second reports a healthy node past the slot, and the
 // canonical header stays 404 throughout — so the slot is a confirmed skip.
+// TestPollAttestationPublishedRetriesThroughTransientFetchError guards the
+// same regression class as internal/source/beaconapi's
+// TestAttestationPublishedRetriesThroughTransientFetchError: this observer's
+// own pool poll used to abort on the first failed fetch instead of tolerating
+// it like "not found yet", which would make a real late publish under a
+// scenario's own CPU/network fault look like the validator never attested —
+// exactly the ambiguity local.vc_slow's own bisection against Prysm kept
+// running into.
+func TestPollAttestationPublishedRetriesThroughTransientFetchError(t *testing.T) {
+	fixture, err := os.ReadFile("../../internal/source/beaconapi/testdata/pool_attestations.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests <= 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(fixture)
+	}))
+	t.Cleanup(server.Close)
+
+	observer := &Observer{BeaconAPI: server.URL, Client: server.Client()}
+	d := duty{CommitteeIndex: 0, CommitteeLength: 1, ValidatorCommitteeIndex: 0}
+	_, _, found, err := observer.PollAttestationPublished(context.Background(), 3619, d, time.Now().Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("PollAttestationPublished: %v", err)
+	}
+	if !found {
+		t.Fatal("PollAttestationPublished: want found after retrying past two failed polls, got false")
+	}
+	if requests < 3 {
+		t.Fatalf("server saw %d requests, want at least 3 (it must have retried past the two failures)", requests)
+	}
+}
+
 func TestPollBlockSeenWaitsForNodeRecovery(t *testing.T) {
 	var statusReads int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
