@@ -2,6 +2,9 @@ package beaconapi
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +39,38 @@ func TestBlockSeen(t *testing.T) {
 	}
 }
 
+// TestBlockSeenRetriesThroughTransientFetchError guards the same regression
+// class as heads_test.go's TestHeadUpdatedRetriesThroughTransientFetchError
+// and attestations_test.go's TestAttestationPublishedRetriesThroughTransientFetchError.
+func TestBlockSeenRetriesThroughTransientFetchError(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/block_header_by_slot.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if requests <= 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(fixture) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	obs, found, err := NewClient(srv.URL, 0).BlockSeen(context.Background(), 3631, time.Now().Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("BlockSeen: %v", err)
+	}
+	if !found || obs.Kind != domain.ObsBlockSeen {
+		t.Fatalf("observation = %+v found=%t, want block_seen after retrying past two failed polls", obs, found)
+	}
+	if requests < 3 {
+		t.Fatalf("server saw %d requests, want at least 3 (it must have retried past the two failures)", requests)
+	}
+}
+
 // The syncing fixture was captured from the real Prysm devnet at head slot 789.
 // With no header at 788, a fully synced node already past that slot can confirm
 // the canonical slot was skipped.
@@ -67,13 +102,54 @@ func TestBlockSeen_DoesNotCallCurrentHeadSkipped(t *testing.T) {
 	})
 	defer srv.Close()
 
+	// A budget this small still exercises the give-up path: the fixture
+	// reports the same not-yet-past-slot status every time, so the loop
+	// never sees recovery and the deadline has already passed.
 	c := NewClient(srv.URL, 0)
+	c.blockRecoveryBudget = time.Nanosecond
 	_, found, err := c.BlockSeen(context.Background(), 789, time.Now().Add(50*time.Millisecond))
 	if found {
 		t.Fatal("BlockSeen: current head slot is not positive skipped-slot evidence")
 	}
 	if err == nil {
 		t.Fatal("BlockSeen: inconclusive current-head status must prevent collection completion")
+	}
+}
+
+// TestBlockSeen_WaitsForNodeRecovery guards a real regression: blockStatusAtDeadline
+// used to sample the node's sync status exactly once and fail permanently if it
+// wasn't ready that instant, discarding the slot's evidence even when the node
+// was only transiently lagging (e.g. right after the network fault or load spike
+// that made BlockSeen's own poll miss its deadline in the first place). Found
+// live against the real public Hoodi gateway during the Phase 2 soak test.
+func TestBlockSeen_WaitsForNodeRecovery(t *testing.T) {
+	var statusReads int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/eth/v1/node/syncing" {
+			http.NotFound(w, r)
+			return
+		}
+		statusReads++
+		w.Header().Set("Content-Type", "application/json")
+		if statusReads == 1 {
+			w.Write([]byte(`{"data":{"head_slot":"790","sync_distance":"0","is_syncing":false,"is_optimistic":false,"el_offline":true}}`)) //nolint:errcheck // test helper
+			return
+		}
+		w.Write([]byte(`{"data":{"head_slot":"790","sync_distance":"0","is_syncing":false,"is_optimistic":false,"el_offline":false}}`)) //nolint:errcheck // test helper
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, 0)
+	c.blockRecoveryBudget = time.Minute
+	obs, found, err := c.BlockSeen(context.Background(), 788, time.Now().Add(-time.Second))
+	if err != nil {
+		t.Fatalf("BlockSeen: %v", err)
+	}
+	if !found || obs.Kind != domain.ObsBlockSkipped {
+		t.Fatalf("observation = %+v found=%t, want a confirmed skipped slot after the node recovered", obs, found)
+	}
+	if statusReads < 2 {
+		t.Fatalf("status reads = %d, want the degraded state to be retried", statusReads)
 	}
 }
 

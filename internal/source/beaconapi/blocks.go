@@ -331,7 +331,13 @@ func (c *Client) BlockSeen(ctx context.Context, slot domain.Slot, deadline time.
 	for {
 		header, found, err := c.fetchBlockHeader(ctx, slot)
 		if err != nil {
-			return domain.Observation{}, false, err
+			// A single failed poll must not abort the whole call any more
+			// than a "not found yet" result does below — see HeadUpdated's
+			// and AttestationPublished's doc comments for the same fix.
+			if ctx.Err() != nil {
+				return domain.Observation{}, false, err
+			}
+			found = false
 		}
 		if found {
 			return buildBlockSeen(slot, header)
@@ -364,14 +370,44 @@ func buildBlockSeen(slot domain.Slot, header blockHeader) (domain.Observation, b
 	return obs, true, nil
 }
 
+// defaultBlockRecoveryBudget bounds the wait for a node that is transiently
+// unsynced or optimistic right when BlockSeen's own deadline expires.
+//
+// Sampling that state exactly once used to turn a transient into a hard
+// failure that lost the slot's evidence outright — the same bug class as
+// tools/faultinjector's own blockStatusAtDeadline had before its fix (see
+// that function's doc comment), confirmed live here too: a real
+// whymiss watch process against the public Hoodi gateway hit this exact
+// error on slot 3788193 while the node itself was merely lagging, not
+// actually stuck.
+const defaultBlockRecoveryBudget = 90 * time.Second
+
 func (c *Client) blockStatusAtDeadline(ctx context.Context, slot domain.Slot) (domain.Observation, bool, error) {
-	synced, err := c.nodeReadyForCanonicalQuery(ctx, slot)
-	if err != nil {
-		return domain.Observation{}, false, fmt.Errorf("confirm node sync before checking skipped slot %d: %w", slot, err)
+	const recoveryPoll = 2 * time.Second
+	budget := c.blockRecoveryBudget
+	if budget <= 0 {
+		budget = defaultBlockRecoveryBudget
 	}
-	if !synced {
-		return domain.Observation{}, false, fmt.Errorf("cannot confirm slot %d as seen or skipped: node is not fully synced, execution-valid, and past the slot", slot)
+	giveUpAt := time.Now().Add(budget)
+
+	for {
+		synced, err := c.nodeReadyForCanonicalQuery(ctx, slot)
+		if err != nil {
+			return domain.Observation{}, false, fmt.Errorf("confirm node sync before checking skipped slot %d: %w", slot, err)
+		}
+		if synced {
+			break
+		}
+		if !time.Now().Before(giveUpAt) {
+			return domain.Observation{}, false, fmt.Errorf("cannot confirm slot %d as seen or skipped: node is not fully synced, execution-valid, and past the slot after waiting %s for it to recover", slot, budget)
+		}
+		select {
+		case <-ctx.Done():
+			return domain.Observation{}, false, ctx.Err()
+		case <-time.After(recoveryPoll):
+		}
 	}
+
 	header, found, err := c.fetchBlockHeader(ctx, slot)
 	if err != nil {
 		return domain.Observation{}, false, err

@@ -105,7 +105,18 @@ func (c *Client) headUpdatedUncached(ctx context.Context, slot domain.Slot, dead
 	for {
 		header, found, err := c.fetchHeader(ctx, "head")
 		if err != nil {
-			return domain.Observation{}, false, err
+			// A single failed poll — most often a transient HTTP timeout
+			// from a node that is momentarily slow to answer, exactly the
+			// condition local.cl_slow's own fault is meant to produce —
+			// used to abort this whole call immediately, discarding every
+			// remaining chance to poll before deadline. "Not found yet"
+			// already tolerates this many times over in the loop below;
+			// one failed attempt gets the same tolerance unless ctx itself
+			// is why it failed, in which case retrying cannot help.
+			if ctx.Err() != nil {
+				return domain.Observation{}, false, err
+			}
+			found = false
 		}
 		if found {
 			switch {

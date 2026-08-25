@@ -44,7 +44,17 @@ func (c *Client) AttestationPublished(ctx context.Context, d AttesterDuty, deadl
 	for {
 		ok, match, err := c.poolIncludesAttestation(ctx, d)
 		if err != nil {
-			return domain.Observation{}, false, err
+			// A single failed poll — e.g. a transient HTTP timeout from a
+			// node under the exact CPU pressure local.vc_slow exists to
+			// diagnose — used to abort this whole call immediately, the same
+			// bug HeadUpdated had (see its doc comment). "Not found yet"
+			// already tolerates this many times over in the loop below; one
+			// failed attempt gets the same tolerance unless ctx itself is
+			// why it failed, in which case retrying cannot help.
+			if ctx.Err() != nil {
+				return domain.Observation{}, false, err
+			}
+			ok = false
 		}
 		if ok {
 			attrs := map[domain.AttrKey]string{

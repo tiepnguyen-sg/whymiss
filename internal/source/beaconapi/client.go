@@ -53,6 +53,11 @@ type Client struct {
 
 	committeeMu    sync.Mutex
 	committeeCache map[uint64]*committeeCacheEntry
+
+	// blockRecoveryBudget overrides defaultBlockRecoveryBudget; zero means
+	// use the default. Tests set it small to assert the give-up path
+	// without waiting for it.
+	blockRecoveryBudget time.Duration
 }
 
 // NewClient returns a Client against baseURL (e.g. "http://127.0.0.1:5052").
