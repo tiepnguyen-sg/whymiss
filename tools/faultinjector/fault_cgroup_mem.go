@@ -33,7 +33,7 @@ type CgroupMemFault struct {
 }
 
 func (f *CgroupMemFault) Apply(ctx context.Context, enclave, target string) (func(context.Context) error, error) {
-	id, err := dockerContainerID(ctx, target)
+	id, err := dockerContainerID(ctx, enclave, target)
 	if err != nil {
 		return nil, err
 	}

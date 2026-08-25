@@ -54,11 +54,11 @@ type NetemFault struct {
 
 // Apply resolves target's host-side veth and attaches the netem qdisc.
 func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(context.Context) error, error) {
-	id, err := dockerContainerID(ctx, target)
+	id, err := dockerContainerID(ctx, enclave, target)
 	if err != nil {
 		return nil, err
 	}
-	peerIP, err := netemPeerIP(ctx, f.Params.PeerTarget)
+	peerIP, err := netemPeerIP(ctx, enclave, f.Params.PeerTarget)
 	if err != nil {
 		return nil, err
 	}
@@ -144,11 +144,11 @@ func runTC(ctx context.Context, args ...string) error {
 	return nil
 }
 
-func netemPeerIP(ctx context.Context, peerTarget string) (string, error) {
+func netemPeerIP(ctx context.Context, enclave, peerTarget string) (string, error) {
 	if peerTarget == "" {
 		return "", nil
 	}
-	id, err := dockerContainerID(ctx, peerTarget)
+	id, err := dockerContainerID(ctx, enclave, peerTarget)
 	if err != nil {
 		return "", fmt.Errorf("resolve netem peer target %s: %w", peerTarget, err)
 	}

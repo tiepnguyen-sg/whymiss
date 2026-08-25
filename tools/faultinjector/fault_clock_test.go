@@ -39,7 +39,7 @@ func TestClockSkewAgainstPreloadedContainer(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	id, err := dockerContainerID(ctx, target)
+	id, err := dockerContainerID(ctx, "", target)
 	if err != nil {
 		t.Fatal(err)
 	}

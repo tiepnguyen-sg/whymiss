@@ -28,7 +28,7 @@ func TestNetemFaultAgainstDockerDesktopDevnet(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	targetID, err := dockerContainerID(ctx, target)
+	targetID, err := dockerContainerID(ctx, "", target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func TestNetemFaultAgainstDockerDesktopDevnet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peerID, err := dockerContainerID(ctx, peer)
+	peerID, err := dockerContainerID(ctx, "", peer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestCgroupFaultAgainstDockerDesktopDevnet(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	id, err := dockerContainerID(ctx, target)
+	id, err := dockerContainerID(ctx, "", target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestCgroupMemoryPressureAgainstDockerDesktopDevnet(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	id, err := dockerContainerID(ctx, target)
+	id, err := dockerContainerID(ctx, "", target)
 	if err != nil {
 		t.Fatal(err)
 	}

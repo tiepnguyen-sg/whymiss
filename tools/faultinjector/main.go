@@ -283,7 +283,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 	}
 	var pressureDone chan pressureResult
 	if s.SamplePressure != "" {
-		containerID, err := dockerContainerID(ctx, s.Target)
+		containerID, err := dockerContainerID(ctx, enclave, s.Target)
 		if err != nil {
 			return fmt.Errorf("sample_pressure: %w", err)
 		}

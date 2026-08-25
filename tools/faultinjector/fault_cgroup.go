@@ -54,7 +54,7 @@ type CgroupIOFault struct {
 
 // Apply resolves target's device and cgroup path, then writes the throttle.
 func (f *CgroupIOFault) Apply(ctx context.Context, enclave, target string) (func(context.Context) error, error) {
-	id, err := dockerContainerID(ctx, target)
+	id, err := dockerContainerID(ctx, enclave, target)
 	if err != nil {
 		return nil, err
 	}

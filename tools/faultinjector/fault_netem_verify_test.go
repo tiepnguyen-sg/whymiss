@@ -35,7 +35,7 @@ func TestNetemFaultAgainstRealDevnet(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	dockerID, err := dockerContainerID(ctx, containerID)
+	dockerID, err := dockerContainerID(ctx, "", containerID)
 	if err != nil {
 		t.Fatalf("dockerContainerID(%s) error = %v", containerID, err)
 	}

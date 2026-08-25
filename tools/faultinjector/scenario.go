@@ -278,8 +278,8 @@ func (f FaultSpec) Validate() error {
 		if f.CgroupCPU == nil {
 			return fmt.Errorf("fault.kind is %q but cgroup_cpu params are not set", f.Kind)
 		}
-		if f.CgroupCPU.QuotaPercent == 0 || f.CgroupCPU.QuotaPercent > 100 {
-			return fmt.Errorf("fault.cgroup_cpu.quota_percent must be between 1 and 100, got %d", f.CgroupCPU.QuotaPercent)
+		if f.CgroupCPU.QuotaPercent <= 0 || f.CgroupCPU.QuotaPercent > 100 {
+			return fmt.Errorf("fault.cgroup_cpu.quota_percent must be greater than 0 and at most 100, got %g", f.CgroupCPU.QuotaPercent)
 		}
 	case "cgroup_mem":
 		if f.CgroupMem == nil {
