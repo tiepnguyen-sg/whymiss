@@ -18,7 +18,6 @@ RECORD_ID             ?=
 CORPUS_SCENARIOS := \
 	cl-slow-cpu:cl-2-prysm-geth \
 	cl-slow-cpu-lighthouse:cl-1-lighthouse-geth \
-	host-memory-pressure:cl-1-lighthouse-geth \
 	p2p-degraded-lighthouse:cl-1-lighthouse-geth \
 	p2p-degraded-prysm:cl-2-prysm-geth \
 	p2p-ambiguous-no-baseline:cl-1-lighthouse-geth \
@@ -29,16 +28,22 @@ CORPUS_SCENARIOS := \
 	vc-frozen-lighthouse-2:cl-1-lighthouse-geth \
 	vc-frozen-prysm:cl-2-prysm-geth \
 	vc-frozen-prysm-2:cl-2-prysm-geth \
-	vc-slow-cpu:cl-1-lighthouse-geth \
-	vc-slow-cpu-prysm:cl-2-prysm-geth
+	vc-slow-cpu:cl-1-lighthouse-geth
 
-# recipe:beacon:additional-live-record-count. Together with the 15 canonical
-# records above this balanced campaign produces exactly 50 real records:
-# seven each for six positive causes and eight ambiguous unknown cases.
+# recipe:beacon:additional-live-record-count. Together with the 13 canonical
+# records above this campaign produces 40 real records, not the 50 the release
+# gate in tools/eval requires (releaseMinScenarios). The shortfall is deliberate
+# and visible rather than padded: host-memory-pressure and vc-slow-cpu-prysm
+# used to contribute 2 canonical + 8 campaign records, and both were removed
+# after their bisections never once reproduced their labelled phenomenon (full
+# logs in each recipe under tools/faultinjector/scenarios/). Closing the
+# 10-record gap needs either a fault mechanism that reproduces those two causes
+# on this devnet, or new recipes for causes the corpus does not cover yet — a
+# release-plan decision, not something to paper over by generating more rounds
+# of the recipes that already work.
 CORPUS_CAMPAIGN := \
 	cl-slow-cpu:cl-2-prysm-geth:2 \
 	cl-slow-cpu-lighthouse:cl-1-lighthouse-geth:3 \
-	host-memory-pressure:cl-1-lighthouse-geth:6 \
 	p2p-degraded-lighthouse:cl-1-lighthouse-geth:3 \
 	p2p-degraded-prysm:cl-2-prysm-geth:2 \
 	p2p-ambiguous-no-baseline:cl-1-lighthouse-geth:3 \
@@ -48,8 +53,7 @@ CORPUS_CAMPAIGN := \
 	vc-frozen-lighthouse:cl-1-lighthouse-geth:1 \
 	vc-frozen-prysm:cl-2-prysm-geth:1 \
 	vc-frozen-prysm-2:cl-2-prysm-geth:1 \
-	vc-slow-cpu:cl-1-lighthouse-geth:3 \
-	vc-slow-cpu-prysm:cl-2-prysm-geth:2
+	vc-slow-cpu:cl-1-lighthouse-geth:3
 
 export CGO_ENABLED := 0
 
@@ -84,9 +88,12 @@ test: export CGO_ENABLED := 1
 test:
 	go test -race -count=1 ./...
 
-## test.golden: regenerate golden files (review every diff as code)
+## test.golden: replay every test/corpus/* scenario against rca.Analyze and
+## diff cause/sub_cause against manifest.yaml's expect: block (no snapshot
+## file exists to regenerate — TestGolden_Corpus compares live against the
+## manifest directly, so there is no -update flag to wire up)
 test.golden:
-	go test ./internal/rca/... -update
+	go test ./internal/rca/... -run TestGolden_Corpus -v
 
 ## test.faults.darwin: verify Docker Desktop netem/cgroup apply and rollback against the devnet
 test.faults.darwin:

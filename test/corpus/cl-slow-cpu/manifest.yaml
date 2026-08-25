@@ -1,12 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
 id: cl-slow-cpu
+recipe_id: cl-slow-cpu
 description: |
-    The Prysm consensus client's CPU is capped to 5% of one core (cgroup v2 cpu.max) for the full duty window, while its paired execution client runs unthrottled — isolating CL-side validation slowness from EL-side slowness, which local.cl_slow's rule requires (Engine API duration under half of the validation stage).
+    The Prysm consensus client's CPU is capped to 7% of one core (cgroup v2 cpu.max) for the full duty window, while its paired execution client runs unthrottled — isolating CL-side validation slowness from EL-side slowness, which local.cl_slow's rule requires (Engine API duration under half of the validation stage). Slots proposed by the faulted Prysm validator set are excluded so the CPU cap cannot turn the scenario into a local proposal miss.
 expect:
     cause: local.cl_slow
     confidence: medium
-slot: 1925
-validator_index: 40
+slot: 8673
+validator_index: 33
 fault_kind: cgroup_cpu
 fault_target: cl-2-prysm-geth
 duration: 25s
-generated_at: 2026-08-21T02:06:04.150293082Z
+generated_at: 2026-08-25T03:16:47.019557651Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T03:03:51.091747683Z
+      offset: -1.35258ms
+      round_trip: 4.071253ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T03:16:47.017946695Z
+      offset: -1.342622ms
+      round_trip: 4.003791ms
+observations_sha256: 64986afee150cca5686f7b68332bcd74188d0eb601c994fb1dd8df3db8087d8a

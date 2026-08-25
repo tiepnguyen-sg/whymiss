@@ -1,3 +1,5 @@
-{"slot":1375,"kind":"duty_assigned","at":"2026-08-21T17:06:11.873775322Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"33"}}
-{"slot":1375,"kind":"slot_start","at":"2026-08-21T17:16:14Z","clock_offset":0,"source":"derived"}
-{"slot":1375,"kind":"block_seen","at":"2026-08-21T17:16:14.200316185Z","clock_offset":0,"source":"beaconapi","attrs":{"proposer_index":"31"}}
+{"slot":626,"kind":"duty_assigned","at":"2026-08-24T00:04:48.304683538Z","clock_offset":-104710,"clock_measured":true,"clock_sample_at":"2026-08-24T00:14:27.071193196Z","source":"beaconapi","attrs":{"validator_index":"32"}}
+{"slot":626,"kind":"slot_start","at":"2026-08-24T00:14:47Z","clock_offset":-104710,"clock_measured":true,"clock_sample_at":"2026-08-24T00:14:27.071193196Z","source":"derived"}
+{"slot":626,"kind":"block_seen","at":"2026-08-24T00:14:47.077Z","clock_offset":-104710,"clock_measured":true,"clock_sample_at":"2026-08-24T00:14:27.071193196Z","source":"promscrape","attrs":{"block_root":"0x9bb2c5914b69d27e9b11aeab4f37c214fd7c917b6808ae49e46e8c5e99265d46","proposer_index":"8"}}
+{"slot":626,"kind":"head_updated","at":"2026-08-24T00:14:47.319725325Z","clock_offset":-104710,"clock_measured":true,"clock_sample_at":"2026-08-24T00:14:27.071193196Z","source":"beaconapi","attrs":{"block_root":"0x9bb2c5914b69d27e9b11aeab4f37c214fd7c917b6808ae49e46e8c5e99265d46"}}
+{"slot":626,"kind":"collection_completed","at":"2026-08-24T00:23:59.020686121Z","clock_offset":-242640,"clock_measured":true,"clock_sample_at":"2026-08-24T00:23:59.020615917Z","source":"derived","attrs":{"validator_index":"32"}}

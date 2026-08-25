@@ -9,12 +9,14 @@ import (
 )
 
 // psiFixture is the kernel's PSI file format (man 5 proc, CONFIG_PSI) — a
-// stable ABI, not a client response this package guesses at. avg10=29.24
-// is a real figure this project measured before, via the cgroup-scoped
-// form of the same file (test/corpus/host-memory-pressure/observations.jsonl,
-// generated against a live devnet with a 128MB memory.high cap); the
-// host-wide file this package reads has the identical "some avg10=..."
-// line format.
+// stable ABI, not a client response this package guesses at. avg10=29.24 sits
+// inside the range this project actually measured live, via the cgroup-scoped
+// form of the same file: 20.99% at a 512MB memory.high cap up to 58.32% at
+// 16MB, logged per cap in tools/faultinjector/scenarios/host-memory-pressure.yaml.
+// That recipe's corpus record was dropped (see the recipe for why), so the log
+// there — not a corpus fixture — is the surviving record of those figures. The
+// host-wide file this package reads has the identical "some avg10=..." line
+// format.
 const psiFixture = "some avg10=29.24 avg60=12.05 avg300=3.10 total=987654321\nfull avg10=10.00 avg60=4.02 avg300=1.05 total=123456789\n"
 
 func writeFixture(t *testing.T, content string) string {

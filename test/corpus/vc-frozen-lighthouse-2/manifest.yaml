@@ -1,12 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
 id: vc-frozen-lighthouse-2
+recipe_id: vc-frozen-lighthouse-2
 description: |
     A second, independent run of the same fault as vc-frozen-lighthouse — the Lighthouse validator client's container frozen for the full duty window — against a different validator and slot, for redundancy in the corpus.
 expect:
     cause: local.vc_disconnected
-    confidence: high
-slot: 1318
-validator_index: 7
+    confidence: medium
+slot: 417
+validator_index: 6
 fault_kind: pause
 fault_target: vc-1-geth-lighthouse
 duration: 20s
-generated_at: 2026-08-21T17:05:50.575942714Z
+generated_at: 2026-08-23T23:45:35.022598474Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T23:32:39.074383309Z
+      offset: 66.994µs
+      round_trip: 3.772815ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T23:45:35.022272897Z
+      offset: -100.71µs
+      round_trip: 3.928967ms
+observations_sha256: 46765e3aaa3ddd2b2b0aacf3b0385413ed0e3f02ceb2562b82697969b2ac23a7

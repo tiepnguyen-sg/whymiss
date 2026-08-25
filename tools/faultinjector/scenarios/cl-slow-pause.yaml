@@ -1,0 +1,18 @@
+id: cl-slow-pause
+description: >
+  The Prysm consensus client is paused from eight seconds before the watched slot
+  until five seconds after slot start, while its paired execution client and
+  validator client keep running. The delayed head plus exact, short Engine API
+  calls isolate consensus-layer validation latency from EL and VC latency.
+target: cl-2-prysm-geth
+timing_target: cl-2-prysm-geth
+sample_engine_calls: true
+validator_candidates: [32, 63]
+avoid_proposer_validators: [32, 63]
+duration: 7s
+fault:
+  kind: pause
+  pause: {}
+expect:
+  cause: local.cl_slow
+  confidence: medium

@@ -1,12 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
 id: vc-frozen-prysm-2
+recipe_id: vc-frozen-prysm-2
 description: |
-    A clean attempt at the same fault as vc-frozen-prysm (which landed on network.proposer_missed instead) — the Prysm validator client's container frozen for the full duty window, with a different validator this time.
+    A second independent run of the same fault as vc-frozen-prysm — the Prysm validator client's container frozen for the full duty window — against a different validator and slot for client-side redundancy in the corpus.
 expect:
     cause: local.vc_disconnected
-    confidence: high
-slot: 1375
-validator_index: 33
+    confidence: medium
+slot: 626
+validator_index: 32
 fault_kind: pause
 fault_target: vc-2-geth-prysm
 duration: 20s
-generated_at: 2026-08-21T17:17:14.50314539Z
+generated_at: 2026-08-24T00:23:59.021048286Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-24T00:14:27.071193196Z
+      offset: -104.71µs
+      round_trip: 4.009463ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-24T00:23:59.020615917Z
+      offset: -242.64µs
+      round_trip: 3.997981ms
+observations_sha256: 904bdf7e22e7b4fee2ec4dc4a239f323c5817a9a78c2a886c524a569d837ea60

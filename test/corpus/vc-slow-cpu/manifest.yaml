@@ -1,12 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
 id: vc-slow-cpu
+recipe_id: vc-slow-cpu
 description: |
-    The Lighthouse validator client's CPU is capped to 1% of one core (cgroup v2 cpu.max, much more aggressive than el-slow-cpu/cl-slow-cpu since BLS signing is cheap enough that a looser quota might never queue) for the full duty window — unlike vc-frozen-lighthouse's pause, the process keeps running and should eventually publish, just late, isolating local.vc_slow (published late, head received on time) from local.vc_disconnected (never published at all).
+    The Lighthouse validator client's CPU is capped to 0.1% of one core (cgroup v2 cpu.max) for the full duty window — unlike vc-frozen-lighthouse's pause, the process keeps running and should eventually publish, just late, isolating local.vc_slow (published late, head received on time) from local.vc_disconnected (never published at all). Integer 1% (the previous value) left the duty healthy twice in a row on this devnet: BLS signing needs only a few ms of actual CPU time, so even throttled to 1ms per 100ms period it only adds a few hundred ms of wall-clock delay — nowhere near the ~4s attestation deadline. 0.1% (100us/100ms period) stretches that same handful of ms of real work into multiple seconds of wall-clock delay.
 expect:
     cause: local.vc_slow
     confidence: medium
-slot: 1959
-validator_index: 24
+slot: 5528
+validator_index: 4
 fault_kind: cgroup_cpu
 fault_target: vc-1-geth-lighthouse
 duration: 35s
-generated_at: 2026-08-21T02:12:49.170531951Z
+generated_at: 2026-08-24T16:43:11.027246035Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-24T16:34:51.083981506Z
+      offset: 521.223µs
+      round_trip: 4.144243ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-24T16:43:11.024370792Z
+      offset: 154.989µs
+      round_trip: 4.001618ms
+observations_sha256: 7258a6b6edfc938814b8ce4133ea5cf527df87037c4ca467762601266187780e

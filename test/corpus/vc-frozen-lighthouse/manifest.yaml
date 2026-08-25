@@ -1,12 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
 id: vc-frozen-lighthouse
+recipe_id: vc-frozen-lighthouse
 description: |
     The Lighthouse validator client's container is frozen (docker pause) for the full duty window, so it cannot sign or publish an attestation even though the beacon node it talks to stays healthy throughout.
 expect:
     cause: local.vc_disconnected
-    confidence: high
-slot: 1285
-validator_index: 1
+    confidence: medium
+slot: 336
+validator_index: 0
 fault_kind: pause
 fault_target: vc-1-geth-lighthouse
 duration: 20s
-generated_at: 2026-08-21T16:59:14.563157957Z
+generated_at: 2026-08-23T23:26:23.023680719Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T23:16:27.106684846Z
+      offset: -429.095µs
+      round_trip: 4.065964ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T23:26:23.023366392Z
+      offset: 13.517µs
+      round_trip: 3.997838ms
+observations_sha256: e6880f9992df024bf8417f08a40ffc6202e7bac3c218ee28d8b8d141dd5af1ba

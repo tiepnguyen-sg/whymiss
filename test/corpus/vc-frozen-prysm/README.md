@@ -1,11 +1,11 @@
-# vc-frozen-lighthouse
+# vc-frozen-prysm
 
-The Lighthouse validator client's container is frozen (docker pause) for the full duty window, so it cannot sign or publish an attestation even though the beacon node it talks to stays healthy throughout.
+The Prysm validator client's container is frozen (docker pause) for the full duty window — the same fault as vc-frozen-lighthouse, on the other client, to prove the taxonomy attribution and the injector itself are not client-specific (I-11).
 
 
 ## What was broken
 
-Fault: pause applied to vc-1-geth-lighthouse for 20s, around slot 336.
+Fault: pause applied to vc-2-geth-prysm for 20s, around slot 516.
 
 ## Recorded outcome
 

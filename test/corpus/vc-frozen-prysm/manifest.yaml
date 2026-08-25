@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
+id: vc-frozen-prysm
+recipe_id: vc-frozen-prysm
+description: |
+    The Prysm validator client's container is frozen (docker pause) for the full duty window — the same fault as vc-frozen-lighthouse, on the other client, to prove the taxonomy attribution and the injector itself are not client-specific (I-11).
+expect:
+    cause: local.vc_disconnected
+    confidence: medium
+slot: 516
+validator_index: 33
+fault_kind: pause
+fault_target: vc-2-geth-prysm
+duration: 20s
+generated_at: 2026-08-24T00:04:47.021244305Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T23:52:27.096402859Z
+      offset: 191.751µs
+      round_trip: 4.078022ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-24T00:04:47.020899074Z
+      offset: -197.6µs
+      round_trip: 4.047886ms
+observations_sha256: edbd1e18079bb204fbdfa895cfbd7e87e6637ec8284e8a78f7fe5be4c5699434

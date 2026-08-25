@@ -1,4 +1,7 @@
-{"slot":1925,"kind":"duty_assigned","at":"2026-08-21T02:03:35.232358397Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"40"}}
-{"slot":1925,"kind":"slot_start","at":"2026-08-21T02:05:28Z","clock_offset":0,"source":"derived"}
-{"slot":1925,"kind":"block_seen","at":"2026-08-21T02:05:29.434751978Z","clock_offset":0,"source":"beaconapi","attrs":{"proposer_index":"26"}}
-{"slot":1925,"kind":"attestation_included","at":"2026-08-21T02:06:04.150262451Z","clock_offset":0,"source":"beaconapi","attrs":{"inclusion_delay":"2","validator_index":"40"}}
+{"slot":8673,"kind":"duty_assigned","at":"2026-08-25T03:00:58.347285659Z","clock_offset":-1352580,"clock_measured":true,"clock_sample_at":"2026-08-25T03:03:51.091747683Z","source":"beaconapi","attrs":{"validator_index":"33"}}
+{"slot":8673,"kind":"slot_start","at":"2026-08-25T03:04:11Z","clock_offset":-1352580,"clock_measured":true,"clock_sample_at":"2026-08-25T03:03:51.091747683Z","source":"derived"}
+{"slot":8673,"kind":"block_seen","at":"2026-08-25T03:04:12.38Z","clock_offset":-1352580,"clock_measured":true,"clock_sample_at":"2026-08-25T03:03:51.091747683Z","source":"promscrape","attrs":{"block_root":"0xf09c93441eced87a365b886014e41ab01d59e42f4886600aacac82fa66a82106","proposer_index":"19"}}
+{"slot":8673,"kind":"head_updated","at":"2026-08-25T03:04:27.88283285Z","clock_offset":-1352580,"clock_measured":true,"clock_sample_at":"2026-08-25T03:03:51.091747683Z","source":"beaconapi","attrs":{"block_root":"0xf09c93441eced87a365b886014e41ab01d59e42f4886600aacac82fa66a82106"}}
+{"slot":8673,"kind":"engine_call","at":"2026-08-25T03:04:28.16602703Z","clock_offset":-1352580,"clock_measured":true,"clock_sample_at":"2026-08-25T03:03:51.091747683Z","source":"promscrape","attrs":{"duration_ms":"1404","engine_method":"newPayload","sample_count":"2"}}
+{"slot":8673,"kind":"engine_call","at":"2026-08-25T03:04:28.16602703Z","clock_offset":-1352580,"clock_measured":true,"clock_sample_at":"2026-08-25T03:03:51.091747683Z","source":"promscrape","attrs":{"duration_ms":"301","engine_method":"forkchoiceUpdated","sample_count":"2"}}
+{"slot":8673,"kind":"collection_completed","at":"2026-08-25T03:16:47.018001101Z","clock_offset":-1342622,"clock_measured":true,"clock_sample_at":"2026-08-25T03:16:47.017946695Z","source":"derived","attrs":{"validator_index":"33"}}

@@ -1,9 +1,42 @@
 id: vc-slow-cpu-prysm
 description: >
-  The Prysm validator client's CPU is capped to 1% of one core for the full
-  duty window while its beacon node remains healthy. Prysm-side proposers are
-  excluded, isolating late attestation publication from proposal production
-  and providing the second-client counterpart to vc-slow-cpu.
+  DROPPED FROM THE CORPUS, PAUSED MID-BISECTION at 4.65%, untested. There is
+  deliberately no test/corpus/vc-slow-cpu-prysm record any more: the log below
+  shows every quota either starved the VC completely (local.vc_disconnected) or
+  left it comfortably inside the deadline, so no run ever produced
+  local.vc_slow. A record of the 4.75% run was nevertheless committed carrying
+  `expect: local.vc_slow`, a label the log right below already contradicted —
+  that mismatch, not any engine fault, is what made docs/evaluation.md report a
+  false-high verdict. That record could not have supported a timing claim in
+  any case: it contained no attestation_published observation at all, only an
+  attestation_included with inclusion_delay 1 and every reward flag earned,
+  which is a healthy duty by definition. This recipe is kept as the record of
+  what was attempted and how to resume; it is intentionally absent from the
+  Makefile's CORPUS_SCENARIOS and CORPUS_CAMPAIGN lists so no batch run
+  re-creates a record whose label the fault has never once earned. Resume with
+  an explicit
+  `make corpus.generate SCENARIO=vc-slow-cpu-prysm BEACON=cl-2-prysm-geth`,
+  and only commit a record once the run's own verdict matches the label.
+
+  The Prysm validator client's CPU is capped to a percentage of
+  one core (cgroup v2 cpu.max) for the full duty window while its beacon node
+  remains healthy. Prysm-side proposers are excluded, isolating late
+  attestation publication from proposal production and providing the
+  second-client counterpart to vc-slow-cpu. Prysm's VC needs meaningfully more
+  absolute CPU time to complete a signing cycle than Lighthouse's does.
+
+  Bisection log (quota_percent / result):
+    1, 2, 3, 4, 4.5, 4.6  -> local.vc_disconnected (never published in the window)
+    4.7, 4.75, 5          -> healthy (finished comfortably inside the deadline)
+
+  The threshold sits in the narrow 4.6-4.7% gap. Bisection was paused here, not
+  because the search stalled, but because running it on a second Kurtosis
+  enclave at the same time as the corpus.generate.campaign batch on the first
+  one pushed this VM's host load average past 5.9 on 4 vCPUs, causing genuine
+  REST API timeouts that corrupted several campaign records with false
+  failures (see CHANGELOG.md). Resume this bisection (try 4.65 first) only
+  once nothing else is running fault-injection work on this VM.
+  finishing should take a few seconds instead of milliseconds.
 target: vc-2-geth-prysm
 timing_target: cl-2-prysm-geth
 validator_candidates: [32, 63]
@@ -12,7 +45,7 @@ duration: 35s
 fault:
   kind: cgroup_cpu
   cgroup_cpu:
-    quota_percent: 1
+    quota_percent: 4.65
 expect:
   cause: local.vc_slow
   confidence: medium

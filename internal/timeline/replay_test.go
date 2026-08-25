@@ -38,8 +38,8 @@ func TestLoadObservations_RealCorpusScenario(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadObservations: %v", err)
 	}
-	if len(obs) != 5 {
-		t.Fatalf("got %d observations, want 5", len(obs))
+	if len(obs) != 7 {
+		t.Fatalf("got %d observations, want 7", len(obs))
 	}
 	if obs[0].Kind != domain.ObsDutyAssigned || obs[1].Kind != domain.ObsSlotStart {
 		t.Errorf("first two observations = %q, %q, want duty_assigned, slot_start", obs[0].Kind, obs[1].Kind)
@@ -57,22 +57,22 @@ func TestReplay_RealCorpusScenario(t *testing.T) {
 		t.Fatalf("Replay: %v", err)
 	}
 
-	if tl.Slot != 1959 {
-		t.Errorf("Slot = %d, want 1959", tl.Slot)
+	if tl.Slot != 5528 {
+		t.Errorf("Slot = %d, want 5528", tl.Slot)
 	}
-	if tl.Duty == nil || tl.Duty.ValidatorIndex != 24 {
-		t.Errorf("Duty = %+v, want validator 24 recovered from duty_assigned", tl.Duty)
+	if tl.Duty == nil || tl.Duty.ValidatorIndex != 4 {
+		t.Errorf("Duty = %+v, want validator 4 recovered from duty_assigned", tl.Duty)
 	}
-	if len(tl.Observations) != 5 {
-		t.Errorf("got %d observations on the timeline, want 5", len(tl.Observations))
+	if len(tl.Observations) != 7 {
+		t.Errorf("got %d observations on the timeline, want 7", len(tl.Observations))
 	}
 
 	included, ok := tl.Last(domain.ObsAttestationIncluded)
 	if !ok {
 		t.Fatal("want an attestation_included observation")
 	}
-	if delay, _ := included.Attr(domain.AttrInclusionDelay); delay != "1" {
-		t.Errorf("inclusion_delay = %q, want %q", delay, "1")
+	if delay, _ := included.Attr(domain.AttrInclusionDelay); delay != "3" {
+		t.Errorf("inclusion_delay = %q, want %q", delay, "3")
 	}
 }
 

@@ -1,4 +1,0 @@
-{"slot":2001,"kind":"duty_assigned","at":"2026-08-21T02:13:18.102575717Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
-{"slot":2001,"kind":"slot_start","at":"2026-08-21T02:20:40Z","clock_offset":0,"source":"derived"}
-{"slot":2001,"kind":"attestation_published","at":"2026-08-21T02:20:44.214199921Z","clock_offset":0,"source":"beaconapi","attrs":{"validator_index":"24"}}
-{"slot":2001,"kind":"host_sampled","at":"2026-08-21T02:21:16.523469032Z","clock_offset":0,"source":"hostmetrics","attrs":{"metric":"mem_pressure_pct","value":"29.24"}}

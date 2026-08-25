@@ -1,14 +1,56 @@
 id: host-memory-pressure
 description: >
-  The Lighthouse consensus client's cgroup v2 memory.high is capped to 512MB
-  while a devnet-only helper allocates 1GB of file cache in the same cgroup
-  for the full duty window, forcing sustained reclaim on the validation path.
-  memory.high
-  throttles and reclaims rather than OOM-killing processes (unlike memory.max),
-  which is what docs/causes.md's local.host.memory_pressure rule measures via
-  PSI. An unfaulted Prysm baseline distinguishes local processing delay from a
-  network-wide late block. The helper is stopped before the original limit is
-  restored.
+  DROPPED FROM THE CORPUS, PAUSED MID-SEARCH. There is deliberately no
+  test/corpus/host-memory-pressure record any more: every limit_bytes value
+  tried below left the duty healthy (or broke the observation channel), so no
+  run ever produced local.host.memory_pressure. A record of the 24MB run was
+  nevertheless committed carrying `expect: local.host.memory_pressure`, a label
+  the bisection log right below already contradicted — that mismatch, not any
+  engine fault, is what made docs/evaluation.md report a false-high verdict.
+  This recipe is kept as the record of what was attempted and how to resume;
+  it is intentionally absent from the Makefile's CORPUS_SCENARIOS and
+  CORPUS_CAMPAIGN lists so no batch run re-creates a record whose label the
+  fault has never once earned. Resume with an explicit
+  `make corpus.generate SCENARIO=host-memory-pressure BEACON=cl-1-lighthouse-geth`,
+  and only commit a record once the run's own verdict matches the label.
+
+  Goal: find a cgroup v2 memory.high cap on cl-1-lighthouse-geth tight
+  enough to push block propagation past the ~4s attestation deadline (so the
+  duty is genuinely late, triggering local.host.memory_pressure) without
+  capping so tight the node's own beacon-API HTTP server stops answering in
+  time (which yields unknown.no_rule_matched instead — the fault broke the
+  observation channel rather than producing a measurably late but
+  still-observable duty).
+
+  Bisection log (limit_bytes / PSI some avg10 / propagation / result):
+    512MB           / 20.99% / (fast)  / healthy, no-cause/high
+    128MB           / 24.97% / (fast)  / healthy, no-cause/high
+     64MB (target)  / 25.14% / 0.199s  / healthy, no-cause/high
+     32MB           / 39.66% / 1.435s  / healthy, no-cause/high
+     24MB (current) / 45.41% / 2.636s  / healthy, no-cause/high — clean measurement, REST API fine
+     16MB           / 58.32% / (n/a)   / node's beacon-API timed out answering
+                                          /eth/v1/beacon/headers/head — lost
+                                          head_updated, got unknown.no_rule_matched
+
+  24 and 16 bracket the target window. Resume by trying 20MB (20971520) next.
+  If 20MB still does not land between "healthy" and "API broke", the usable
+  window may be too narrow to hit reliably on this devnet, which is a
+  legitimate place to stop — the same conclusion Phase 1 already reached for
+  local.host.disk_io and local.el_slow (see CHANGELOG.md, "Phase 1 corpus:
+  final state for this pass"). limit_bytes below is left at 24MB (the last
+  clean, non-API-breaking data point) rather than at whatever value was tried
+  last, so a stray `make corpus.generate` run against this file doesn't
+  accidentally re-trigger the 16MB API-timeout failure mode.
+
+  Mechanism once tuned: the Lighthouse consensus client's cgroup v2
+  memory.high is capped while a devnet-only helper allocates 1GB of file
+  cache in the same cgroup for the full duty window, forcing sustained
+  reclaim on the validation path. memory.high throttles and reclaims rather
+  than OOM-killing processes (unlike memory.max), which is what
+  docs/causes.md's local.host.memory_pressure rule measures via PSI. An
+  unfaulted Prysm baseline distinguishes local processing delay from a
+  network-wide late block. The helper is stopped before the original limit
+  is restored.
 target: cl-1-lighthouse-geth
 timing_target: cl-1-lighthouse-geth
 baseline_target: cl-2-prysm-geth
@@ -19,7 +61,7 @@ sample_pressure: memory
 fault:
   kind: cgroup_mem
   cgroup_mem:
-    limit_bytes: 536870912
+    limit_bytes: 25165824
     pressure_bytes: 1073741824
 expect:
   cause: local.host.memory_pressure

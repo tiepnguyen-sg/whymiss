@@ -1,23 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
 id: proposer-missed-concurrent-vc-pause
+recipe_id: proposer-missed-concurrent-vc-pause
 description: |
-    Originally set up to test local.vc_disconnected (Prysm's validator client
-    container frozen for the duty window, avoiding a same-node proposer conflict).
-    The real result was more interesting than intended: validator 23 (Lighthouse
-    range, unrelated to the paused node) held the proposer duty for this slot and
-    never produced a canonical block — confirmed by direct query well after the
-    slot passed (persistent 404). Per docs/causes.md's rule ordering, R-100
-    (proposer absent) fires before R-400 (VC reachability) specifically because an
-    absent block exonerates every attester regardless of their own client health,
-    so network.proposer_missed is the honest label for what these observations
-    show, not the local.vc_disconnected this scenario was built to demonstrate.
-    Kept and relabeled rather than discarded — a corpus scenario records what
-    actually happened, not what was expected to happen.
+    The Lighthouse validator client is paused across a slot where the same Lighthouse validator set owns both the watched attester duty and the proposer duty. The proposer cannot publish a block and the watched validator cannot publish an attestation, producing the observation shape for R-100 without relying on an unrelated spontaneous proposer miss. The generator persists a positive canonical skipped-slot proof, so R-100 reports high confidence.
 expect:
     cause: network.proposer_missed
     confidence: high
-slot: 494
-validator_index: 33
+slot: 151
+validator_index: 0
 fault_kind: pause
-fault_target: vc-2-geth-prysm
+fault_target: vc-1-geth-lighthouse
 duration: 20s
-generated_at: 2026-08-20T08:37:56.385793Z
+generated_at: 2026-08-23T22:47:59.0174587Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T22:39:27.108971924Z
+      offset: -260.093µs
+      round_trip: 4.054444ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-23T22:47:59.017359566Z
+      offset: 10.348µs
+      round_trip: 4.304387ms
+observations_sha256: 713f9a5e197e4e54cb6ec2b0206cf8c66f2422a1409db78e6498f8b8d3e16c96

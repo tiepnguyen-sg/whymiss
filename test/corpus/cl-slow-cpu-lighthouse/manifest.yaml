@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
+id: cl-slow-cpu-lighthouse
+recipe_id: cl-slow-cpu-lighthouse
+description: |
+    The Lighthouse consensus client's CPU is capped to 9% of one core for the full duty window while geth remains unthrottled. Exact per-slot Engine counters separate consensus validation time from execution latency, and Lighthouse-side proposers are excluded so proposal production cannot confound the watched attestation.
+expect:
+    cause: local.cl_slow
+    confidence: medium
+slot: 2888
+validator_index: 1
+fault_kind: cgroup_cpu
+fault_target: cl-1-lighthouse-geth
+duration: 25s
+generated_at: 2026-08-23T17:39:14.036264Z
+clock_samples:
+    - server: time.apple.com:123
+      sampled_at: 2026-08-23T17:27:42.048000625Z
+      offset: -2.286375ms
+      round_trip: 32.267313ms
+    - server: time.apple.com:123
+      sampled_at: 2026-08-23T17:39:14.031379058Z
+      offset: -4.562942ms
+      round_trip: 32.051927ms
+observations_sha256: f4a5ecaa0299b4ec00c2e7527c2df2cf4f8a2e2f30a624df6e3a257aa11381d2

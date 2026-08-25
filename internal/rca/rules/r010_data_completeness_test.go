@@ -61,11 +61,12 @@ func TestDataCompleteness(t *testing.T) {
 		}
 	})
 
-	t.Run("does not match on published without block_seen (host-memory-pressure shape)", func(t *testing.T) {
+	t.Run("does not match on published without block_seen", func(t *testing.T) {
 		// A validator client can attest to a head it already has even when
 		// this node's own collector never saw this slot's block — normal
-		// behaviour, not inconsistent data. See r100_proposer_missed.go's
-		// doc comment for the real corpus scenario this covers.
+		// behaviour, not inconsistent data. R-100 is what explains that
+		// shape when the slot really was skipped; R-010 must not pre-empt it
+		// by calling the missing block_seen incomplete data.
 		tl := timelineWith(t,
 			mustObs(t, domain.ObsAttestationPublished, offset(2*time.Second), nil),
 		)
