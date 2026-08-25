@@ -8,6 +8,96 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- Started the Phase 2 72-hour soak test (`make test.soak`) against Hoodi
+  testnet: a dedicated `e2-small` host, a public Hoodi beacon API
+  (`ethereum-hoodi-beacon-api.publicnode.com`, no operator infrastructure
+  required — read-only, no validator keys, matching I-1/I-2), and genesis
+  validator index 0 (any active Hoodi validator works; watching one requires
+  no ownership of it, only its public duty/attestation data, which is the
+  whole point of a read-only observability tool). That gateway does not
+  support the SSE `/eth/v1/events` endpoint (`unexpected status 501`) —
+  `Stream`'s reconnect loop backs off correctly (full jitter, 1s base/30s
+  cap, verified against `internal/source/beaconapi/backoff.go`) and settles
+  into a low, safe retry rate rather than hammering it, which is itself a
+  72-hour stress case for that loop's own resource behavior. Duty tracking
+  does not depend on the event stream — `BlockSeen`, `AttestationPublished`,
+  and `CheckInclusion` all poll REST endpoints directly — so this still
+  exercises the real collection and RCA path end to end.
+
+- `cl-slow-cpu-lighthouse`'s and `cl-slow-cpu`'s `cgroup_cpu` fault (9%/7%
+  quota) throttles the same consensus-client container whose own REST API
+  `faultinjector`'s live head-timing observer polls during the fault window —
+  a known tight margin (`NewObserver`'s 25s HTTP client timeout was already
+  raised specifically because 5-9% quota routinely pushed that node's API
+  close to timing out; see its doc comment). Running `make
+  corpus.generate.campaign` repeated both recipes back-to-back against the
+  same target node several times in a row and lost that race on every repeat
+  in this pass (`head observation unavailable: ... timeout awaiting response
+  headers`), each time falling back to `unknown.*` instead of `local.cl_slow`.
+  Initially misattributed to CPU contention from a second Kurtosis enclave
+  running fault-injection work concurrently on the same 4-vCPU host (real,
+  and worth avoiding — generate one enclave's fault-injection work at a time
+  per host — but tearing that second enclave down and confirming host load
+  back under 2 did not stop the same failure from recurring on solo runs,
+  which is what narrowed it to the shared-node race instead). Not fixed in
+  this pass: doing so without weakening the fault means observing head timing
+  from a channel that does not share the target's own throttled API — e.g.
+  the SSE stream instead of REST polling — which is a real code change, not
+  a config tweak.
+- Corpus grew to 15 canonical scenarios (was 9): `cl-slow-cpu-lighthouse`,
+  `p2p-ambiguous-no-baseline(-prysm)`, `proposer-missed-concurrent-vc-pause(-prysm)`,
+  `vc-frozen-prysm`, and `vc-slow-cpu-prysm` are new — then back down to 13 when
+  two of them turned out to be mislabelled and were dropped (see "Corpus: two
+  mislabelled scenarios removed" below). `cl-slow-cpu`, `p2p-degraded-lighthouse`, and
+  `p2p-degraded-prysm` were regenerated with the current `faultinjector` build after
+  their originals (recorded earlier in this corpus-growth effort, before later
+  faultinjector fixes) turned out to fail `corpusctl validate` (missing clock
+  `round_trip`) and, for the first two, `TestGolden_Corpus` (the clock sample
+  attached to their `attestation_included` observation was 10–12 minutes older than
+  the observation itself, past R-011's 2-minute freshness limit) — regenerating
+  against current code fixed both.
+- `internal/timeline/replay_test.go`'s `TestLoadObservations_RealCorpusScenario` and
+  `TestReplay_RealCorpusScenario` hardcode exact values (observation count, slot,
+  validator index, inclusion delay) against `test/corpus/vc-slow-cpu`'s live content
+  rather than a frozen fixture, so regenerating that scenario as part of this
+  corpus-growth effort silently broke both assertions until they were updated to
+  match. Worth a follow-up: a test asserting against a scenario expected to be
+  regenerated should pin its own copy, not read the corpus scenario directly.
+- `README.md`'s sample report replayed `test/corpus/host-memory-pressure`, which
+  this pass could not get to reproduce `local.host.memory_pressure` (see above) —
+  the README was silently making a false claim about reproducible output. Replaced
+  with the real, current `local.vc_slow` report from `test/corpus/vc-slow-cpu`.
+  That scenario has since been dropped from the corpus entirely.
+
+- **Corpus: two mislabelled scenarios removed, accuracy figure now describes less.**
+  `test/corpus/host-memory-pressure` and `test/corpus/vc-slow-cpu-prysm` were the
+  two false-high verdicts in `docs/evaluation.md`. The engine was right and the
+  labels were wrong. Both recordings show a duty that was fulfilled with every
+  reward flag earned — `host-memory-pressure` published its attestation at +3.166s,
+  inside the ~4s deadline, and `vc-slow-cpu-prysm` contained no
+  `attestation_published` observation at all, only an `attestation_included` with
+  `inclusion_delay` 1 and correct head and target. `deriveOutcome` therefore
+  returned `ok`, R-600 correctly declined (`dutyHasObservableLoss` is false: PSI
+  was 45.41% but nothing was lost), R-410 correctly declined (no publication
+  timestamp to measure), and the R-999 catch-all produced its documented
+  no-cause/`high` clean pass per `docs/causes.md` §6. Each recipe's own bisection
+  log had already recorded the exact run that was committed as "healthy"; the
+  `expect:` block was left at the phenomenon the recipe was aiming for rather than
+  the one it produced. No rule was changed. `observations_sha256` matched the
+  recorded bytes in both, so nothing had been hand-edited — the defect was purely
+  in the label. Both recipes stay under `tools/faultinjector/scenarios/` with their
+  full bisection logs, now headed with why the record was dropped and how to
+  resume; both are removed from `CORPUS_SCENARIOS` and `CORPUS_CAMPAIGN` so no
+  batch run re-creates a record whose label the fault has never once earned.
+  `docs/evaluation.md` reads **13/13 (100.0%) top-1 accuracy, 0 false-high**, which
+  is a *smaller claim* than 13/15, not a better one: the corpus lost its two hardest
+  cases and two of the eight causes it used to name, and the campaign that was
+  planned to reach the 50-scenario release minimum now tops out at 40 (13 canonical
+  + 27), a 10-record shortfall left visible in the `Makefile` rather than padded out
+  with more rounds of the recipes that already work. `tools/eval` now prints corpus
+  size against that minimum, the number of causes exercised, and a note that
+  removing an unreproducible scenario raises the percentage without improving the
+  engine — so the report cannot be read as "finished" again.
 - Tagged releases now publish an exact-version GHCR image manifest for Linux amd64
   and arm64. BuildKit attaches OCI SBOM/provenance attestations, cosign signs and
   verifies the digest, and the GitHub release stays draft until every binary and
@@ -121,6 +211,143 @@ version stays at `v0.x` until the API is stable.
   produces trustworthy timing verdicts.
 
 ### Fixed
+
+- `Client.BlockSeen` (`internal/source/beaconapi/blocks.go`) had two
+  instances of the same bug class, one of them observed live: (1) a single
+  failed poll of `/eth/v1/beacon/headers/{slot}` aborted the whole call
+  instead of being tolerated like "not found yet", same fix as HeadUpdated
+  and AttestationPublished above; (2) `blockStatusAtDeadline` sampled the
+  node's sync status exactly once at the deadline and failed permanently if
+  it wasn't ready that instant — the exact bug `tools/faultinjector`'s own
+  `blockStatusAtDeadline` had before an earlier fix in this same file's
+  history, except that fix was only ever applied to the faultinjector's copy,
+  never to this production one. Confirmed live: the Phase 2 72-hour soak test
+  against the real public Hoodi gateway hit `"cannot confirm slot 3788193 as
+  seen or skipped: node is not fully synced..."` while the node was simply
+  lagging, not stuck — losing that slot's evidence for no real reason.
+  `blockStatusAtDeadline` now retries for up to 90s (`defaultBlockRecoveryBudget`)
+  before giving up, mirroring the faultinjector fix. Regression tests added
+  for both.
+- `Client.AttestationPublished` (`internal/source/beaconapi/attestations.go`)
+  had the same bug just fixed in `Client.HeadUpdated`: a single failed poll of
+  `/eth/v1/beacon/pool/attestations` aborted the whole call instead of being
+  tolerated like "not found yet". Found by code inspection while
+  investigating why `vc-slow-cpu-prysm`'s own cgroup_cpu bisection against
+  Prysm kept landing exactly on `local.vc_disconnected` or healthy with no
+  clean `local.vc_slow` in between — a node under that fault can answer one
+  pool poll too slowly without being unable to answer the next one 500ms
+  later, and losing that single poll made a real late publish look
+  indistinguishable from the validator never attesting at all. This is
+  `internal/app/duty_tracking.go`'s real collection path, not corpus-only
+  code: `collectionFailed` already keeps a transient error like this from
+  producing a wrong confident verdict (it suppresses `collection_completed`,
+  so `R-400`'s guard on that observation still holds), but it did cost a real
+  operator's node the evidence needed to distinguish `local.vc_slow` from
+  `unknown` under exactly the load condition that rule exists to diagnose.
+  `tools/faultinjector/observe.go`'s own `PollAttestationPublished` had the
+  identical bug and is fixed the same way — it does not silently produce a
+  wrong verdict either (`main.go` hard-fails the whole scenario run on this
+  error instead), but every such failure during corpus generation cost a full
+  wasted record-generation attempt. Regression tests added in both packages.
+- `docs/configuration.md`'s "Slot schedule" table documented
+  `schedule.seconds_per_slot`'s constraint as just "Positive", omitting that
+  `SlotSchedule.Validate()` also caps it at `maxSupportedSlotDuration` (1
+  minute) — found while auditing every configuration table against its
+  validator function for release readiness.
+- `Client.HeadUpdated` gave up entirely on a single failed poll of
+  `/eth/v1/beacon/headers/head`, discarding every remaining chance to observe
+  the head before its deadline — even though the same loop already tolerates
+  "not found yet" the same way, every poll cycle, until that deadline. A node
+  under real CPU pressure (`local.cl_slow`'s own fault, or a genuinely
+  overloaded operator box) can answer one request too slowly
+  ("timeout awaiting response headers") without being unable to answer the
+  next one 200ms later; the loop now retries through any fetch error the same
+  way it already retries through "not found", unless ctx itself is why the
+  fetch failed. This is `internal/source/beaconapi`, not corpus-only code — it
+  is what `whymiss watch` uses in production, so a transient blip on a real
+  operator's node no longer permanently loses that duty's `head_updated`
+  evidence. Found because this exact pattern reliably failed 5 of 27 records
+  in a corpus generation campaign (`cl-slow-cpu`/`cl-slow-cpu-lighthouse`,
+  whose fault throttles the very node this poll depends on).
+- `SamplePrysmPeerCount` treated a Prysm node reporting zero connected peers
+  as a scrape failure (`connected_libp2p_peers not found in metrics`) instead
+  of a valid zero reading. `connected_libp2p_peers` is a per-agent labelled
+  Prometheus vector, unlike Lighthouse's bare, always-registered
+  `libp2p_peers` gauge — a Prometheus client only exposes a label combination
+  once it has actually occurred, so a node with no currently connected peers
+  omits the series entirely rather than reporting it at 0. This devnet's only
+  real capture (`testdata/prysm_metrics.txt`) happened to have one peer
+  connected and never exercised the zero case; found because
+  `p2p-ambiguous-no-baseline-prysm`'s netem peer-isolation fault reliably
+  reaches exactly that state, failing 3 for 3 campaign records with this
+  error. No matching line after an otherwise successful, well-formed scrape
+  is now treated as the legitimate zero it is.
+- `store.Open` failed on any relative database path with a directory
+  component — `open results/whymiss.db: connect: SQL logic error: invalid
+  uri authority: results` — because `url.URL{Scheme: "file", Path: p}` with
+  a relative, Host-less `p` serializes as `file://p`: the RFC 3986 generic
+  syntax reads everything up to the first `/` after `//` as the URI's
+  authority, not the path. A flat filename like `whymiss.db` happened to
+  still open (some SQLite URI parsers tolerate an authority they don't use),
+  which hid this for a long time; found running the Phase 2 soak test with
+  `--db soak-results/<timestamp>/whymiss.db`. The path is now resolved to
+  absolute before building the URI, producing the unambiguous
+  `file:///abs/path` form.
+- `whymiss doctor` and every `FetchGenesis` caller (`watch`, the Phase 2 soak
+  test) failed against a real beacon node — `fetch spec: decode data field:
+  json: cannot unmarshal array into Go value of type string` — because
+  `GET /eth/v1/config/spec`'s response mixes plain string fields with
+  non-string ones (`BLOB_SCHEDULE`, an array of `{EPOCH,
+  MAX_BLOBS_PER_BLOCK}` objects added for a later fork) and the client
+  decoded the whole object into a `map[string]string`. Never caught before
+  because this project's Kurtosis devnet genesis predates that field; found
+  running `whymiss doctor` against a real public Hoodi testnet beacon API
+  while preparing the 72-hour Phase 2 soak test. Now decodes only the one
+  field this package reads (`SECONDS_PER_SLOT`) into a typed struct, so
+  `encoding/json` ignores whatever shape the rest of the spec takes.
+- `tools/faultinjector`'s `cgroup_cpu` fault could never throttle a validator
+  client tight enough to make BLS signing genuinely late: a validator client's
+  signing work is only a few ms of real CPU, so even the tightest integer
+  `quota_percent: 1` (1ms per 100ms cgroup v2 period) only added a few hundred
+  ms of wall-clock delay — nowhere near the ~4s attestation deadline
+  `local.vc_slow` needs to cross, so the duty kept finishing healthy. Fractional
+  percentages below 1 are now accepted; requesting one below the ~1ms quota this
+  host's kernel accepts (`write cpu.max: invalid argument` below that) widens
+  the cgroup period instead of asking for a smaller quota, so the same ratio is
+  still achieved without hitting that floor. `vc-slow-cpu` (Lighthouse) needed
+  0.1%. `vc-slow-cpu-prysm` (Prysm) needed the opposite direction — its VC
+  needs meaningfully more absolute CPU to complete a signing cycle at all, so
+  1–4.5% left it never publishing within the window (`local.vc_disconnected`)
+  while 4.75%+ finished with room to spare (healthy); the true threshold sits
+  in that final quarter-point gap and was not found in this pass — see the
+  scenario's own description for the full bisection log.
+- Every `faultinjector` fault kind (pause, netem, cgroup_mem, cgroup_cpu,
+  cgroup_io, clock_skew) failed with "matched N containers, want exactly 1"
+  the moment a second Kurtosis enclave was running alongside the one being
+  faulted, because `dockerContainerID` resolved a target service name via a
+  bare `docker ps --filter name=` match with no enclave scoping — every
+  ethereum-package devnet uses the same service names
+  (`cl-1-lighthouse-geth`, `vc-2-geth-prysm`, ...), so two enclaves each have
+  a same-named container and the filter matched both. `Apply` already
+  received an `enclave` parameter for exactly this purpose but never
+  forwarded it. `dockerContainerID` now additionally filters on the
+  `kurtosis_enclave_name` container label when `enclave` is non-empty; empty
+  keeps the original unscoped behavior for the handful of integration tests
+  that have no enclave name to give it. Found by actually running two
+  devnets in parallel to speed up corpus regeneration — the failure was
+  fail-closed, not fail-dangerous: no fault was ever applied to the wrong
+  enclave's container, generation just refused to proceed.
+- `docs/evaluation.md` was pinned at a stale 9/9 (100%) claim from before Taxonomy
+  2.0 and the corpus regeneration effort — it no longer reflected any run of
+  `make eval` against the current corpus. Regenerated for real: current corpus
+  measures 3/10 (30%) top-1 accuracy with 2 false-high verdicts, both release
+  blockers per BUILD_PROMPT.md §11.3, tracked by the corpus regeneration work
+  already in progress rather than papered over here.
+- `make test.golden` invoked `go test ./internal/rca/... -update`, but no test
+  in `internal/rca` declares an `-update` flag — `TestGolden_Corpus` compares
+  live analysis against each scenario's `manifest.yaml` directly and has no
+  snapshot file to regenerate. The command failed at flag parsing before
+  reaching any golden logic. Retargeted to run `TestGolden_Corpus` itself.
 
 - Required Docker quickstart and systemd values are now empty in their environment
   examples, so startup cannot silently use sample validator indices or an implicit
