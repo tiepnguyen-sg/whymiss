@@ -25,6 +25,13 @@ func TestExplain(t *testing.T) {
 		mustObs(t, 100, domain.ObsDutyAssigned, slotStart.Add(-6*time.Second), map[domain.AttrKey]string{domain.AttrValidatorIndex: "24"}),
 		mustObs(t, 100, domain.ObsSlotStart, slotStart, nil),
 		mustObs(t, 100, domain.ObsBlockSkipped, slotStart.Add(36*time.Second), nil),
+		// The attestation reaching the chain is what lets R-100 exonerate:
+		// without it a proven skip is ambiguous between an upstream failure and
+		// a concurrent local one, and the verdict is unknown (ADR-0021).
+		mustObs(t, 100, domain.ObsAttestationIncluded, slotStart.Add(24*time.Second), map[domain.AttrKey]string{
+			domain.AttrValidatorIndex: "24", domain.AttrInclusionDelay: "1",
+			domain.AttrHeadCorrect: "true", domain.AttrTargetCorrect: "true",
+		}),
 		mustObs(t, 100, domain.ObsCollectionCompleted, slotStart.Add(15*time.Minute), nil),
 	} {
 		if err := st.WriteObservation(ctx, obs); err != nil {

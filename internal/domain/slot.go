@@ -8,7 +8,7 @@ import (
 // TaxonomyVersion is the version of docs/causes.md this build encodes. Every
 // Verdict records it so a report stays interpretable against the taxonomy it was
 // written under (I-10, ADR-0005).
-const TaxonomyVersion = "2.0.0"
+const TaxonomyVersion = "3.0.0"
 
 // SlotsPerEpoch is the consensus-spec constant. It is here rather than in
 // configuration because it is a property of the protocol, not of a deployment.

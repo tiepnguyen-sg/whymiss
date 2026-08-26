@@ -10,7 +10,7 @@ import (
 // EngineVersion is stamped into every Verdict this build produces (I-10) —
 // bump it whenever a rule's logic changes in a way that could change a
 // past slot's verdict if re-analyzed.
-const EngineVersion = "0.13.0"
+const EngineVersion = "0.14.0"
 
 // Rule is one cause-attribution rule.
 type Rule = rules.Rule

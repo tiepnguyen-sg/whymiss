@@ -1,6 +1,6 @@
 # Cause Taxonomy
 
-**Taxonomy version: `2.0.0`** · Status: draft until release gates pass
+**Taxonomy version: `3.0.0`** · Status: draft until release gates pass
 
 This document is a contract, not documentation. Every `Verdict` embeds
 `taxonomy_version`, and consumers may depend on cause IDs remaining stable.
@@ -201,26 +201,43 @@ Each entry: definition · rule · required evidence · confidence · remediation
 
 ### `network.proposer_missed`
 
-**Definition.** The canonical chain contains no block for this slot.
+**Definition.** The canonical chain contains no block for this slot, **and** the
+operator's own attestation for the duty reached the chain — so the skip is what the
+duty lost out to, and nothing local is implicated.
 
-**Rule (R-100).** A `block_skipped` observation exists for slot N, and no
-`block_seen`, `head_updated`, or `block_proposed` observation contradicts it. R-100
-does not apply to the operator's own proposer duty because this taxonomy cannot yet
-distinguish a local proposal failure from an upstream network event.
+**Rule (R-100).** A `block_skipped` observation exists for slot N, no `block_seen`,
+`head_updated`, or `block_proposed` observation contradicts it, and an
+`attestation_included` observation exists for the duty. R-100 does not apply to the
+operator's own proposer duty because this taxonomy cannot yet distinguish a local
+proposal failure from an upstream network event.
+
+Two neighbouring shapes deliberately do **not** produce this cause (ADR-0021):
+
+- `attestation_published` with no inclusion falls through to R-500, which owns
+  non-inclusion of an on-time attestation.
+- Neither observation present yields `unknown.insufficient_data` at `low`. A skip
+  does not explain a missing attestation — ADR-0015 notes an attester publishes and
+  is included normally on a skipped slot — so that timeline cannot separate "only
+  the upstream proposer failed" from "it failed and the local path failed too", and
+  R-400 cannot help because it needs `block_seen` and `head_updated` before the
+  deadline to establish that the beacon node was healthy.
 
 **Required evidence.** After the collection window closes, the configured Beacon API
 must report all of: the node is fully synced, execution is online and non-optimistic,
 its head has advanced past slot N, and a second canonical-header lookup for N returns
-404.
-Those facts are materialised as `block_skipped`; absence of `block_seen` alone is not
-evidence and never triggers this rule.
+404. Those facts are materialised as `block_skipped`; absence of `block_seen` alone is
+not evidence and never triggers this rule. The verdict must additionally cite the
+duty's own `attestation_included` observation, which is what makes the exoneration a
+finding rather than an absence read as innocence.
 
-**Confidence.** `high`: the rule only fires on the positive canonical-chain check
-above. If that check cannot be completed, attribution falls through to an unknown
-cause rather than lowering confidence on an absence-based guess.
+**Confidence.** `high`: the rule fires only on the positive canonical-chain check
+above *plus* positive proof that the local attestation path was working. If either is
+missing, attribution falls to an unknown cause rather than lowering confidence on an
+absence-based guess.
 
-**Remediation.** None for an attester. The operator's attestation path did not cause
-the canonical skip; state this explicitly because exoneration is a valuable output.
+**Remediation.** None for an attester. The operator's attestation path demonstrably
+worked — its attestation is on chain — and did not cause the canonical skip; state
+this explicitly because exoneration is a valuable output.
 
 ---
 
@@ -495,9 +512,10 @@ is one of the most under-diagnosed staking problems.
 **Definition.** Required observations were unavailable, so no honest attribution is
 possible.
 
-**Rule (R-010, R-011, or fall-through from R-110).** One or more required
-observations are absent, or clock trust failed, or a rule required the network
-baseline and it was disabled.
+**Rule (R-010, R-011, R-100, R-500, or fall-through from R-110).** One or more
+required observations are absent, or clock trust failed, or a rule required the
+network baseline and it was disabled, or a proven canonical skip coincides with no
+observation at all from the operator's own attestation path (R-100, ADR-0021).
 
 **Required evidence.** Explicitly list which observations were missing and why they
 mattered. This is the most important evidence block in the taxonomy — it tells the
