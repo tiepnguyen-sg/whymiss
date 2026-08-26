@@ -10,6 +10,7 @@ import (
 	"github.com/tiepnguyen-sg/whymiss/internal/clock"
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/source"
+	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
 	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
 
@@ -24,7 +25,7 @@ import (
 // distribution needs the public Xatu dataset, which is a separate opt-in
 // source; this keeps the same observation shape so that adapter can replace
 // the value without touching a rule.
-func runNetworkBaseline(ctx context.Context, st *store.Store, sampler *source.MetricsSampler, jobs <-chan domain.Observation, client source.ConsensusClient, metricsURL string, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
+func runNetworkBaseline(ctx context.Context, st *store.Store, sampler *source.MetricsSampler, jobs <-chan domain.Observation, client source.ConsensusClient, metricsURL string, genesis beaconapi.GenesisInfo, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	seen := make(map[domain.Slot]struct{})
 	for {
 		select {
@@ -53,7 +54,7 @@ func runNetworkBaseline(ctx context.Context, st *store.Store, sampler *source.Me
 				logger.Warn("sample network baseline timing", "error", err, "slot", head.Slot)
 				continue
 			}
-			obs, err := networkBaselineFromTiming(head, timing)
+			obs, err := networkBaselineFromTiming(head, timing, genesis)
 			if err != nil {
 				logger.Warn("reject network baseline timing", "error", err, "slot", head.Slot)
 				continue
@@ -65,7 +66,7 @@ func runNetworkBaseline(ctx context.Context, st *store.Store, sampler *source.Me
 	}
 }
 
-func networkBaselineFromTiming(head domain.Observation, timing source.BlockTiming) (domain.Observation, error) {
+func networkBaselineFromTiming(head domain.Observation, timing source.BlockTiming, genesis beaconapi.GenesisInfo) (domain.Observation, error) {
 	if head.Kind != domain.ObsHeadUpdated {
 		return domain.Observation{}, fmt.Errorf("expected head_updated, got %s", head.Kind)
 	}
@@ -74,6 +75,28 @@ func networkBaselineFromTiming(head domain.Observation, timing source.BlockTimin
 	}
 	if timing.Propagation < 0 {
 		return domain.Observation{}, fmt.Errorf("baseline propagation is negative: %s", timing.Propagation)
+	}
+	// Both clients report block arrival as a latest-value gauge with no slot
+	// label, and source.SampleBlockTimingForSlot proves the sample belongs to
+	// this slot by polling beacon_head_slot — a *different* series. When the
+	// node advances its head without recording an arrival (a node importing
+	// blocks off the gossip path that updates the metric — observed on this
+	// project's devnet, where both clients' gossip-block counters sat frozen
+	// for hours while their heads advanced) the gauge keeps returning a value
+	// from some earlier slot and that check cannot tell.
+	//
+	// A real arrival always precedes the read that reports it, so a gauge
+	// placing the block's arrival after the instant it was sampled cannot be
+	// describing the slot asked for. blockSeenFromTiming has always applied
+	// exactly this bound against the head observation; the baseline path was
+	// left without it, and that asymmetry is why 21 consecutive baseline
+	// samples were recorded carrying the identical stale propagation while the
+	// watched node's own timing stayed correct (ADR-0022). Rejecting here
+	// writes no observation, so R-110 and R-200 see no baseline and decline,
+	// which I-8 prefers to a fabricated percentile.
+	arrivedAt := genesis.SlotStart(uint64(timing.Slot)).Add(timing.Propagation)
+	if arrivedAt.After(timing.SampledAt) {
+		return domain.Observation{}, fmt.Errorf("baseline block arrival %s is after the sample was taken at %s, so the gauge is stale rather than this slot's measurement", arrivedAt, timing.SampledAt)
 	}
 	propagationMS := strconv.FormatFloat(timing.Propagation.Seconds()*1000, 'f', -1, 64)
 	return domain.NewObservation(domain.Observation{
