@@ -161,6 +161,15 @@ func evalScenario(dir string) (result, error) {
 	}, nil
 }
 
+// percentOf returns part as a percentage of whole, and 0 for an empty corpus
+// rather than NaN — a report is read by people, and "NaN%" tells them nothing.
+func percentOf(part, whole int) float64 {
+	if whole == 0 {
+		return 0
+	}
+	return float64(part) / float64(whole) * 100
+}
+
 // label tracks precision/recall inputs for one cause label: true positives
 // (correctly predicted), false positives (predicted but wrong), false
 // negatives (should have been predicted but wasn't).
@@ -187,6 +196,7 @@ func buildReport(results []result) string {
 		return l
 	}
 
+	ambiguous := 0
 	for _, r := range results {
 		if r.correct {
 			correct++
@@ -198,18 +208,42 @@ func buildReport(results []result) string {
 		if r.falseHigh {
 			falseHigh++
 		}
+		if strings.HasPrefix(r.want, "unknown.") {
+			ambiguous++
+		}
 	}
 
 	total := len(results)
-	accuracy := 0.0
-	if total > 0 {
-		accuracy = float64(correct) / float64(total) * 100
-	}
+	accuracy := percentOf(correct, total)
 
 	fmt.Fprintln(&b, "## Summary")
 	fmt.Fprintln(&b)
 	fmt.Fprintf(&b, "- **Top-1 accuracy:** %d/%d (%.1f%%)\n", correct, total, accuracy)
 	fmt.Fprintf(&b, "- **False-high verdicts:** %d (a wrong verdict reported at `high` confidence — the DoD's zero-tolerance metric)\n", falseHigh)
+	fmt.Fprintf(&b, "- **Corpus size:** %d of the %d scenarios the release gate requires\n", total, releaseMinScenarios)
+	fmt.Fprintf(&b, "- **Causes exercised:** %d (a cause with no scenario is unmeasured, which is not the same as passing)\n", len(labels))
+	// A scenario expecting unknown.* asserts that the engine declines to
+	// attribute. That is a required property (I-8) and the DoD asks for those
+	// cases explicitly, but a corpus made mostly of them measures refusal far
+	// more than it measures attribution — and top-1 accuracy does not
+	// distinguish the two. State the split so the headline cannot be read as
+	// "the engine names the right cause this often".
+	fmt.Fprintf(&b, "- **Expecting `unknown.*`:** %d of %d (%.1f%%) — these assert that attribution is correctly refused, not that a cause was identified\n",
+		ambiguous, total, percentOf(ambiguous, total))
+	fmt.Fprintln(&b)
+	// Read the accuracy figure honestly. The corpus only holds scenarios whose
+	// labelled phenomenon the fault harness actually reproduced; where a fault
+	// never reproduced its phenomenon the scenario is removed rather than
+	// counted as a miss (tools/faultinjector/scenarios/ records each such
+	// attempt and why it stopped). So this percentage measures the engine over
+	// reproducible faults, and it rises when a hard scenario is dropped — the
+	// denominator is the number that says how much was actually tested.
+	fmt.Fprintln(&b, "Accuracy is measured only over scenarios whose labelled phenomenon the fault")
+	fmt.Fprintln(&b, "harness reproduced. Faults that never reproduced their phenomenon were removed")
+	fmt.Fprintln(&b, "from the corpus rather than counted as misses, so this percentage can rise")
+	fmt.Fprintln(&b, "because evidence was withdrawn, not because the engine improved — read it")
+	fmt.Fprintln(&b, "together with the corpus size above, and see")
+	fmt.Fprintln(&b, "`tools/faultinjector/scenarios/` for what was attempted and abandoned.")
 	fmt.Fprintln(&b)
 
 	fmt.Fprintln(&b, "## Per-cause precision / recall")

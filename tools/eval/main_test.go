@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestCheckReleasePolicy(t *testing.T) {
 	t.Parallel()
@@ -44,4 +47,29 @@ func withoutAmbiguous(results []result) []result {
 		results[i].want = "local.cl_slow"
 	}
 	return results
+}
+
+// TestBuildReportStatesItsOwnLimits pins the two facts that stop a high
+// accuracy figure from reading as "the engine is finished": how far the corpus
+// is from the release minimum, and that dropping an unreproducible scenario
+// raises the percentage without improving anything. Both were added after a
+// corpus of 15 reported 86.7% with two mislabelled scenarios, and removing
+// those two turned the same engine into 100%.
+func TestBuildReportStatesItsOwnLimits(t *testing.T) {
+	t.Parallel()
+	report := buildReport(policyResults(13, 0, false))
+
+	for _, want := range []string{
+		"**Corpus size:** 13 of the 50 scenarios the release gate requires",
+		"**Causes exercised:** 2",
+		"because evidence was withdrawn, not because the engine improved",
+		// A corpus can reach a high top-1 figure while mostly asserting that
+		// the engine declines to answer. The split has to be on the page.
+		"**Expecting `unknown.*`:**",
+		"assert that attribution is correctly refused",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report is missing %q\n---\n%s", want, report)
+		}
+	}
 }
