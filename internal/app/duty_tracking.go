@@ -37,7 +37,7 @@ func collectionWindowEnd(slot domain.Slot, slotStart time.Time, slotDuration tim
 // spawns trackDuty for each one returned. A failed fetch is retried until the next
 // epoch starts so a transient Beacon API failure does not silently lose every duty
 // in the epoch.
-func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Client, validatorIndices []domain.ValidatorIndex, dbPath string, schedule domain.SlotSchedule, rcaConfig rca.Config, exp *exporter.Exporter, genesis beaconapi.GenesisInfo, timingJobs chan<- domain.Observation, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
+func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Client, validatorIndices []domain.ValidatorIndex, dbPath string, schedule domain.SlotSchedule, rcaConfig rca.Config, exp *exporter.Exporter, genesis beaconapi.GenesisInfo, heads *headFanout, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	var active sync.WaitGroup
 	defer active.Wait()
 	for {
@@ -91,7 +91,7 @@ func runDutyTracking(ctx context.Context, st *store.Store, client *beaconapi.Cli
 			active.Add(1)
 			go func(d beaconapi.AttesterDuty) {
 				defer active.Done()
-				trackDuty(ctx, st, client, d, genesis, dbPath, schedule, rcaConfig, exp, timingJobs, clk, clockMaxAge, logger)
+				trackDuty(ctx, st, client, d, genesis, dbPath, schedule, rcaConfig, exp, heads, clk, clockMaxAge, logger)
 			}(d)
 		}
 
@@ -118,7 +118,7 @@ func dutyWindowOpen(now, slotStart time.Time, slotDuration time.Duration) bool {
 // (runHostSampling, runPeerSampling, runRetention): one duty's polling
 // failure must never take down the collector daemon, and never blocks
 // another duty's tracking (each runs in its own goroutine).
-func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d beaconapi.AttesterDuty, genesis beaconapi.GenesisInfo, dbPath string, schedule domain.SlotSchedule, rcaConfig rca.Config, exp *exporter.Exporter, timingJobs chan<- domain.Observation, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
+func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d beaconapi.AttesterDuty, genesis beaconapi.GenesisInfo, dbPath string, schedule domain.SlotSchedule, rcaConfig rca.Config, exp *exporter.Exporter, heads *headFanout, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	slotStart := genesis.SlotStart(uint64(d.Slot))
 	waitUntil(ctx, slotStart)
 	if ctx.Err() != nil {
@@ -163,13 +163,10 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 			logger.Error("write head_updated", "error", err, "slot", d.Slot)
 			return
 		}
-		if timingJobs != nil {
-			select {
-			case timingJobs <- trusted:
-			default:
-				logger.Warn("drop REST-fallback block timing sample; previous scrape still pending", "slot", d.Slot)
-			}
-		}
+		// This is the only head_updated a node without an event stream ever
+		// produces, so it must reach every head-driven collector, not just
+		// block timing — see headFanout's doc comment.
+		heads.send(trusted, logger)
 	}()
 	go func() {
 		defer wg.Done()

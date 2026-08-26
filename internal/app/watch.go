@@ -341,7 +341,7 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 	if cfg.HostSampleInterval > 0 {
 		start(func() { runHostSampling(ctx, st, cfg.HostSampleInterval, clk, clockMaxAge, logger) })
 	}
-	var timingJobs chan domain.Observation
+	var heads headFanout
 	if cfg.CLMetricsAPI != "" {
 		versionString, err := client.FetchNodeVersion(ctx)
 		if err != nil {
@@ -357,13 +357,12 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 		})
 		// One pending head bounds memory if metrics scraping stalls. Dropped
 		// timing work degrades to unknown rather than delaying collection.
-		timingJobs = make(chan domain.Observation, 1)
+		heads.timing = make(chan domain.Observation, 1)
 		start(func() {
-			runBlockTiming(ctx, st, metricsSampler, timingJobs, consensusClient, cfg.CLMetricsAPI, genesis, clk, clockMaxAge, logger)
+			runBlockTiming(ctx, st, metricsSampler, heads.timing, consensusClient, cfg.CLMetricsAPI, genesis, clk, clockMaxAge, logger)
 		})
 	}
 
-	var baselineJobs chan domain.Observation
 	if cfg.BaselineBeaconAPI != "" {
 		baselineClient := beaconapi.NewClient(cfg.BaselineBeaconAPI, cfg.MinRequestInterval)
 		baselineGenesis, err := baselineClient.FetchGenesis(ctx)
@@ -382,9 +381,9 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 			return fmt.Errorf("network baseline is not supported for consensus client version %q", versionString)
 		}
 		logger.Info("detected baseline consensus client", "version", versionString, "client", baselineConsensus)
-		baselineJobs = make(chan domain.Observation, 1)
+		heads.baseline = make(chan domain.Observation, 1)
 		start(func() {
-			runNetworkBaseline(ctx, st, metricsSampler, baselineJobs, baselineConsensus, cfg.BaselineMetricsAPI, clk, clockMaxAge, logger)
+			runNetworkBaseline(ctx, st, metricsSampler, heads.baseline, baselineConsensus, cfg.BaselineMetricsAPI, genesis, clk, clockMaxAge, logger)
 		})
 	}
 	start(func() { runSlotClock(ctx, st, genesis, clk, clockMaxAge, logger) })
@@ -396,7 +395,7 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 		}
 		exp := exporter.New()
 		start(func() {
-			runDutyTracking(ctx, st, client, cfg.ValidatorIndices, cfg.DBPath, schedule, rcaConfig, exp, genesis, timingJobs, clk, clockMaxAge, logger)
+			runDutyTracking(ctx, st, client, cfg.ValidatorIndices, cfg.DBPath, schedule, rcaConfig, exp, genesis, &heads, clk, clockMaxAge, logger)
 		})
 
 		if cfg.MetricsAddr != "" {
@@ -458,20 +457,7 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 			if err := st.WriteObservation(ctx, trusted); err != nil {
 				logger.Error("write observation", "error", err, "kind", obs.Kind, "slot", obs.Slot)
 			}
-			if timingJobs != nil && obs.Kind == domain.ObsHeadUpdated {
-				select {
-				case timingJobs <- trusted:
-				default:
-					logger.Warn("drop block timing sample; previous scrape still pending", "slot", obs.Slot)
-				}
-			}
-			if baselineJobs != nil && obs.Kind == domain.ObsHeadUpdated {
-				select {
-				case baselineJobs <- trusted:
-				default:
-					logger.Warn("drop network baseline sample; previous scrape still pending", "slot", obs.Slot)
-				}
-			}
+			heads.send(trusted, logger)
 		}
 	}
 }
