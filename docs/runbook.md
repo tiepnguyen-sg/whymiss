@@ -138,9 +138,20 @@ make test.soak
 The target runs for 72 hours by default, samples `/proc` once a minute, fails if RSS
 exceeds 256 MiB or the SQLite database plus WAL/SHM exceeds the configured 100 MiB
 retention cap, and preserves its log, CSV samples, and summary under
-`soak-results/`. Optional `CL_METRICS_API`, `BASELINE_BEACON_API`, and
-`BASELINE_METRICS_API` values exercise those collectors too. For a short harness
-check, set `SOAK_DURATION_SECONDS`; a release sign-off must use the 72-hour default.
+`soak-results/`. Optional `CL_METRICS_API`, `BASELINE_BEACON_API`,
+`BASELINE_METRICS_API`, and `METRICS_ADDR` values exercise those collectors and the
+Prometheus exporter too. Set `METRICS_ADDR` to a loopback address
+(`127.0.0.1:9101`): the endpoint is unauthenticated by design, and a soak host with
+a public interface would otherwise publish it. For a short harness check, set
+`SOAK_DURATION_SECONDS`; a release sign-off must use the 72-hour default.
+
+The soak measures whichever collectors you enable and nothing more. A run against a
+Beacon API gateway that does not serve `/eth/v1/events` exercises the reconnect
+backoff and the REST duty path but never the SSE path, and a run without
+`CL_METRICS_API`/`BASELINE_*` leaves block timing and the network baseline
+uncollected. Record which of them were enabled alongside the summary, and record the
+`sha256` of the exact binary the run used — a soak whose binary predates a
+collection fix measures code that is not being released.
 
 ## Publishing a release
 

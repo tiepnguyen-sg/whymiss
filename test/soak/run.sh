@@ -96,6 +96,14 @@ fi
 if [ -n "${BASELINE_METRICS_API:-}" ]; then
 	set -- "$@" --baseline-metrics-api "$BASELINE_METRICS_API"
 fi
+# The exporter runs its own HTTP listener and per-cause metric goroutines for the
+# whole run. Leaving it off means a 72-hour soak never exercises the one
+# long-lived server this daemon owns, so a leak there would ship unmeasured.
+# Bind it to a loopback address: the soak host may have a public interface, and
+# the metrics endpoint is unauthenticated by design.
+if [ -n "${METRICS_ADDR:-}" ]; then
+	set -- "$@" --metrics-addr "$METRICS_ADDR"
+fi
 
 "$@" >"$log_path" 2>&1 &
 pid=$!

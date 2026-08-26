@@ -29,12 +29,24 @@ func timeMustParse(t *testing.T, s string) time.Time {
 // what better proves LoadObservations/Replay agree with
 // tools/faultinjector's WriteCorpusScenario than the corpus it actually
 // writes.
+//
+// Use this only for assertions that hold for every scenario. A test that pins
+// one scenario's exact contents must read pinnedPath instead: corpus scenarios
+// are regenerated, and a moving fixture reads as a defect in the code under
+// test rather than as the fixture having changed.
 func corpusPath(elems ...string) string {
 	return filepath.Join(append([]string{"..", "..", "test", "corpus"}, elems...)...)
 }
 
+// pinnedPath resolves a frozen copy of one corpus recording, kept under this
+// package's own testdata. See testdata/pinned-vc-slow-cpu/README.md for why the
+// copy exists.
+func pinnedPath(elems ...string) string {
+	return filepath.Join(append([]string{"testdata"}, elems...)...)
+}
+
 func TestLoadObservations_RealCorpusScenario(t *testing.T) {
-	obs, err := LoadObservations(corpusPath("vc-slow-cpu", "observations.jsonl"))
+	obs, err := LoadObservations(pinnedPath("pinned-vc-slow-cpu", "observations.jsonl"))
 	if err != nil {
 		t.Fatalf("LoadObservations: %v", err)
 	}
@@ -47,7 +59,7 @@ func TestLoadObservations_RealCorpusScenario(t *testing.T) {
 }
 
 func TestReplay_RealCorpusScenario(t *testing.T) {
-	obs, err := LoadObservations(corpusPath("vc-slow-cpu", "observations.jsonl"))
+	obs, err := LoadObservations(pinnedPath("pinned-vc-slow-cpu", "observations.jsonl"))
 	if err != nil {
 		t.Fatalf("LoadObservations: %v", err)
 	}
