@@ -8,6 +8,51 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **The Phase 2 soak was restarted from zero; the first 9h11m measured stale
+  code and is not evidence.** The run started 2026-08-25T07:47:11Z was built at
+  07:42Z, before the five collection fixes committed the same day at 16:27Z
+  (5a0d82c, 466e5a6, e411835, 685b3af, d56ac76). Its own log proves the gap
+  rather than merely implying it: repeated `check inclusion: fetch committee
+  lengths for duty slot 3788577: GET /eth/v1/beacon/states/head/committees:
+  unexpected status 400 "BAD_REQUEST: 3788577 is not in epoch 118394"` is
+  exactly the failure 5a0d82c fixed by reading committee lengths from the duty
+  slot's own state instead of `head`. A soak that reproduces an already-fixed
+  bug measures code that is not being released, so its numbers cannot sign off
+  the gate no matter how healthy they look — and they did look healthy: RSS flat
+  at ~28 MiB against the 256 MiB ceiling for 9 hours, database plus WAL/SHM
+  peaking near 4.5 MB against the 100 MB cap and visibly falling back after
+  checkpoints. Both discarded runs are kept on the soak host under
+  `discarded-soak-runs/` with a `WHY_DISCARDED.md` recording all of this,
+  because what they measured is a finding even though it is not evidence. The
+  first replacement, started 17:02:56Z from binary sha256 `75c2ffd6…`, confirmed
+  the fix — zero occurrences of `states/head/committees` in its log against many
+  in the run above — and was itself stopped after 41 minutes and archived once
+  `internal/app/headfanout.go` landed and changed how duty tracking publishes a
+  REST-polled head. Preferring 41 sunk minutes over a binary that matches the
+  code being released would be the exact reasoning this entry exists to reject.
+  **The run that counts** started 2026-08-25T17:43:59Z from sha256
+  `d12bb358c17b92e7e723491573df92ceaa1737b528150d9c996348691eb65af0` and is due
+  to complete 2026-08-28T17:43Z. Recording the binary hash alongside a soak
+  summary is now called for in `docs/runbook.md`: the version string alone said
+  `-dirty` for all three runs and would not have distinguished any of them.
+
+  The 41-minute run also produced the first healthy verdict this deployment shape
+  has ever recorded — slot 3788818, `outcome=ok`, empty cause, `high` — so the
+  earlier note that a gateway-only soak yields nothing but
+  `unknown.insufficient_data` no longer holds with the collection fixes in place:
+  a duty that is genuinely fine is now reported as fine.
+
+- `test/soak/run.sh` accepts `METRICS_ADDR` and passes it to `--metrics-addr`.
+  The exporter owns the only long-lived HTTP listener in the daemon, and a
+  72-hour soak that never starts it leaves a leak there unmeasured; the
+  replacement run has it bound to `127.0.0.1:9101`. Loopback deliberately — the
+  endpoint is unauthenticated by design and a soak host may have a public
+  interface. `docs/runbook.md` also now states plainly that a soak measures only
+  the collectors it was given: against a gateway that answers `/eth/v1/events`
+  with `501` the SSE path is never exercised, and without `CL_METRICS_API` and
+  `BASELINE_*` neither block timing nor the network baseline is collected at
+  all.
+
 - Started the Phase 2 72-hour soak test (`make test.soak`) against Hoodi
   testnet: a dedicated `e2-small` host, a public Hoodi beacon API
   (`ethereum-hoodi-beacon-api.publicnode.com`, no operator infrastructure
@@ -167,7 +212,151 @@ version stays at `v0.x` until the API is stable.
   libfaketime preload, and the `clock_skew` injector verifies the target process,
   changes its wall-clock offset live, and restores the exact original value.
 
+### Known issues
+
+- **The network baseline still misses roughly a third of slots on a healthy
+  node, because one catch-up window serves two different jobs.** Measured over a
+  15-minute live run: 15 warnings against 38 head updates, of which 11 were
+  `block timing gauge remained at slot N while waiting for slot N`.
+  `blockTimingCatchupWindow` is 3 s and is shared between the watched node and
+  the baseline node, which have opposite expectations — the watched node has
+  already emitted the head event being processed, so its gauge should be
+  current, while an independent baseline node is routinely a slot behind at the
+  instant of the scrape. A rule needing `tl.Network` has nothing to compare
+  against on those slots. This is I-8-safe: a missing sample degrades to
+  `unknown` rather than fabricating one, so it costs coverage, not correctness.
+  Giving the baseline its own window wants a number chosen against measured lag
+  rather than guessed, which is why it is recorded here instead of adjusted.
+
+- **`--baseline-beacon-api` cannot be used without `--baseline-metrics-api`,
+  which makes the product's core question need a node you scrape rather than an
+  API you can reach.** The baseline's arrival time comes only from the second
+  node's Prometheus endpoint, so an operator who can reach a friend's or a
+  provider's Beacon API still cannot answer "was it the network or me?".
+  ADR-0022 records the way out: poll `/eth/v1/beacon/headers/{slot}` on the
+  baseline node the way `BlockSeen` already does for the watched node, which is
+  provably about that slot, client-agnostic, and needs no metrics endpoint — at
+  ~500 ms resolution instead of milliseconds. Not taken here because it changes
+  what a baseline observation measures and the resolution trade has to be judged
+  against `thresholds.network_deviation`.
+
+- **`local.el_slow` and the four `local.host.*` causes remain unmeasured**, along
+  with `network.late_block`, `network.inclusion_failure`, and
+  `unknown.no_rule_matched` — 8 of the 14 causes in `docs/causes.md` have no
+  corpus scenario. Unmeasured is not passing. One shape now has direct evidence
+  of a gap rather than merely no coverage: `p2p-degraded-prysm-r02`, left out of
+  the corpus, records propagation 5.38 s alongside validation 4.77 s with no
+  Engine samples, so neither stage dominates and no rule matches. The engine
+  correctly returns `unknown.no_rule_matched`, which per `docs/causes.md` is a
+  bug-report signal — a real two-stage failure the taxonomy cannot yet name. The
+  record is kept out rather than labelled with the gap it exposes; it is in
+  `../whymiss-campaign-evidence-20260826/records/`.
+
+- `tools/faultinjector/scenarios/cl-slow-pause.yaml` is referenced by nothing —
+  not `CORPUS_SCENARIOS`, not `CORPUS_CAMPAIGN`, no corpus record, no bisection
+  log. It has never been run, so whether it reproduces its `local.cl_slow` label
+  is unknown, and it is not a spare record waiting to be collected. Either wire
+  it into a batch and give it a bisection log, or delete it — an unreferenced
+  recipe reads as coverage that does not exist.
+
 ### Changed
+
+- **The corpus is 33 scenarios, up from 13, and the eval report now says what
+  that number does and does not cover.** The devnet host held 40 record
+  directories from the campaign; six were empty (runs that failed before writing
+  anything), two were the recordings the previous cycle dropped as mislabelled,
+  and 11 were already committed, leaving 21 complete new records. All 21 pass
+  `corpusctl validate`. Fourteen carried labels that did not describe what the run
+  produced, and each was corrected from its own observations against
+  `docs/causes.md` — not from what the engine outputs, which would be circular.
+  Every corrected record and recipe carries the derivation in its description.
+
+  - Four had a proven skip *plus* the duty's own `attestation_included` with
+    source and target earned, so the only flag lost was `timely_head`, which is
+    unearnable on a skipped slot: `network.proposer_missed` / `high`
+    (`cl-slow-cpu-lighthouse-r03`, `cl-slow-cpu-r02`, `cl-slow-cpu-r03`,
+    `p2p-ambiguous-no-baseline-r04`).
+  - Ten had a proven skip and nothing at all from the local attestation path:
+    `unknown.insufficient_data` / `low` per ADR-0021 (five
+    `proposer-missed-concurrent-vc-pause*` campaign rounds, `vc-frozen-lighthouse-r02`,
+    `vc-frozen-prysm-r02`, `vc-frozen-prysm-2-r02`, `vc-slow-cpu-r02`,
+    `vc-slow-cpu-r04`).
+  - One was left out entirely: `p2p-degraded-prysm-r02` (see Known issues).
+
+  The two committed `proposer-missed-concurrent-vc-pause` records and their
+  recipes were relabelled the same way, from `network.proposer_missed` / `high` to
+  `unknown.insufficient_data` / `low`. Their recipe constructs the ambiguous case
+  by design — it pauses the validator client owning both the attester and the
+  proposer duty — so they become ambiguity coverage, which Phase 3's DoD asks for
+  explicitly. The previously reported 13/13 with zero false-high verdicts rested
+  in part on those two records asserting the old behaviour was correct.
+
+  `docs/evaluation.md` now reads **33/33 (100.0%), 0 false-high** — and states, on
+  the same screen, that **16 of the 33 expect `unknown.*`**. Nearly half the corpus
+  asserts that whymiss correctly declines to attribute rather than that it named a
+  cause, and top-1 accuracy cannot tell those apart, so `tools/eval` prints the
+  split. Six of 14 causes are exercised. The `Makefile`'s campaign note is updated
+  to the measured yield: 33 of 50, 17 short, and the remainder must come from the
+  8 uncovered causes rather than more rounds of the recipes that already work.
+
+- **The `corpus.generate.campaign` retry batch was killed mid-run; the devnet it was
+  recording against had partitioned.** Eight retry records were queued
+  (`cl-slow-cpu-r02/r03`, `cl-slow-cpu-lighthouse-r02/r03/r04`,
+  `p2p-ambiguous-no-baseline-prysm-r02/r03/r04`); five ran and all five failed, zero
+  OK. The cause was not the faults and not host load (VM load average 0.36 on 4
+  vCPUs, every cgroup back at `max`, no leftover `netem` qdisc or `iptables` rule,
+  no paused container): both consensus clients in enclave `whymiss-vm-run` were
+  reporting `{"connected":"0","disconnected":"1"}` on
+  `/eth/v1/node/peer_count` — they had disconnected from each other and were running
+  as two independent forks. Prysm served a block for slot 12242 (proposer 41, its
+  own validator set) where Lighthouse returned 404, and both nodes' last justified
+  checkpoint was stuck at epoch 316 while their heads were near epoch 394. Measured
+  empty-slot rate by sampled window: 0% at slot 8465, 1% at 10000, 58% at 11500,
+  55% at 12200, 46.5% across slots 12403–12602. So the split began around slot
+  10112 (epoch 316) and every record generated after it is contaminated: roughly
+  half of all watched slots have no block from the recording node's point of view,
+  which makes R-100 fire and mask whatever local cause the scenario was labelled
+  for. All 13 committed corpus scenarios are at slots ≤ 8876, before the split, and
+  are unaffected. The contaminated `-r02`/`-r03`/`-r04` record directories were left
+  in place on the VM as evidence rather than deleted. Before the batch is re-run the
+  devnet needs to be repaired and verified healthy — connected peers ≥ 1 on both
+  clients and an empty-slot rate under a few percent over the last ~64 slots.
+
+- **Settled, and not fixed: R-100 fired correctly on devnet record `cl-slow-cpu-r02`,
+  but the investigation exposed a blind spot in what `docs/causes.md` accepts as
+  proof that a slot was skipped.** The record returned `network.proposer_missed`
+  (`high`) while the injected fault was a CPU cap on the operator's own consensus
+  client, which looked like R-100 firing where the taxonomy forbids it ("does not
+  apply to the operator's own proposer duty"). It was not. The watched duty was
+  validator 32's *attester* duty, and slot 12240's proposer was validator **17** —
+  in the unfaulted Lighthouse set, outside the recipe's
+  `avoid_proposer_validators: [32, 63]` guard, which worked as designed.
+  `ProposerMissed.Evaluate` also guards on `tl.Duty.Kind != domain.DutyAttester`, so
+  the carve-out is enforced in code as well as in prose. The scenario simply failed
+  to produce its labelled `local.cl_slow` phenomenon: slots 12240 and 12241 were
+  both empty, which forced `inclusion_delay` to 2 and cost the duty its timely-head
+  flag for reasons unrelated to the CPU cap.
+
+  The blind spot is what made those slots look empty. R-100's required evidence is
+  four facts from the configured Beacon API — fully synced, execution online and
+  non-optimistic, head advanced past slot N, and a second canonical-header lookup
+  for N returning 404. All four held on a node with **zero connected peers**, whose
+  404 described only its own isolated fork. R-100 therefore answered "the network"
+  at `high` confidence where the true answer was "you — your node is isolated",
+  i.e. `local.p2p_degraded`; and because R-100 sits above R-200 in the declared
+  ordering, peer evidence can never override it. Nothing was changed: a fix touches
+  `internal/rca` and the taxonomy contract, so it needs plan mode, human approval,
+  and probably an ADR.
+
+  Uncertain, and what would settle it: how reachable this is in production. The
+  Prysm node here kept advancing its head only because it held validators 32–63 of
+  a 64-validator devnet. A solo staker's isolated node would stall, "head advanced
+  past N" would fail, and R-100 would not fire — so this may be a devnet-shaped
+  hole that only becomes production-shaped when a node holds enough of the
+  validator set to keep its own fork moving. Settling it means replaying an
+  isolated-node timeline from a node with a negligible validator share. Note also
+  that the `cl-slow-cpu` recipe records no peer samples at all, so even a
+  peer-aware R-100 would have had nothing to read in this record.
 
 - CI now rejects unresolved `CHANGEME` markers outside historical changelog text,
   preventing placeholder contact or repository details from reaching a release.
@@ -211,6 +400,89 @@ version stays at `v0.x` until the API is stable.
   produces trustworthy timing verdicts.
 
 ### Fixed
+
+- **R-100 no longer exonerates an operator whose duty produced no attestation at
+  all** (ADR-0021, taxonomy 2.0.0 → 3.0.0, engine 0.13.0 → 0.14.0). It used to
+  fire on a proven `block_skipped` alone and report `network.proposer_missed` at
+  `high` with no remediation, which on the timeline
+
+  ```
+  duty_assigned, slot_start, block_skipped, collection_completed
+  ```
+
+  told an operator whose validator client was paused outright — or capped to 0.1%
+  of one core — that nothing was theirs to fix. ADR-0015 already said why that is
+  wrong, in its own consequences: *"attesters may still publish and be included
+  normally on a skipped slot"*, so a skip does not explain a missing attestation.
+  No later rule caught it either, and R-400 is right to decline: it needs
+  `block_seen` and `head_updated` before the deadline to establish the beacon node
+  was healthy, and a skipped slot supplies neither. R-100 sits third in
+  `rules.Order()`, ahead of R-400 and R-410, so it answered first and stopped the
+  search.
+
+  R-100 now splits three ways: `attestation_included` present → exonerate at
+  `high`, citing the inclusion beside the skip, because the local path
+  demonstrably worked; `attestation_published` but no inclusion → decline, since
+  non-inclusion of an on-time attestation is R-500's question; neither → report
+  `unknown.insufficient_data` at `low`, naming both facts and pointing at the
+  validator client. The third case is I-8 applied literally: two readings fit the
+  evidence equally and nothing in the timeline separates them.
+
+- **A stale block-timing gauge is no longer written as a slot's measurement**
+  (ADR-0022). Neither client publishes block arrival as a slot-labelled series,
+  and `source.SampleBlockTimingForSlot` proves a sample's slot by polling
+  `beacon_head_slot` — a *different* series from the value it returns. A node that
+  advances its head without recording an arrival keeps returning an older slot's
+  delay, and that check cannot tell. `blockSeenFromTiming` had always rejected a
+  sample whose implied arrival fell after the head observation that triggered it;
+  the baseline path, added later, checked only that propagation was non-negative,
+  and that asymmetry is the entire defect. The baseline now applies the same
+  bound: an arrival cannot postdate the read that reports it.
+
+  Both halves were measured, not reasoned about. Before: 21 consecutive
+  `network_baseline_sampled` observations over 15 minutes carrying the identical
+  2233 ms, spanning slots 12967 to 13038, while direct probing showed Prysm's
+  `block_arrival_latency_milliseconds_gauge` frozen as `beacon_head_slot` advanced
+  13049 → 13051. The cause was the node, not the metric name: both clients'
+  gossip-block counters sat frozen (`beacon_processor_gossip_block_imported_total`
+  at 5021, `block_arrival_latency_milliseconds_count` at 5131) while
+  `beacon_block_processing_requests_total` kept climbing — a devnet worn down by
+  days of fault injection was importing blocks off the gossip path the metric
+  tracks. After, on that same node: five `reject network baseline timing` warnings
+  and **zero** baseline observations written. Honestly absent beats plausibly
+  wrong.
+
+- The `headFanout` fix above was confirmed against real nodes, not only in test:
+  a 15-minute `whymiss watch` against the devnet enclave, watching Lighthouse
+  with Prysm configured as the independent baseline, recorded 21
+  `network_baseline_sampled` observations alongside 38 `head_updated`, 34
+  `block_seen`, 26 `engine_call`, and three end-to-end verdicts. Before the fix
+  the baseline collector could only ever be fed by the SSE stream. Full run
+  detail in `../whymiss-campaign-evidence-20260826/DEVNET-VERIFICATION.md`,
+  including two collection defects that run turned up (see Known issues).
+
+- **The network baseline was collected only on nodes that serve an event
+  stream.** Block timing had already gained a REST fallback — duty tracking's
+  own `HeadUpdated` poll fed `timingJobs` — but the baseline channel was fed
+  from the SSE `events` loop and nowhere else. On a Beacon API that does not
+  serve `/eth/v1/events` (the public Hoodi gateway used by the soak answers
+  `501`, so this is a real deployment, not a hypothetical) no
+  `network_baseline_sampled` observation was ever written, `tl.Network` stayed
+  nil, R-110 and R-200 always declined, and every "was it the network or me?"
+  question fell through to `unknown.insufficient_data`. This is the second half
+  of the defect fixed last cycle, where the daemon never produced the
+  observation at all: the collector existed, the fallback reached one consumer
+  of two.
+
+  Both discovery paths now publish through one `headFanout` (`internal/app/headfanout.go`)
+  instead of each call site forwarding to the channels it happens to know about,
+  which is what let the two drift apart. Drop-on-full and the nil-channel cases
+  are unchanged in behaviour and now stated once: a full queue drops the sample
+  rather than queueing it (I-12) or blocking the loop that feeds it (I-5), and a
+  dropped sample degrades a rule to unknown, which I-8 prefers to stale
+  evidence. `TestTrackDuty_RESTHeadReachesEveryCollector` is the regression
+  guard and was confirmed to fail against the pre-fix wiring — "baseline
+  collector never received the REST-polled head" — before the fix was restored.
 
 - `Client.BlockSeen` (`internal/source/beaconapi/blocks.go`) had two
   instances of the same bug class, one of them observed live: (1) a single

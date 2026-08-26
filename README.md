@@ -128,7 +128,7 @@ $ whymiss 5528 --db whymiss.db
 3. confirm validator client and beacon node clocks agree
 
 ---
-Engine 0.13.0 · Taxonomy 2.0.0
+Engine 0.14.0 · Taxonomy 3.0.0
 ```
 
 This illustrates the operator-facing output shape using the recorded
@@ -143,10 +143,14 @@ Read these before trusting whymiss on a live staking box.
 - **Attester duties only, right now.** `whymiss watch --validator-index` tracks and
   explains missed/late attestations continuously. Proposer duties are not yet wired
   into that automatic pipeline.
-- **Small evaluation corpus.** RCA accuracy (`docs/evaluation.md`) is measured against 9
-  labelled scenarios covering 6 of the taxonomy's causes, generated on a 2-node
-  Lighthouse+Prysm / geth Kurtosis devnet — not yet validated against mainnet incidents
-  or other client pairings.
+- **Small evaluation corpus, and half of it measures refusal.** RCA accuracy
+  (`docs/evaluation.md`) is measured against 33 labelled scenarios covering 6 of the
+  taxonomy's 14 causes, generated on a 2-node Lighthouse+Prysm / geth Kurtosis devnet —
+  not yet validated against mainnet incidents or other client pairings. Read the
+  100% top-1 figure with the rest of that report: 16 of the 33 scenarios expect
+  `unknown.*`, so they assert that whymiss correctly declines to attribute rather
+  than that it named a cause. Eight causes have no scenario at all and are
+  therefore unmeasured, which is not the same as passing.
 - **Closed taxonomy, on purpose (I-8).** whymiss prefers `unknown` over a wrong
   confident guess. If your failure mode isn't in
   [`docs/causes.md`](docs/causes.md) yet, expect `unknown`, not a plausible-looking
