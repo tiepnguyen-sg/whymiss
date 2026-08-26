@@ -1,0 +1,37 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
+id: proposer-missed-concurrent-vc-pause-r03
+recipe_id: proposer-missed-concurrent-vc-pause
+description: |
+    LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run
+    produced the ambiguous shape instead: a proven canonical skip together with no
+    attestation_published and no attestation_included at all. ADR-0015 notes an
+    attester publishes and is included normally on a skipped slot, so the skip does
+    not explain the missing attestation, and nothing here separates "only the
+    upstream proposer failed" from "it failed and the local path failed too". R-400
+    cannot settle it either — it needs block_seen and head_updated before the
+    deadline to establish the beacon node was healthy, and a skipped slot has
+    neither. Per ADR-0021 the honest label is unknown.insufficient_data at low
+    confidence. Derived from the observations against the taxonomy, not from what the
+    engine happens to output. Original recipe intent is preserved below.
+
+    The Lighthouse validator client is paused across a slot where the same Lighthouse validator set owns both the watched attester duty and the proposer duty. The proposer cannot publish a block and the watched validator cannot publish an attestation, producing the observation shape for R-100 without relying on an unrelated spontaneous proposer miss. The generator persists a positive canonical skipped-slot proof, so R-100 reports high confidence.
+expect:
+    cause: unknown.insufficient_data
+    confidence: low
+slot: 10553
+validator_index: 0
+fault_kind: pause
+fault_target: vc-1-geth-lighthouse
+duration: 20s
+generated_at: 2026-08-25T09:27:59.413762382Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T09:19:51.110982571Z
+      offset: -345.505µs
+      round_trip: 3.911046ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T09:27:59.413245125Z
+      offset: -317.898µs
+      round_trip: 4.050218ms
+observations_sha256: c434475f517765b2cb5726d48b66cee082ec396e642a1f42180880f5e93d13cd

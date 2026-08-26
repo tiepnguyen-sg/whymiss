@@ -1,0 +1,35 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
+id: cl-slow-cpu-lighthouse-r03
+recipe_id: cl-slow-cpu-lighthouse
+description: |
+    LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run did
+    not produce it: the recording holds a proven canonical skip and the duty's own
+    attestation_included with source and target earned, so the only reward flag lost
+    was timely_head — which is unearnable on a slot the chain skipped, no matter how
+    fast the local node was. Per docs/causes.md the cause is therefore
+    network.proposer_missed at high confidence, and the exoneration is real: the
+    attestation is on chain, so the local path demonstrably worked. Derived from the
+    observations against the taxonomy, not from what the engine happens to output.
+    Original recipe intent is preserved below.
+
+    The Lighthouse consensus client's CPU is capped to 9% of one core for the full duty window while geth remains unthrottled. Exact per-slot Engine counters separate consensus validation time from execution latency, and Lighthouse-side proposers are excluded so proposal production cannot confound the watched attestation.
+expect:
+    cause: network.proposer_missed
+    confidence: high
+slot: 12514
+validator_index: 0
+fault_kind: cgroup_cpu
+fault_target: cl-1-lighthouse-geth
+duration: 25s
+generated_at: 2026-08-25T16:04:47.028102728Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T15:52:03.109819412Z
+      offset: -95.551µs
+      round_trip: 3.723265ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T16:04:47.027500879Z
+      offset: -177.078µs
+      round_trip: 4.387199ms
+observations_sha256: 1986dc56981301405dceadd4007e610a7049d59ce5ec6776f9ac8467ddddc55c

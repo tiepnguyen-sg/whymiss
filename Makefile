@@ -30,17 +30,22 @@ CORPUS_SCENARIOS := \
 	vc-frozen-prysm-2:cl-2-prysm-geth \
 	vc-slow-cpu:cl-1-lighthouse-geth
 
-# recipe:beacon:additional-live-record-count. Together with the 13 canonical
-# records above this campaign produces 40 real records, not the 50 the release
-# gate in tools/eval requires (releaseMinScenarios). The shortfall is deliberate
-# and visible rather than padded: host-memory-pressure and vc-slow-cpu-prysm
-# used to contribute 2 canonical + 8 campaign records, and both were removed
-# after their bisections never once reproduced their labelled phenomenon (full
-# logs in each recipe under tools/faultinjector/scenarios/). Closing the
-# 10-record gap needs either a fault mechanism that reproduces those two causes
-# on this devnet, or new recipes for causes the corpus does not cover yet — a
-# release-plan decision, not something to paper over by generating more rounds
-# of the recipes that already work.
+# recipe:beacon:additional-live-record-count. The campaign was run and its
+# records are now committed: 33 scenarios, not the 40 this comment used to
+# assume. The difference is measured, not estimated — six campaign runs left
+# empty directories having failed before writing anything, and one
+# (p2p-degraded-prysm-r02) produced a shape no rule covers: propagation 5.38s
+# and validation 4.77s, neither dominant, with no Engine samples to separate
+# them, so the engine correctly returns unknown.no_rule_matched. That record is
+# a taxonomy-gap report, not a corpus expectation, and is left out rather than
+# labelled with the gap it exposes.
+#
+# 33 of 50 leaves 17 to find, and they must not come from more rounds of these
+# recipes: 16 of the 33 already expect unknown.*, and 8 of the 14 causes in
+# docs/causes.md still have no scenario at all. More rounds of what works would
+# raise the count while measuring less. host-memory-pressure and
+# vc-slow-cpu-prysm remain absent for the same reason as before: their
+# bisections never once reproduced their labelled phenomenon.
 CORPUS_CAMPAIGN := \
 	cl-slow-cpu:cl-2-prysm-geth:2 \
 	cl-slow-cpu-lighthouse:cl-1-lighthouse-geth:3 \
@@ -383,13 +388,27 @@ eval:
 	@echo "wrote $(EVAL_OUT)"
 
 ## eval.check: enforce corpus accuracy and committed-report freshness
+# The release policy's exit status must be captured, not discarded. Ending the
+# eval line with `;` used to swallow it: `--check` printed "release gate failed:
+# corpus has 13 scenarios, want at least 50" to stderr, the recipe carried on to
+# the freshness comparison, that passed, and `make ci` reported CI PASSED with
+# the gate failing in plain sight. Every corpus-size, accuracy, ambiguous-case,
+# and false-high check in tools/eval was unenforced for as long as that held.
+# Both checks still run before either can exit, so one run reports a stale
+# report and a failed policy together rather than hiding the second behind the
+# first.
 eval.check: corpus.validate
 	@tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
-		go run ./tools/eval --check "$(CORPUS_DIR)" > "$$tmp"; \
+		policy=0; \
+		go run ./tools/eval --check "$(CORPUS_DIR)" > "$$tmp" || policy=$$?; \
 		if ! cmp -s "$$tmp" "$(EVAL_OUT)"; then \
 			echo "$(EVAL_OUT) is stale; run: make eval"; \
 			diff -u "$(EVAL_OUT)" "$$tmp" || true; \
 			exit 1; \
+		fi; \
+		if [ "$$policy" -ne 0 ]; then \
+			echo "release gate failed (see the eval output above); exit $$policy"; \
+			exit "$$policy"; \
 		fi
 
 ## clean: remove build artifacts

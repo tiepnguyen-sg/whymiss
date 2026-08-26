@@ -1,0 +1,4 @@
+{"slot":10826,"kind":"duty_assigned","at":"2026-08-25T10:06:24.313628821Z","clock_offset":-349417,"clock_measured":true,"clock_sample_at":"2026-08-25T10:14:27.097276341Z","source":"beaconapi","attrs":{"validator_index":"32"}}
+{"slot":10826,"kind":"slot_start","at":"2026-08-25T10:14:47Z","clock_offset":-349417,"clock_measured":true,"clock_sample_at":"2026-08-25T10:14:27.097276341Z","source":"derived"}
+{"slot":10826,"kind":"block_skipped","at":"2026-08-25T10:15:35.473745237Z","clock_offset":-349417,"clock_measured":true,"clock_sample_at":"2026-08-25T10:14:27.097276341Z","source":"beaconapi"}
+{"slot":10826,"kind":"collection_completed","at":"2026-08-25T10:25:48.042941595Z","clock_offset":-370572,"clock_measured":true,"clock_sample_at":"2026-08-25T10:25:48.042900029Z","source":"derived","attrs":{"validator_index":"32"}}

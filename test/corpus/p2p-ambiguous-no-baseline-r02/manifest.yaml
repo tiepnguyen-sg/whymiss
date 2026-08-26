@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.13.0
+id: p2p-ambiguous-no-baseline-r02
+recipe_id: p2p-ambiguous-no-baseline
+description: |
+    5s of added latency (tc netem) on packets arriving from the Prysm peer at the Lighthouse consensus client, while deliberately omitting an independent network baseline. The local block-arrival signal is genuinely late, but the evidence cannot distinguish a network-wide late block from local propagation. The safe result is unknown.insufficient_data, even though the fault is known to the harness; the RCA engine only reasons from observations available to an operator.
+expect:
+    cause: unknown.insufficient_data
+    confidence: low
+slot: 10059
+validator_index: 0
+fault_kind: netem
+fault_target: cl-1-lighthouse-geth
+duration: 25s
+generated_at: 2026-08-25T07:51:59.025091625Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T07:41:03.111027225Z
+      offset: -370.799µs
+      round_trip: 4.158112ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-25T07:51:59.023963576Z
+      offset: -322.083µs
+      round_trip: 3.853865ms
+observations_sha256: f69c00f4c18950fdad0520b122a5e6078665d95fde6f0baafab1f27c001ead01

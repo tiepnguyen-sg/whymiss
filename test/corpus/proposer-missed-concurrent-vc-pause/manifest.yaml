@@ -3,10 +3,10 @@ generator_engine_version: 0.13.0
 id: proposer-missed-concurrent-vc-pause
 recipe_id: proposer-missed-concurrent-vc-pause
 description: |
-    The Lighthouse validator client is paused across a slot where the same Lighthouse validator set owns both the watched attester duty and the proposer duty. The proposer cannot publish a block and the watched validator cannot publish an attestation, producing the observation shape for R-100 without relying on an unrelated spontaneous proposer miss. The generator persists a positive canonical skipped-slot proof, so R-100 reports high confidence.
+    The Lighthouse validator client is paused across a slot where the same validator set owns both the watched attester duty and the proposer duty. The proposer cannot publish a block and the watched validator cannot publish an attestation, so the recording holds a proven canonical skip and nothing at all from the operator's own attestation path. That is deliberately the ambiguous case: the skip does not explain a missing attestation (ADR-0015 — an attester publishes and is included normally on a skipped slot), and no observation here separates "only the upstream proposer failed" from "it failed and the local path failed too". Per ADR-0021 the honest verdict is unknown.insufficient_data at low confidence, not an exoneration. R-100's high-confidence path is exercised by the scenarios where the attestation reached the chain.
 expect:
-    cause: network.proposer_missed
-    confidence: high
+    cause: unknown.insufficient_data
+    confidence: low
 slot: 151
 validator_index: 0
 fault_kind: pause
