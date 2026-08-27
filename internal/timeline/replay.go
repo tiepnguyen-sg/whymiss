@@ -3,6 +3,7 @@ package timeline
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -48,6 +49,41 @@ func LoadObservations(path string) ([]domain.Observation, error) {
 	return out, nil
 }
 
+// LoadSamples reads a corpus scenario's optional samples.jsonl. A missing file
+// is not an error: most scenarios record no samples, and their records must stay
+// valid exactly as they are.
+func LoadSamples(path string) ([]domain.MetricSample, error) {
+	f, err := os.Open(path) //nolint:gosec // G304: path is a corpus fixture the caller names explicitly, not attacker-controlled input
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer f.Close() //nolint:errcheck // read-only file; nothing to act on if Close fails
+
+	var out []domain.MetricSample
+	scanner := bufio.NewScanner(f)
+	for lineNum := 1; scanner.Scan(); lineNum++ {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var sample domain.MetricSample
+		if err := json.Unmarshal(line, &sample); err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", path, lineNum, err)
+		}
+		if err := sample.Validate(); err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", path, lineNum, err)
+		}
+		out = append(out, sample)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return out, nil
+}
+
 // Replay assembles a slice of observations (typically loaded with
 // [LoadObservations]) back into a domain.Timeline, exactly as a live
 // collector run against the same facts would have. Every observation must
@@ -62,6 +98,20 @@ func LoadObservations(path string) ([]domain.Observation, error) {
 // CommitteeIndex is decoding mechanics an observation was never the place
 // to carry (see beaconapi.AttesterDuty's doc comment) and is left zero.
 func Replay(observations []domain.Observation, schedule domain.SlotSchedule) (domain.Timeline, error) {
+	return ReplayWithSamples(observations, nil, schedule)
+}
+
+// ReplayWithSamples is Replay plus the metric samples a scenario recorded
+// alongside its observations.
+//
+// A corpus record is observations.jsonl and a manifest, so tl.Samples was always
+// nil for a replayed scenario — and a rule that reads a MetricSample rather than
+// an observation could therefore never fire on one. R-300 is exactly that: it
+// requires an el_engine_calls_p99_ms sample, which only the watch daemon writes,
+// so local.el_slow was unreproducible in the corpus at any fault severity and
+// under any load. Samples travel in an optional samples.jsonl beside the
+// observations; a record without one replays exactly as before.
+func ReplayWithSamples(observations []domain.Observation, samples []domain.MetricSample, schedule domain.SlotSchedule) (domain.Timeline, error) {
 	if len(observations) == 0 {
 		return domain.Timeline{}, fmt.Errorf("replay: no observations")
 	}
@@ -84,6 +134,9 @@ func Replay(observations []domain.Observation, schedule domain.SlotSchedule) (do
 	}
 
 	a := NewAssembler(schedule)
+	for _, sample := range samples {
+		a.AddSample(sample)
+	}
 	var slotStart domain.Observation
 	haveSlotStart := false
 	for _, obs := range observations {

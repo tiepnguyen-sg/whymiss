@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
+	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 
 	"gopkg.in/yaml.v3"
 )
@@ -89,6 +91,35 @@ func validateScenario(dir, wantID string) error {
 	hash := sha256.Sum256(observationsBytes)
 	if got := hex.EncodeToString(hash[:]); got != m.ObservationsSHA256 {
 		return fmt.Errorf("observations.jsonl sha256 %s does not match manifest %s", got, m.ObservationsSHA256)
+	}
+
+	// samples.jsonl is optional — most scenarios record none — but when present
+	// every line must be a MetricSample the engine would accept, so a malformed
+	// one is caught here rather than at replay time.
+	samplesPath := filepath.Join(dir, "samples.jsonl")
+	if _, err := timeline.LoadSamples(samplesPath); err != nil {
+		return fmt.Errorf("samples.jsonl: %w", err)
+	}
+	// And pinned, for the same reason observations are. A record's metric
+	// samples are evidence: an engine baseline is the value that decides whether
+	// R-300 sees a spike, so "it parses" is not enough — it has to be provably
+	// the bytes the generator wrote.
+	sampleBytes, readErr := os.ReadFile(samplesPath)
+	switch {
+	case readErr == nil:
+		if m.SamplesSHA256 == "" {
+			return fmt.Errorf("samples.jsonl exists but manifest has no samples_sha256 to pin it")
+		}
+		sampleHash := sha256.Sum256(sampleBytes)
+		if got := hex.EncodeToString(sampleHash[:]); got != m.SamplesSHA256 {
+			return fmt.Errorf("samples.jsonl sha256 %s does not match manifest %s", got, m.SamplesSHA256)
+		}
+	case errors.Is(readErr, os.ErrNotExist):
+		if m.SamplesSHA256 != "" {
+			return fmt.Errorf("manifest declares samples_sha256 but samples.jsonl is missing")
+		}
+	default:
+		return fmt.Errorf("read samples.jsonl for checksum: %w", readErr)
 	}
 
 	if _, err := os.Stat(filepath.Join(dir, "README.md")); err != nil {

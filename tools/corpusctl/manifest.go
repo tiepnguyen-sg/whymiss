@@ -37,4 +37,5 @@ type manifest struct {
 		RoundTrip time.Duration `yaml:"round_trip"`
 	} `yaml:"clock_samples"`
 	ObservationsSHA256 string `yaml:"observations_sha256"`
+	SamplesSHA256      string `yaml:"samples_sha256,omitempty"`
 }
