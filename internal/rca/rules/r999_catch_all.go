@@ -7,11 +7,18 @@ import (
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
-// CatchAll is R-999: data was complete and trustworthy, yet no rule
-// matched. Unconditional — always matches, which is what guarantees
-// rca.Analyze's rule loop always terminates. Reported as a taxonomy gap and
-// a project bug, never a guess (I-8): tracking this cause's rate is a
-// project health metric, per docs/causes.md §7.
+// CatchAll is R-999, the terminal fall-through. Unconditional — always
+// matches, which is what guarantees rca.Analyze's rule loop always terminates.
+//
+// It reports one of two causes, and telling them apart is the point.
+// unknown.no_rule_matched means what docs/causes.md says it means: the data was
+// complete and trustworthy and the taxonomy still had nothing to say, which is a
+// project bug worth filing. That claim is only honest when the stage
+// decomposition was actually measured. When no stage boundary was observed at
+// all there is nothing to have matched against, and calling that a taxonomy gap
+// blames the project for evidence the deployment never collected — so it reports
+// unknown.insufficient_data instead, and names the flag that would fix it
+// (ADR-0024).
 type CatchAll struct{}
 
 // ID returns R-999.
@@ -24,6 +31,43 @@ func (CatchAll) Evaluate(tl domain.Timeline, _ Config) (*domain.Verdict, bool) {
 	if completed, ok := tl.First(domain.ObsCollectionCompleted); ok {
 		verdictAt = completed.At
 	}
+
+	// Nothing was timed, so nothing could have matched. Stage boundaries come
+	// from a block_seen measured by client metrics (timedBlockSeen); a
+	// collector running without --cl-metrics-api records only the Beacon API's
+	// polled block_seen, whose timestamp is when the collector noticed rather
+	// than when the block arrived. Every timing rule then declines for want of
+	// input, and reporting that as a taxonomy gap tells an operator to file a
+	// bug about their own missing configuration.
+	//
+	// Gated on the duty actually having lost something. A duty that earned every
+	// reward flag needs no attribution at all, measured or not, and the engine
+	// turns R-999's other branch into its clean-pass verdict — reporting
+	// insufficient data for a healthy duty would replace "nothing went wrong"
+	// with "we could not tell", which is strictly worse and false besides.
+	if dutyHasObservableLoss(tl) && !stages.HasPropagation && !stages.HasValidation && !stages.HasSigning {
+		return &domain.Verdict{
+			Cause:      domain.CauseInsufficientData,
+			Confidence: domain.ConfidenceLow,
+			Evidence: []domain.Evidence{
+				{
+					At:        verdictAt,
+					Statement: "no stage of this duty was timed: block arrival was never measured, so propagation, validation, and signing durations are all unknown and no timing rule could be evaluated",
+					Source:    domain.SourceDerived,
+				},
+				{
+					At:        tl.SlotStart,
+					Statement: "the Beacon API's polled block_seen records when the collector noticed the block, not when it arrived, and is deliberately not used as a stage boundary",
+					Source:    domain.SourceDerived,
+				},
+			},
+			Remediation: []string{
+				"set --cl-metrics-api to the consensus client's Prometheus endpoint so block arrival is measured rather than polled; without it no timing-based cause can be attributed",
+				"set --baseline-beacon-api as well if you need network-wide lateness told apart from local lateness — any independent node you can reach will do, and --baseline-metrics-api on top of it is optional (ADR-0025)",
+			},
+		}, true
+	}
+
 	evidence := []domain.Evidence{{
 		At:        verdictAt,
 		Statement: "data was complete and trustworthy, yet no rule in the ordered sequence matched — this is a taxonomy gap, not an operator problem",

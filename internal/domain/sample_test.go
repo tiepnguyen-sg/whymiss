@@ -56,7 +56,7 @@ func TestMetricSampleValidate(t *testing.T) {
 		{"not utc", func(s *domain.MetricSample) { s.At = at.In(time.FixedZone("CET", 3600)) }},
 		{"unattributed", func(s *domain.MetricSample) { s.Source = "" }},
 		{"known source on wrong component", func(s *domain.MetricSample) { s.Source = domain.SourceHostMetrics }},
-		{"observation-only source", func(s *domain.MetricSample) { s.Source = domain.SourceBeaconAPI }},
+		{"beacon API on a non-CL component", func(s *domain.MetricSample) { s.Source = domain.SourceBeaconAPI; s.Component = domain.ComponentHost }},
 		{"nan value", func(s *domain.MetricSample) { s.Value = math.NaN() }},
 		{"infinite value", func(s *domain.MetricSample) { s.Value = math.Inf(1) }},
 		{"measured without sample time", func(s *domain.MetricSample) { s.ClockMeasured = true }},
@@ -99,7 +99,7 @@ func TestNetworkBaselineValidate(t *testing.T) {
 		{"negative p50", func(b *domain.NetworkBaseline) { b.BlockArrivalP50 = -time.Millisecond }},
 		{"p50 exceeds p90", func(b *domain.NetworkBaseline) { b.BlockArrivalP50, b.BlockArrivalP90 = 3*time.Second, time.Second }},
 		{"unattributed", func(b *domain.NetworkBaseline) { b.Source = "" }},
-		{"known source on wrong value", func(b *domain.NetworkBaseline) { b.Source = domain.SourceBeaconAPI }},
+		{"known source that cannot measure a baseline", func(b *domain.NetworkBaseline) { b.Source = domain.SourceHostMetrics }},
 	}
 
 	for _, tc := range tests {

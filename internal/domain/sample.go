@@ -106,6 +106,13 @@ func sampleSourcePermittedFor(source SourceID, component Component) bool {
 		return component == ComponentEL || component == ComponentCL || component == ComponentVC
 	case SourceHostMetrics:
 		return component == ComponentHost
+	case SourceBeaconAPI:
+		// The consensus node's own standardised endpoints supply CL facts that
+		// its Prometheus surface reports wrongly or not at all — connected peer
+		// count is the first (beaconapi.Client.PeerCount). Deliberately CL-only:
+		// the Beacon API says nothing about the execution client, the validator
+		// client, or the host.
+		return component == ComponentCL
 	case SourceDerived:
 		return true
 	default:
@@ -150,7 +157,14 @@ func (n NetworkBaseline) Validate() error {
 	if !n.Source.Valid() {
 		return fmt.Errorf("%w: baseline for slot %d from %q", ErrMissingSource, n.Slot, n.Source)
 	}
-	if n.Source != SourceXatu && n.Source != SourcePromScrape {
+	// beaconapi joins xatu and promscrape here for the same reason it joined the
+	// observation allow-list: a baseline can now be measured by polling the
+	// independent node's own /eth/v1/beacon/headers/{slot} rather than scraping
+	// its Prometheus surface (ADR-0025). This check is separate from the
+	// observation one and is reached later — an observation can be built and
+	// stored and still fail to decode here, which would leave tl.Network nil and
+	// the feature silently doing nothing.
+	if n.Source != SourceXatu && n.Source != SourcePromScrape && n.Source != SourceBeaconAPI {
 		return fmt.Errorf("%w: source %q on network baseline for slot %d", ErrInvalidSource, n.Source, n.Slot)
 	}
 	return nil

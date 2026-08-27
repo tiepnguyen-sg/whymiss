@@ -382,14 +382,26 @@ func sourcePermittedFor(source SourceID, kind ObservationKind) bool {
 		return source == SourceBeaconAPI
 	case ObsBlockSeen:
 		return source == SourceBeaconAPI || source == SourcePromScrape
-	case ObsPeerCountSampled, ObsEngineCall:
+	case ObsPeerCountSampled:
+		// beaconapi was added when the peer count moved to the standardised
+		// /eth/v1/node/peer_count endpoint; Lighthouse's Prometheus gauge
+		// reports 0 while genuinely peered (see beaconapi.Client.PeerCount).
+		// promscrape stays allowed so every already-recorded corpus scenario
+		// remains valid — this widens the allow-list, it does not replace it.
+		return source == SourceBeaconAPI || source == SourcePromScrape
+	case ObsEngineCall:
 		return source == SourcePromScrape
 	case ObsHostSampled:
 		return source == SourceHostMetrics
 	case ObsClockSampled:
 		return source == SourceClock
 	case ObsNetworkBaselineSampled:
-		return source == SourceXatu || source == SourcePromScrape
+		// beaconapi was added when the baseline gained a path that polls the
+		// independent node's own /eth/v1/beacon/headers/{slot} instead of
+		// scraping its Prometheus surface, so a baseline needs only an API the
+		// operator can reach rather than a second node they run (ADR-0025).
+		// promscrape and xatu stay allowed; this widens the list.
+		return source == SourceXatu || source == SourcePromScrape || source == SourceBeaconAPI
 	default:
 		return false
 	}

@@ -63,7 +63,11 @@ func TestGolden_Corpus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("LoadObservations: %v", err)
 			}
-			tl, err := timeline.Replay(obs, domain.MainnetPreEPBS())
+			samples, err := timeline.LoadSamples(filepath.Join(dir, "samples.jsonl"))
+			if err != nil {
+				t.Fatalf("LoadSamples: %v", err)
+			}
+			tl, err := timeline.ReplayWithSamples(obs, samples, domain.MainnetPreEPBS())
 			if err != nil {
 				t.Fatalf("Replay: %v", err)
 			}

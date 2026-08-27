@@ -80,12 +80,15 @@ func (ProposerMissed) Evaluate(tl domain.Timeline, _ Config) (*domain.Verdict, b
 		Evidence: []domain.Evidence{
 			skipEvidence,
 			{
-				At:        skipped.At,
+				// Derived reasoning, not an event: timestamped at the slot's own
+				// start the way R-010 does, so a reader does not take it for
+				// something that was established at the instant of the skip.
+				At:        tl.SlotStart,
 				Statement: "no attestation_published and no attestation_included observation exists for this duty, so the skip cannot be shown to be the whole reason the duty was lost — an attester publishes and is included normally on a skipped slot",
 				Source:    domain.SourceDerived,
 			},
 			{
-				At: skipped.At,
+				At: tl.SlotStart,
 				Statement: fmt.Sprintf(
 					"attributing this slot needs evidence the local path was alive at the %s deadline, which a skipped slot cannot supply: with no block there is no block_seen or head_updated to measure the beacon node against",
 					tl.AttestationDeadline().Sub(tl.SlotStart)),
@@ -94,8 +97,17 @@ func (ProposerMissed) Evaluate(tl domain.Timeline, _ Config) (*domain.Verdict, b
 		},
 		Remediation: []string{
 			"check whether the validator client was running and connected at this slot; a canonical skip does not explain a missing attestation",
+			// Deliberately only two lines. A third once suggested keeping
+			// --cl-metrics-api set "so peer count and block timing are recorded
+			// even on slots the chain skips", and both halves were false: peer
+			// count comes from the Beacon API and is sampled on a timer
+			// regardless of that flag (ADR-0023), while the arrival gauge needs a
+			// block, so a skipped slot yields no timing from it either. There is
+			// no configuration that makes this case diagnosable — the missing
+			// fact is whether the validator client was alive, which the two lines
+			// above already ask for — and a remediation naming a setting that
+			// would not have helped is worse than one line fewer.
 			"confirm the validator client logs show an attestation attempt for this slot, which is the one fact this timeline cannot supply",
-			"to make the next one diagnosable, keep --cl-metrics-api set so peer count and block timing are recorded even on slots the chain skips",
 		},
 	}, true
 }
