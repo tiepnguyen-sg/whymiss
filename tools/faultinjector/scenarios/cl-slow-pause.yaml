@@ -19,8 +19,13 @@ description: >
 
   Bisection log (hold / propagation / result):
      7s / 663ms / healthy, no cause — the pause ends 1s BEFORE slot start
-    13s /  ?    / UNTESTED — 8s of lead-in plus 5s into the slot, which is the
-                  window the first paragraph describes
+    13s / 5.357s / unknown.insufficient_data (r03) — propagation, not validation
+    13s /   n/a   / healthy, no cause (r04) — the block missed the pause window
+
+  The two 13s runs disagreeing is itself the finding: with the hold spanning
+  slotStart-8s to slotStart+5s, whether the block is delayed at all depends on
+  when the proposer happens to publish. The recipe is non-deterministic at this
+  hold, and neither outcome is local.cl_slow.
 
   13s WAS THEN MEASURED, and it disproves the recipe's premise. r03 (slot 1223)
   held for the full 13s and the fault finally bit — propagation moved from 663ms
