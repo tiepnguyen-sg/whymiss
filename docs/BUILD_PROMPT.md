@@ -594,7 +594,7 @@ Answer *"was it me or the network?"* with data, and make the timing model swappa
 - [ ] Switching between pre-ePBS and post-ePBS timing requires **only a config change** — proven by test
 - [ ] ePBS rules validated against a Glamsterdam devnet
 - [ ] Case study reproduces a known public root cause end to end
-- [ ] `docs/extending.md` is complete enough that an external contributor can add an adapter unaided
+- [ ] `docs/extending.md` is complete enough that an external contributor can add an adapter unaided — **the file now exists (2026-08-27); the claim about it cannot be self-assessed.** It covers both extension points: the client adapter (the three files under `internal/source/`, why peer count and the API-sourced baseline need no adapter at all, and the instruction to record a real scrape rather than trust documented metric names) and the rule (the `Rule` interface, first-match-wins ordering, the three invariants that fail the build — I-6 purity, I-7 evidence, I-8 prefer unknown — and ADR-0005's governance for a new cause). Every file, make target, and symbol it names was verified to resolve, and its claims about what `check.isolation`, `check.purity`, and `eval.check` enforce were checked against those targets. What remains untested is the item's actual bar: whether someone outside this project succeeds with it unaided. Close this on the first external adapter contribution, not before.
 
 ### 13.4 Anti-goals
 
