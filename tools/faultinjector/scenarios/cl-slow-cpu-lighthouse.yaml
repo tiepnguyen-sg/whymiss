@@ -45,6 +45,36 @@ description: >
   deadline. A node at 5% of a core that answers its metrics endpoint late but not
   never will now be measured where it previously was not, so the 1/2 rate above
   is a floor, not the recipe's ceiling.
+
+  MEASURED AFTER THE FIX, and the answer is not what the bisection log predicted.
+  r05 (2026-08-27, slot 289) recorded every stage cleanly — the observer race is
+  gone — and still did not earn its label:
+
+    propagation  1.056s   ( 5.9%)
+    validation   8.901s   (49.7%)   <- head_updated at +9.957s
+    signing      7.947s   (44.4%)   <- attestation_published at +17.904s
+    engine total 1.398s   (newPayload 968.9ms + forkchoiceUpdated 428.9ms)
+    verdict: unknown.no_rule_matched (low), head_correct=false, inclusion_delay=2
+
+  R-310 declines because Stages.Dominant needs a share of at least
+  thresholds.dominance (0.5) and validation reaches 0.497 — short by three tenths
+  of a percentage point, about 54ms of stage time. Every other condition R-310
+  wants is satisfied: validation is the largest stage and the Engine total is
+  well under half of it, so execution is exonerated exactly as intended.
+
+  This is not a tuning problem, and lowering quota_percent will not fix it. A
+  cgroup CPU cap starves the consensus client and the signing path on the same
+  container, so it inflates validation and signing together and neither can
+  dominate. It is the same two-co-dominant-stage gap already recorded for
+  p2p-degraded-prysm-r02 under Known issues — a second instance, from a different
+  fault, which makes the gap look structural rather than like one odd recording.
+  R-999 reporting unknown.no_rule_matched here is correct behaviour: the data was
+  complete and the taxonomy has no name for what it shows.
+
+  Do not chase this with severity. Either the taxonomy gains a cause for a
+  host-level slowdown that degrades several stages at once, or this recipe needs
+  a fault that starves consensus validation without touching the validator
+  client, which a per-process cgroup could do and a per-container one cannot.
 target: cl-1-lighthouse-geth
 timing_target: cl-1-lighthouse-geth
 sample_engine_calls: true

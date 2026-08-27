@@ -154,10 +154,10 @@ Read these before trusting whymiss on a live staking box.
   degraded duty comes back `unknown.insufficient_data` naming the flag that would
   have made it diagnosable. Collection still works without it; attribution does not.
 - **Small evaluation corpus.** RCA accuracy (`docs/evaluation.md`) is measured against
-  50 labelled scenarios covering 8 of the taxonomy's 14 causes, generated on a 3-node
+  52 labelled scenarios covering 8 of the taxonomy's 14 causes, generated on a 3-node
   Lighthouse+Prysm / geth Kurtosis devnet carrying transaction load — not yet
   validated against mainnet incidents or other client pairings. Read the 100% top-1
-  figure with the rest of that report: 10 of the 50 scenarios expect `unknown.*`, so
+  figure with the rest of that report: 11 of the 52 scenarios expect `unknown.*`, so
   they assert that whymiss correctly declines to attribute rather than that it named
   a cause. Six causes have no scenario at all and are therefore unmeasured, which is
   not the same as passing.

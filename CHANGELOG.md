@@ -26,9 +26,11 @@ version stays at `v0.x` until the API is stable.
   severity could have produced this record before the format could carry the
   input the rule reads.
 
-  Corpus is 41 scenarios over 8 causes, 41/41 correct, zero false-high. The share
-  asserting refusal rather than attribution is 22.0%, down from 48.5% at the start
-  of this cycle.
+  Corpus finished this cycle at 52 scenarios over 8 causes, 52/52 correct, zero
+  false-high — past the 50 the release gate requires. The share asserting refusal
+  rather than attribution is 21.2%, down from 48.5% at the start of this cycle.
+  (This paragraph read "41 scenarios … 22.0%" while the cycle was still running;
+  the figures move with `docs/evaluation.md`, which `make eval` regenerates.)
 
 - **Corpus records can carry metric samples, which is what `local.el_slow` was
   missing.** A record was `observations.jsonl` plus a manifest, `timeline.Replay`
@@ -299,9 +301,12 @@ version stays at `v0.x` until the API is stable.
   `docs/evaluation.md` reads **13/13 (100.0%) top-1 accuracy, 0 false-high**, which
   is a *smaller claim* than 13/15, not a better one: the corpus lost its two hardest
   cases and two of the eight causes it used to name, and the campaign that was
-  planned to reach the 50-scenario release minimum now tops out at 40 (13 canonical
+  planned to reach the 50-scenario release minimum topped out at 40 (13 canonical
   + 27), a 10-record shortfall left visible in the `Makefile` rather than padded out
-  with more rounds of the recipes that already work. `tools/eval` now prints corpus
+  with more rounds of the recipes that already work. That shortfall was closed
+  later in the cycle by new recipes rather than extra rounds — `network-late-block`
+  and `proposer-missed-upstream` each needed the third devnet participant, and
+  `el-slow-cpu` needed the samples format — and the corpus finished at 52. `tools/eval` now prints corpus
   size against that minimum, the number of causes exercised, and a note that
   removing an unreproducible scenario raises the percentage without improving the
   engine — so the report cannot be read as "finished" again.
@@ -1531,6 +1536,36 @@ version stays at `v0.x` until the API is stable.
 
 ### Known issues
 
+- **Resident memory's shape is warm-up, not drift — but only one run has shown
+  the plateau.** An earlier reading of this taken at the three-hour mark reported
+  a steady +1407 KiB/h climb and treated it as possible unbounded growth. More
+  samples corrected that. Quarter-by-quarter least-squares slopes on the release
+  run's own `samples.csv` (266 samples, 4.42h):
+
+    0.0-1.1h   mean 24608 KiB   +2869.9 KiB/h
+    1.1-2.2h   mean 25839 KiB   +1784.9 KiB/h
+    2.2-3.3h   mean 27504 KiB    +180.8 KiB/h
+    3.3-4.4h   mean 27697 KiB    -118.8 KiB/h
+
+  RSS flattens near 27.7 MiB by the third hour and the most recent quarter is
+  slightly negative. The whole-run figure of +995 KiB/h is an artefact of
+  averaging the warm-up in, which is why the early reading was wrong.
+
+  What keeps this on the list rather than closing it: the discarded 9h33m run on
+  the previous binary (`5d117d15`) did *not* flatten — its second-half slope
+  (+601 KiB/h) was steeper than its first (+435 KiB/h) across nearly ten hours.
+  Two runs, two shapes. The plateau here may be the real steady state, or it may
+  be a pause before the database reaches its retention threshold and the SQLite
+  page cache grows again. The 72-hour soak is the measurement that settles it,
+  and `test/soak/run.sh` fails on its own if RSS ever crosses 262144 KiB.
+
+  It still cannot be attributed from outside the process: the exporter registers
+  only `whymiss_*` collectors — no `go_memstats_*`, no `process_*` — so nothing
+  can distinguish live heap from pages the Go runtime is holding. Adding the Go
+  runtime collector answers it in one scrape and is the obvious next step; it was
+  not done here because the release soak was already running on a frozen binary
+  and restarting costs another 72 hours.
+
 - **The collector loses this slot's block arrival when the block is more than a
   slot late.** `runBlockTiming` is driven by `head_updated` and scrapes the
   client's latest-value arrival gauge once the head has arrived
@@ -1719,11 +1754,53 @@ version stays at `v0.x` until the API is stable.
   `../whymiss-campaign-evidence-20260826/records/` rather than labelled with the
   gap it exposes.
 
-- `tools/faultinjector/scenarios/cl-slow-pause.yaml` is referenced by nothing —
-  not `CORPUS_SCENARIOS`, not `CORPUS_CAMPAIGN`, no corpus record, no bisection
-  log. It has never been run, so whether it reproduces its `local.cl_slow` label
-  is unknown. Either wire it into a batch and give it a bisection log, or delete
-  it — an unreferenced recipe reads as coverage that does not exist.
+  **A second instance, from a different fault, arrived on 2026-08-27 and makes
+  the gap look structural.** `cl-slow-cpu-lighthouse-r05` measured every stage
+  cleanly once the observer races were fixed — propagation 1.056s (5.9%),
+  validation 8.901s (49.7%), signing 7.947s (44.4%), Engine total 1.398s — and
+  R-310 still declined, because `Stages.Dominant` requires a share of at least
+  `thresholds.dominance` (0.5) and validation reached 0.497. It missed by three
+  tenths of a percentage point, roughly 54ms of stage time. Every other condition
+  R-310 asks for held: validation was the largest stage and the Engine total sat
+  well under half of it, so execution was correctly exonerated.
+
+  The mechanism is the same in both records and it is not a threshold-tuning
+  problem. A cgroup CPU cap starves the consensus client and the signing path in
+  the same container, so it inflates two stages together and neither can
+  dominate; `p2p-degraded-prysm-r02` reached the same dead end from a netem
+  fault. The taxonomy assumes one stage carries the blame. Naming a host-level
+  slowdown that degrades several stages at once is a taxonomy change under
+  ADR-0005, and until it exists `unknown.no_rule_matched` is the honest answer —
+  which is exactly what R-999 returned.
+
+- **`cl-slow-pause` was run for the first time on 2026-08-27 and cannot earn its
+  label.** It was referenced by nothing — not `CORPUS_SCENARIOS`, not
+  `CORPUS_CAMPAIGN`, no record, no bisection log — so nothing had ever checked it.
+  Two faults were found, one after the other.
+
+  Its hold was 7s while its own description claimed the node stays paused "until
+  five seconds after slot start". The injector applies a fault at slotStart-8s, so
+  7s released the node at slotStart-1s: r01 measured propagation of 663ms and a
+  duty that earned every reward flag. The fault worked and simply stopped before
+  the block it meant to delay existed. The hold is now 13s, the arithmetic the
+  description implies.
+
+  At 13s the fault bit — propagation 5.357s — and the premise failed anyway. A
+  paused container is not a slow consensus client: while frozen it receives
+  nothing, and on resume the block is already waiting, so r03 validated it in
+  205ms, the fastest stage in the record. The delay lands entirely in propagation,
+  never in the validation latency the recipe claims to isolate. With no
+  `baseline_target` configured, R-110 correctly returned
+  `unknown.insufficient_data` rather than guessing between a slow node and a slow
+  network.
+
+  Adding a baseline would make it worse: against this devnet's peer count of 2 and
+  a `peer_count_min` of 40, R-200 would report `local.p2p_degraded` — confident
+  and wrong, since peering was never at fault. The recipe is recommended for
+  deletion; `local.cl_slow` already has five records from `cl-slow-cpu`, which
+  caps CPU and so makes the client slow *while running*. It is kept only so the
+  measurement survives, stays out of both batch lists, and no record from it
+  should be admitted under this label.
 
 ## [0.1.0] - 2026-08-22
 

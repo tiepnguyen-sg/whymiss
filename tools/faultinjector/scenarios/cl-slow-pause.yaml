@@ -4,12 +4,59 @@ description: >
   until five seconds after slot start, while its paired execution client and
   validator client keep running. The delayed head plus exact, short Engine API
   calls isolate consensus-layer validation latency from EL and VC latency.
+
+  FIRST RUN 2026-08-27, and it found the recipe contradicting itself. This file
+  had never been executed — no batch list, no record, no log — so nothing had
+  checked that its hold time matches the window its description claims.
+
+  It did not. tools/faultinjector applies the fault at slotStart-8s and reverts it
+  after the configured duration, so a 7s hold released the node at slotStart-1s:
+  fully recovered before the watched slot even began. r01 (slot 1036) measured
+  exactly that — propagation 663ms, four Engine calls isolated cleanly, every
+  reward flag earned, verdict "" at high confidence against a local.cl_slow label.
+  The fault worked; it simply stopped before the block it was meant to delay
+  existed.
+
+  Bisection log (hold / propagation / result):
+     7s / 663ms / healthy, no cause — the pause ends 1s BEFORE slot start
+    13s /  ?    / UNTESTED — 8s of lead-in plus 5s into the slot, which is the
+                  window the first paragraph describes
+
+  13s WAS THEN MEASURED, and it disproves the recipe's premise. r03 (slot 1223)
+  held for the full 13s and the fault finally bit — propagation moved from 663ms
+  to 5.357s — but the delay landed in the wrong stage:
+
+    propagation  5.357s   <- block_seen
+    validation   0.205s   <- head_updated at +5.562s
+    engine       newPayload 355ms, forkchoiceUpdated 38ms
+    verdict: unknown.insufficient_data (low); head_correct=true, inclusion_delay=1
+
+  A paused container is not a slow consensus client. While frozen it receives
+  nothing, and the instant it resumes the block is already waiting, so it
+  validates at full speed — 205ms here, the fastest stage in the record. The
+  first paragraph claims this recipe isolates "consensus-layer validation
+  latency"; a process freeze cannot, because it moves the whole delay into block
+  arrival. `unknown.insufficient_data` is then the correct verdict: propagation
+  exceeded the deadline, there is no baseline_target configured, and R-110 cannot
+  separate a slow local node from a slow network without one.
+
+  Adding a baseline_target would make this worse, not better. With a timely
+  baseline and this devnet's peer count of 2 against a `peer_count_min` of 40,
+  R-200 would fire local.p2p_degraded — a confident and wrong answer, since
+  peering was never the fault.
+
+  RECOMMENDATION: delete this recipe. local.cl_slow already has five corpus
+  records from cl-slow-cpu, which caps CPU and so makes the client genuinely slow
+  *while running* — the condition this one only appears to create. Kept for now
+  so the measurement above is not lost with it; it is deliberately absent from
+  CORPUS_SCENARIOS and CORPUS_CAMPAIGN, and no record from it should be admitted
+  under this label.
 target: cl-2-prysm-geth
 timing_target: cl-2-prysm-geth
 sample_engine_calls: true
 validator_candidates: [32, 63]
 avoid_proposer_validators: [32, 63]
-duration: 7s
+duration: 13s
 fault:
   kind: pause
   pause: {}
