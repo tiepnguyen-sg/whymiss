@@ -1,0 +1,27 @@
+corpus_format_version: 2
+generator_engine_version: 0.14.0
+id: network-late-block
+recipe_id: network-late-block
+description: |
+    The third node's consensus client is paused from eight seconds before its own proposal slot until five seconds into it, so the block is produced late rather than not at all. The watched attester is on node 1 and the independent baseline is node 2; neither is touched, and neither is the proposer.
+    That three-way split is what makes the scenario possible at all. R-110 requires the watched node and the baseline node to *agree* that the block arrived late, and a node records no gossip arrival for a block it produced itself — so on a two-node devnet the proposer is always one of the two observers and one of the two measurements is always missing. network.late_block was unreproducible by construction until the devnet gained a third node.
+    Expect the block to arrive past the +4s attestation deadline at both observers, within thresholds.network_deviation of each other, which is R-110's definition of lateness that is the network's and not the operator's.
+expect:
+    cause: network.late_block
+    confidence: medium
+slot: 47
+validator_index: 2
+fault_kind: pause
+fault_target: cl-3-prysm-geth
+duration: 13s
+generated_at: 2026-08-26T03:55:39.030837581Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T03:45:31.109831746Z
+      offset: -545.2µs
+      round_trip: 4.282229ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T03:55:39.026655787Z
+      offset: -2.823496ms
+      round_trip: 8.984685ms
+observations_sha256: 177109b2ac93374edc05cec2c109ba038d5553068082faf64de6c8fbb93bc0e2

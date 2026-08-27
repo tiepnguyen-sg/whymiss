@@ -1,37 +1,26 @@
 corpus_format_version: 2
-generator_engine_version: 0.13.0
+generator_engine_version: 0.15.0
 id: proposer-missed-concurrent-vc-pause-prysm-r02
 recipe_id: proposer-missed-concurrent-vc-pause-prysm
 description: |
-    LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run
-    produced the ambiguous shape instead: a proven canonical skip together with no
-    attestation_published and no attestation_included at all. ADR-0015 notes an
-    attester publishes and is included normally on a skipped slot, so the skip does
-    not explain the missing attestation, and nothing here separates "only the
-    upstream proposer failed" from "it failed and the local path failed too". R-400
-    cannot settle it either — it needs block_seen and head_updated before the
-    deadline to establish the beacon node was healthy, and a skipped slot has
-    neither. Per ADR-0021 the honest label is unknown.insufficient_data at low
-    confidence. Derived from the observations against the taxonomy, not from what the
-    engine happens to output. Original recipe intent is preserved below.
-
-    The Prysm validator client is paused across a slot where the Prysm validator set owns both the watched attester duty and proposer duty. This independently reproduces the positive canonical skipped-slot evidence required by R-100 on the second supported client.
+    The Prysm validator client is paused across a slot where the same validator set owns both the watched attester duty and the proposer duty. The proposer cannot publish a block and the watched validator cannot publish an attestation, so the recording holds a proven canonical skip and nothing at all from the operator's own attestation path.
+    That is deliberately the ambiguous case, and the label reflects it. ADR-0015 notes an attester publishes and is included normally on a skipped slot, so the skip does not explain a missing attestation, and no observation in this shape separates "only the upstream proposer failed" from "it failed and the local path failed too". Per ADR-0021 R-100 reports unknown.insufficient_data at low confidence here rather than exonerating the operator. R-100's high-confidence path is covered by the scenarios whose attestation reached the chain.
 expect:
     cause: unknown.insufficient_data
     confidence: low
-slot: 10733
-validator_index: 33
+slot: 1479
+validator_index: 32
 fault_kind: pause
 fault_target: vc-2-geth-prysm
 duration: 20s
-generated_at: 2026-08-25T10:06:23.023570794Z
+generated_at: 2026-08-26T13:52:34.73586846Z
 clock_samples:
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T09:55:51.109513173Z
-      offset: -267.147µs
-      round_trip: 3.596825ms
+      sampled_at: 2026-08-26T13:40:40.112892278Z
+      offset: 156.8µs
+      round_trip: 4.035128ms
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T10:06:23.023253536Z
-      offset: -100.594µs
-      round_trip: 3.892694ms
-observations_sha256: 82e2b04190f0a2a74b4dbf30f5677ff4d9aff5fe9526f0fbb9106c7705048d5c
+      sampled_at: 2026-08-26T13:52:34.735391596Z
+      offset: -86.008µs
+      round_trip: 4.165785ms
+observations_sha256: 033ecee452b3c72bdcf7d75de63eb331c54d77f5af846c0d5f790aace80b685c

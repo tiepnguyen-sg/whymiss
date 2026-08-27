@@ -1,0 +1,26 @@
+corpus_format_version: 2
+generator_engine_version: 0.15.0
+id: proposer-missed-upstream-r05
+recipe_id: proposer-missed-upstream
+description: |
+    The Prysm validator client is paused across a slot whose proposer duty belongs to the Prysm validator set, while the watched attester duty belongs to the Lighthouse set on the other node. The proposer cannot publish a block, so the canonical chain skips the slot — but the watched validator is untouched, keeps its own beacon node, and publishes an attestation that is included normally.
+    That separation is the point. proposer-missed-concurrent-vc-pause pauses the client that owns *both* duties, so nothing is ever observed from the operator's own attestation path and the recording is genuinely ambiguous (unknown.insufficient_data, ADR-0021). Here the operator's path is provably intact, which is exactly the evidence R-100 requires before it will exonerate. This is therefore the scenario that exercises network.proposer_missed at high confidence: a real upstream miss with a healthy local validator, which is what the cause is meant to describe on mainnet.
+expect:
+    cause: network.proposer_missed
+    confidence: high
+slot: 146
+validator_index: 2
+fault_kind: pause
+fault_target: vc-2-geth-prysm
+duration: 20s
+generated_at: 2026-08-27T02:55:45.02187101Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-27T02:46:13.108276674Z
+      offset: -944.919µs
+      round_trip: 5.094857ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-27T02:55:45.020938128Z
+      offset: -706.262µs
+      round_trip: 4.29108ms
+observations_sha256: 2405b74ef296f9862f05c6a4fdd48bfa6577cea88e2487ebe81a3a682b1b567a

@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.15.0
+id: p2p-degraded-lighthouse-r06
+recipe_id: p2p-degraded-lighthouse
+description: |
+    5s of added latency (tc netem) on packets arriving from the Prysm peer at the Lighthouse consensus client for the full duty window, simulating degraded peering / propagation. The filter is scoped to the peer container's IP, so Beacon API, Prometheus, and Engine traffic remain independently observable while block gossip crosses the ~4s attestation deadline. require_proposer_validators forces the proposer to be the Prysm-side validator, so the watched Lighthouse validator's block_seen genuinely depends on cross-node gossip over the throttled link — without this, a slot where Lighthouse happens to propose its own block would see no delay at all, since a locally-produced block never traverses the network path this fault degrades (a confound discovered when the original 200ms/no-proposer-constraint version of this scenario, whose timing was generated before RunScenario's poller-start-timing fix, was rerun post-fix and came back with zero measurable effect either way). Also samples the faulted node's own connected-peer count, which R-200 reads as corroboration. The value is measured after the fault rather than assumed: on this two-node devnet it may remain at 1 or fall to 0 if the delayed peer disconnects. Either real value is below the mainnet-scale peer_count_min this build ships with, so it exercises R-200's peer-corroborated branch without fabricated data.
+expect:
+    cause: local.p2p_degraded
+    confidence: medium
+slot: 173
+validator_index: 2
+fault_kind: netem
+fault_target: cl-1-lighthouse-geth
+duration: 25s
+generated_at: 2026-08-26T04:21:15.021441059Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T04:10:43.109764148Z
+      offset: -500.593µs
+      round_trip: 4.310682ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T04:21:15.020718801Z
+      offset: -422.648µs
+      round_trip: 4.169711ms
+observations_sha256: 1880b8be54136556d85c15936a1b13c69d7299fedefa21d32e6a3bd65999916e

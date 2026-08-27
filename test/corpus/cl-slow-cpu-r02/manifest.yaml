@@ -1,35 +1,25 @@
 corpus_format_version: 2
-generator_engine_version: 0.13.0
+generator_engine_version: 0.15.0
 id: cl-slow-cpu-r02
 recipe_id: cl-slow-cpu
 description: |
-    LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run did
-    not produce it: the recording holds a proven canonical skip and the duty's own
-    attestation_included with source and target earned, so the only reward flag lost
-    was timely_head — which is unearnable on a slot the chain skipped, no matter how
-    fast the local node was. Per docs/causes.md the cause is therefore
-    network.proposer_missed at high confidence, and the exoneration is real: the
-    attestation is on chain, so the local path demonstrably worked. Derived from the
-    observations against the taxonomy, not from what the engine happens to output.
-    Original recipe intent is preserved below.
-
     The Prysm consensus client's CPU is capped to 7% of one core (cgroup v2 cpu.max) for the full duty window, while its paired execution client runs unthrottled — isolating CL-side validation slowness from EL-side slowness, which local.cl_slow's rule requires (Engine API duration under half of the validation stage). Slots proposed by the faulted Prysm validator set are excluded so the CPU cap cannot turn the scenario into a local proposal miss.
 expect:
-    cause: network.proposer_missed
-    confidence: high
-slot: 12240
+    cause: local.cl_slow
+    confidence: medium
+slot: 918
 validator_index: 32
 fault_kind: cgroup_cpu
 fault_target: cl-2-prysm-geth
 duration: 25s
-generated_at: 2026-08-25T15:07:11.014184439Z
+generated_at: 2026-08-26T11:57:12.022881447Z
 clock_samples:
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T14:57:15.109424076Z
-      offset: -303.542µs
-      round_trip: 3.802324ms
+      sampled_at: 2026-08-26T11:48:28.115909927Z
+      offset: -911.817µs
+      round_trip: 4.344ms
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T15:07:11.013396481Z
-      offset: -278.387µs
-      round_trip: 3.965378ms
-observations_sha256: c5ba2fe625492cbdff83a6a60a48283255fe8ec32c2ae9fba74260aff7d9970d
+      sampled_at: 2026-08-26T11:57:12.021711519Z
+      offset: -534.726µs
+      round_trip: 3.592191ms
+observations_sha256: 7a5aca7f07d4c6a109e6d737d9d017edb36c778b3364d5bd73ec6df5d70f4bfe

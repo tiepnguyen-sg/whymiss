@@ -1,23 +1,12 @@
 # proposer-missed-concurrent-vc-pause-prysm-r03
 
-LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run
-produced the ambiguous shape instead: a proven canonical skip together with no
-attestation_published and no attestation_included at all. ADR-0015 notes an
-attester publishes and is included normally on a skipped slot, so the skip does
-not explain the missing attestation, and nothing here separates "only the
-upstream proposer failed" from "it failed and the local path failed too". R-400
-cannot settle it either — it needs block_seen and head_updated before the
-deadline to establish the beacon node was healthy, and a skipped slot has
-neither. Per ADR-0021 the honest label is unknown.insufficient_data at low
-confidence. Derived from the observations against the taxonomy, not from what the
-engine happens to output. Original recipe intent is preserved below.
-
-The Prysm validator client is paused across a slot where the Prysm validator set owns both the watched attester duty and proposer duty. This independently reproduces the positive canonical skipped-slot evidence required by R-100 on the second supported client.
+The Prysm validator client is paused across a slot where the same validator set owns both the watched attester duty and the proposer duty. The proposer cannot publish a block and the watched validator cannot publish an attestation, so the recording holds a proven canonical skip and nothing at all from the operator's own attestation path.
+That is deliberately the ambiguous case, and the label reflects it. ADR-0015 notes an attester publishes and is included normally on a skipped slot, so the skip does not explain a missing attestation, and no observation in this shape separates "only the upstream proposer failed" from "it failed and the local path failed too". Per ADR-0021 R-100 reports unknown.insufficient_data at low confidence here rather than exonerating the operator. R-100's high-confidence path is covered by the scenarios whose attestation reached the chain.
 
 
 ## What was broken
 
-Fault: pause applied to vc-2-geth-prysm for 20s, around slot 10826.
+Fault: pause applied to vc-2-geth-prysm for 20s, around slot 2949.
 
 ## Recorded outcome
 

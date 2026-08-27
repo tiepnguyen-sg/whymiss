@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.15.0
+id: p2p-degraded-prysm-r05
+recipe_id: p2p-degraded-prysm
+description: |
+    5s of added latency (tc netem) on packets arriving from the Lighthouse peer at the Prysm consensus client's network path for the full duty window — the same fault as p2p-degraded-lighthouse, on the other client. Beacon API, Prometheus, and Engine traffic are excluded by the peer-IP filter. require_proposer_validators forces the proposer to be the Lighthouse-side validator, so the watched Prysm validator's block_seen genuinely depends on cross-node gossip over the throttled link (see p2p-degraded-lighthouse's doc comment for the confound this avoids and why the delay must exceed the attestation deadline).
+expect:
+    cause: local.p2p_degraded
+    confidence: medium
+slot: 2680
+validator_index: 32
+fault_kind: netem
+fault_target: cl-2-prysm-geth
+duration: 25s
+generated_at: 2026-08-26T17:49:12.036795679Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T17:40:52.112929056Z
+      offset: 6.425µs
+      round_trip: 5.21597ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T17:49:12.033973509Z
+      offset: -1.655616ms
+      round_trip: 4.038549ms
+observations_sha256: 13e2c20015cecc52d4706388e8ad271890ad3f7786f6937cc451eab148016ac3

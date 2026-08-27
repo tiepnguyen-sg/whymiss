@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.15.0
+id: vc-frozen-prysm-2-r03
+recipe_id: vc-frozen-prysm-2
+description: |
+    A second independent run of the same fault as vc-frozen-prysm — the Prysm validator client's container frozen for the full duty window — against a different validator and slot for client-side redundancy in the corpus.
+expect:
+    cause: local.vc_disconnected
+    confidence: medium
+slot: 2760
+validator_index: 32
+fault_kind: pause
+fault_target: vc-2-geth-prysm
+duration: 20s
+generated_at: 2026-08-26T18:08:24.016135095Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T17:56:52.106273181Z
+      offset: -10.61017ms
+      round_trip: 9.482363ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T18:08:24.015212563Z
+      offset: -723.68µs
+      round_trip: 3.907676ms
+observations_sha256: 3c36582dda87861e3502c8fd280e71c90022b49eade96def2d9c360f806bdb2d

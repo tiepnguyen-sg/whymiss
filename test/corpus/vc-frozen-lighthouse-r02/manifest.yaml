@@ -1,37 +1,25 @@
 corpus_format_version: 2
-generator_engine_version: 0.13.0
+generator_engine_version: 0.15.0
 id: vc-frozen-lighthouse-r02
 recipe_id: vc-frozen-lighthouse
 description: |
-    LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run
-    produced the ambiguous shape instead: a proven canonical skip together with no
-    attestation_published and no attestation_included at all. ADR-0015 notes an
-    attester publishes and is included normally on a skipped slot, so the skip does
-    not explain the missing attestation, and nothing here separates "only the
-    upstream proposer failed" from "it failed and the local path failed too". R-400
-    cannot settle it either — it needs block_seen and head_updated before the
-    deadline to establish the beacon node was healthy, and a skipped slot has
-    neither. Per ADR-0021 the honest label is unknown.insufficient_data at low
-    confidence. Derived from the observations against the taxonomy, not from what the
-    engine happens to output. Original recipe intent is preserved below.
-
     The Lighthouse validator client's container is frozen (docker pause) for the full duty window, so it cannot sign or publish an attestation even though the beacon node it talks to stays healthy throughout.
 expect:
-    cause: unknown.insufficient_data
-    confidence: low
-slot: 10943
-validator_index: 3
+    cause: local.vc_disconnected
+    confidence: medium
+slot: 1569
+validator_index: 0
 fault_kind: pause
 fault_target: vc-1-geth-lighthouse
 duration: 20s
-generated_at: 2026-08-25T10:44:47.022273187Z
+generated_at: 2026-08-26T14:11:36.566929311Z
 clock_samples:
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T10:37:51.111493378Z
-      offset: -1.094225ms
-      round_trip: 5.501276ms
+      sampled_at: 2026-08-26T13:58:40.110841808Z
+      offset: -423.995µs
+      round_trip: 4.428796ms
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T10:44:47.021722398Z
-      offset: -220.58µs
-      round_trip: 3.931403ms
-observations_sha256: affc335953caeb56bbb8d1bc20804af3447e2f36a9fb86d8f4a3b0d1a441f1be
+      sampled_at: 2026-08-26T14:11:36.564436682Z
+      offset: -2.141716ms
+      round_trip: 11.947297ms
+observations_sha256: 8c8b3987bc8c4f6622d4642206a56bc12e8aa025a29704229f370294ae198318

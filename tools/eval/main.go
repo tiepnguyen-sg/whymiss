@@ -137,7 +137,11 @@ func evalScenario(dir string) (result, error) {
 	if err != nil {
 		return result{}, fmt.Errorf("load observations: %w", err)
 	}
-	tl, err := timeline.Replay(obs, domain.MainnetPreEPBS())
+	samples, err := timeline.LoadSamples(filepath.Join(dir, "samples.jsonl"))
+	if err != nil {
+		return result{}, fmt.Errorf("load samples: %w", err)
+	}
+	tl, err := timeline.ReplayWithSamples(obs, samples, domain.MainnetPreEPBS())
 	if err != nil {
 		return result{}, fmt.Errorf("replay: %w", err)
 	}

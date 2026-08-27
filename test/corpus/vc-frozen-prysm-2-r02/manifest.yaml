@@ -1,37 +1,25 @@
 corpus_format_version: 2
-generator_engine_version: 0.13.0
+generator_engine_version: 0.15.0
 id: vc-frozen-prysm-2-r02
 recipe_id: vc-frozen-prysm-2
 description: |
-    LABEL CORRECTED 2026-08-26. The recipe aimed at its own cause, but this run
-    produced the ambiguous shape instead: a proven canonical skip together with no
-    attestation_published and no attestation_included at all. ADR-0015 notes an
-    attester publishes and is included normally on a skipped slot, so the skip does
-    not explain the missing attestation, and nothing here separates "only the
-    upstream proposer failed" from "it failed and the local path failed too". R-400
-    cannot settle it either — it needs block_seen and head_updated before the
-    deadline to establish the beacon node was healthy, and a skipped slot has
-    neither. Per ADR-0021 the honest label is unknown.insufficient_data at low
-    confidence. Derived from the observations against the taxonomy, not from what the
-    engine happens to output. Original recipe intent is preserved below.
-
     A second independent run of the same fault as vc-frozen-prysm — the Prysm validator client's container frozen for the full duty window — against a different validator and slot for client-side redundancy in the corpus.
 expect:
-    cause: unknown.insufficient_data
-    confidence: low
-slot: 11104
-validator_index: 32
+    cause: local.vc_disconnected
+    confidence: medium
+slot: 1780
+validator_index: 33
 fault_kind: pause
 fault_target: vc-2-geth-prysm
 duration: 20s
-generated_at: 2026-08-25T11:23:12.351586388Z
+generated_at: 2026-08-26T14:50:00.021603162Z
 clock_samples:
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T11:10:03.093517879Z
-      offset: -484.515µs
-      round_trip: 3.470209ms
+      sampled_at: 2026-08-26T14:40:52.110232565Z
+      offset: -298.048µs
+      round_trip: 4.530848ms
     - server: pool.ntp.org:123
-      sampled_at: 2026-08-25T11:23:12.350653776Z
-      offset: -622.831µs
-      round_trip: 3.594338ms
-observations_sha256: 3094b3ba7378da514001dd074a88e30236f665182dc2c25e6116d9b6222127b7
+      sampled_at: 2026-08-26T14:50:00.021277852Z
+      offset: -155.264µs
+      round_trip: 3.839459ms
+observations_sha256: 305c4eeb368e830bdf0ad094cfbb44efe71bed172b3bfd6f1d5ca01d1d92dab8

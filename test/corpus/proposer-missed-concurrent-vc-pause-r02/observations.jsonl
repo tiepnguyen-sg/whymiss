@@ -1,4 +1,4 @@
-{"slot":10436,"kind":"duty_assigned","at":"2026-08-25T08:55:00.600555649Z","clock_offset":-498386,"clock_measured":true,"clock_sample_at":"2026-08-25T08:56:27.068778152Z","source":"beaconapi","attrs":{"validator_index":"0"}}
-{"slot":10436,"kind":"slot_start","at":"2026-08-25T08:56:47Z","clock_offset":-498386,"clock_measured":true,"clock_sample_at":"2026-08-25T08:56:27.068778152Z","source":"derived"}
-{"slot":10436,"kind":"block_skipped","at":"2026-08-25T08:57:23.367332419Z","clock_offset":-498386,"clock_measured":true,"clock_sample_at":"2026-08-25T08:56:27.068778152Z","source":"beaconapi"}
-{"slot":10436,"kind":"collection_completed","at":"2026-08-25T09:08:47.024457155Z","clock_offset":-113427,"clock_measured":true,"clock_sample_at":"2026-08-25T09:08:47.024408804Z","source":"derived","attrs":{"validator_index":"0"}}
+{"slot":1294,"kind":"duty_assigned","at":"2026-08-26T12:54:51.629230491Z","clock_offset":-584137,"clock_measured":true,"clock_sample_at":"2026-08-26T13:03:40.111045969Z","source":"beaconapi","attrs":{"validator_index":"0"}}
+{"slot":1294,"kind":"slot_start","at":"2026-08-26T13:04:00Z","clock_offset":-584137,"clock_measured":true,"clock_sample_at":"2026-08-26T13:03:40.111045969Z","source":"derived"}
+{"slot":1294,"kind":"block_skipped","at":"2026-08-26T13:04:38.054315942Z","clock_offset":-584137,"clock_measured":true,"clock_sample_at":"2026-08-26T13:03:40.111045969Z","source":"beaconapi"}
+{"slot":1294,"kind":"collection_completed","at":"2026-08-26T13:14:00.02412755Z","clock_offset":-265394,"clock_measured":true,"clock_sample_at":"2026-08-26T13:14:00.024063323Z","source":"derived","attrs":{"validator_index":"0"}}

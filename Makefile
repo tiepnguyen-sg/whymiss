@@ -23,42 +23,56 @@ CORPUS_SCENARIOS := \
 	p2p-ambiguous-no-baseline:cl-1-lighthouse-geth \
 	p2p-ambiguous-no-baseline-prysm:cl-2-prysm-geth \
 	proposer-missed-concurrent-vc-pause:cl-1-lighthouse-geth \
+	proposer-missed-upstream:cl-1-lighthouse-geth \
+	network-late-block:cl-1-lighthouse-geth \
 	proposer-missed-concurrent-vc-pause-prysm:cl-2-prysm-geth \
 	vc-frozen-lighthouse:cl-1-lighthouse-geth \
 	vc-frozen-lighthouse-2:cl-1-lighthouse-geth \
 	vc-frozen-prysm:cl-2-prysm-geth \
 	vc-frozen-prysm-2:cl-2-prysm-geth \
-	vc-slow-cpu:cl-1-lighthouse-geth
+	vc-slow-cpu:cl-1-lighthouse-geth \
+	el-slow-cpu:cl-1-lighthouse-geth
 
-# recipe:beacon:additional-live-record-count. The campaign was run and its
-# records are now committed: 33 scenarios, not the 40 this comment used to
-# assume. The difference is measured, not estimated — six campaign runs left
-# empty directories having failed before writing anything, and one
+# recipe:beacon:additional-live-record-count. The campaign was run and most of
+# what it produced had to be thrown away: of 40 record directories on the devnet
+# host, six were empty, and fourteen more were generated after the devnet's two
+# consensus nodes silently stopped peering, which made every slot the other node
+# proposed look skipped. Those fourteen are deleted; tools/faultinjector now
+# refuses to record on a node with zero peers so the same run cannot happen
+# twice. What survives is 20 scenarios. One further record
 # (p2p-degraded-prysm-r02) produced a shape no rule covers: propagation 5.38s
 # and validation 4.77s, neither dominant, with no Engine samples to separate
 # them, so the engine correctly returns unknown.no_rule_matched. That record is
 # a taxonomy-gap report, not a corpus expectation, and is left out rather than
 # labelled with the gap it exposes.
 #
-# 33 of 50 leaves 17 to find, and they must not come from more rounds of these
-# recipes: 16 of the 33 already expect unknown.*, and 8 of the 14 causes in
+# 20 of 50 leaves 30 to find, and they must not come from more rounds of these
+# recipes: 6 of the 20 already expect unknown.*, and 8 of the 14 causes in
 # docs/causes.md still have no scenario at all. More rounds of what works would
 # raise the count while measuring less. host-memory-pressure and
 # vc-slow-cpu-prysm remain absent for the same reason as before: their
 # bisections never once reproduced their labelled phenomenon.
+# Weighted toward the causes with the thinnest coverage rather than spread
+# evenly. network.late_block and network.proposer_missed each hold exactly one
+# record, and both only became reproducible on the three-node devnet, so they
+# get the most rounds here; local.p2p_degraded already has eight and gets none.
+# The point of a round is an independent recording of the same cause under a
+# different draw of proposer, validator, and timing — not a bigger number.
+# Rounds are weighted toward the recipes with the fewest records rather than the
+# ones already well covered. Additional rounds are honest coverage only when they
+# improve the weakest part of the corpus; used to substitute for a cause nobody
+# has reproduced, they inflate the count while measuring less.
 CORPUS_CAMPAIGN := \
+	network-late-block:cl-1-lighthouse-geth:3 \
+	proposer-missed-upstream:cl-1-lighthouse-geth:3 \
+	vc-slow-cpu:cl-1-lighthouse-geth:3 \
 	cl-slow-cpu:cl-2-prysm-geth:2 \
-	cl-slow-cpu-lighthouse:cl-1-lighthouse-geth:3 \
-	p2p-degraded-lighthouse:cl-1-lighthouse-geth:3 \
-	p2p-degraded-prysm:cl-2-prysm-geth:2 \
-	p2p-ambiguous-no-baseline:cl-1-lighthouse-geth:3 \
-	p2p-ambiguous-no-baseline-prysm:cl-2-prysm-geth:3 \
-	proposer-missed-concurrent-vc-pause:cl-1-lighthouse-geth:3 \
-	proposer-missed-concurrent-vc-pause-prysm:cl-2-prysm-geth:2 \
+	cl-slow-cpu-lighthouse:cl-1-lighthouse-geth:2 \
+	proposer-missed-concurrent-vc-pause:cl-1-lighthouse-geth:2 \
+	proposer-missed-concurrent-vc-pause-prysm:cl-2-prysm-geth:1 \
 	vc-frozen-lighthouse:cl-1-lighthouse-geth:1 \
 	vc-frozen-prysm:cl-2-prysm-geth:1 \
-	vc-frozen-prysm-2:cl-2-prysm-geth:1 \
-	vc-slow-cpu:cl-1-lighthouse-geth:3
+	vc-frozen-prysm-2:cl-2-prysm-geth:1
 
 export CGO_ENABLED := 0
 

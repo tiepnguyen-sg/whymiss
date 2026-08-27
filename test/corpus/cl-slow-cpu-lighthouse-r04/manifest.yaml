@@ -1,0 +1,29 @@
+corpus_format_version: 2
+generator_engine_version: 0.15.0
+id: cl-slow-cpu-lighthouse-r04
+recipe_id: cl-slow-cpu-lighthouse
+description: |
+    The Lighthouse consensus client's CPU is capped to 9% of one core for the full duty window while geth remains unthrottled. Exact per-slot Engine counters separate consensus validation time from execution latency, and Lighthouse-side proposers are excluded so proposal production cannot confound the watched attestation. RE-TUNED 2026-08-26 for the three-node devnet. At quota_percent 9 this recipe produced a healthy duty on both campaign rounds (r02, r03) — verdict "" at high confidence, block_found and included both true. The recipe was not broken; the devnet underneath it changed. With a third participant the throttled node receives each block from two peers instead of one, so it still observes the block in time even with its CPU cut, and beacon_block_delay_observed_slot_start never slips past the deadline. The sibling cl-slow-cpu recipe passed 2/2 in the same campaign at quota_percent 7, which brackets the answer: 9 is now too loose and 7 still bites.
+    Bisection log (quota_percent / result):
+       9 / healthy, no cause — 0/2 on the three-node devnet (was tuned on two)
+       5 (current) / pending — below the 7 that still works, for margin against a
+                               devnet that now also carries transaction load
+expect:
+    cause: local.cl_slow
+    confidence: medium
+slot: 1866
+validator_index: 0
+fault_kind: cgroup_cpu
+fault_target: cl-1-lighthouse-geth
+duration: 25s
+generated_at: 2026-08-26T15:09:12.022341373Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T14:58:04.111351864Z
+      offset: -887.384µs
+      round_trip: 5.596418ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-26T15:09:12.021790241Z
+      offset: 65.335µs
+      round_trip: 4.000273ms
+observations_sha256: 5996a40818fddf063fe3c22d3468e24fd7274eefb20295fca417042062d3a59b
