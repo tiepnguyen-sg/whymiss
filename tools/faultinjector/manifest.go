@@ -46,14 +46,25 @@ type Manifest struct {
 	GeneratedAt        time.Time         `yaml:"generated_at"`
 	ClockSamples       []ClockProvenance `yaml:"clock_samples"`
 	ObservationsSHA256 string            `yaml:"observations_sha256"`
+	// SamplesSHA256 pins samples.jsonl the same way ObservationsSHA256 pins the
+	// observations, and is written only when the record carries samples. Without
+	// it a record's metric samples would be the one part of the evidence nobody
+	// could prove had not been hand-edited — and an engine baseline is exactly
+	// the value that decides whether R-300 sees a spike.
+	SamplesSHA256 string `yaml:"samples_sha256,omitempty"`
 }
 
 // WriteCorpusScenario replaces a scenario's three files atomically one file at
 // a time, publishing manifest.yaml last. The manifest hashes observations.jsonl,
 // so an interrupted multi-file update is detected rather than silently accepted.
-func WriteCorpusScenario(dir string, m Manifest, observations []domain.Observation, readme string) error {
+func WriteCorpusScenario(dir string, m Manifest, observations []domain.Observation, samples []domain.MetricSample, readme string) error {
 	if err := validateCorpusWrite(m, observations, readme); err != nil {
 		return err
+	}
+	for i, sample := range samples {
+		if err := sample.Validate(); err != nil {
+			return fmt.Errorf("sample %d: %w", i, err)
+		}
 	}
 	observationsBytes, err := encodeObservationsJSONL(observations)
 	if err != nil {
@@ -62,12 +73,32 @@ func WriteCorpusScenario(dir string, m Manifest, observations []domain.Observati
 	hash := sha256.Sum256(observationsBytes)
 	m.ObservationsSHA256 = hex.EncodeToString(hash[:])
 
+	// samples.jsonl is written only when the scenario actually recorded metric
+	// samples, so a record without them stays byte-identical to what earlier
+	// generations produced and timeline.LoadSamples treats its absence as "none".
+	// Both checksums have to be set before the manifest is marshalled, or the
+	// manifest on disk would pin observations and say nothing about samples.
+	var sampleBytes []byte
+	if len(samples) > 0 {
+		sampleBytes, err = encodeSamplesJSONL(samples)
+		if err != nil {
+			return err
+		}
+		sampleHash := sha256.Sum256(sampleBytes)
+		m.SamplesSHA256 = hex.EncodeToString(sampleHash[:])
+	}
+
 	manifestBytes, err := yaml.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
 	if err := atomicWriteFile(filepath.Join(dir, "observations.jsonl"), observationsBytes); err != nil {
 		return fmt.Errorf("write observations.jsonl: %w", err)
+	}
+	if len(sampleBytes) > 0 {
+		if err := atomicWriteFile(filepath.Join(dir, "samples.jsonl"), sampleBytes); err != nil {
+			return fmt.Errorf("write samples.jsonl: %w", err)
+		}
 	}
 	if err := atomicWriteFile(filepath.Join(dir, "README.md"), []byte(readme)); err != nil {
 		return fmt.Errorf("write README.md: %w", err)
@@ -172,4 +203,17 @@ func atomicWriteFile(path string, content []byte) (err error) {
 		return fmt.Errorf("publish temporary file: %w", err)
 	}
 	return nil
+}
+
+// encodeSamplesJSONL writes one JSON-encoded domain.MetricSample per line, the
+// wire form timeline.LoadSamples reads.
+func encodeSamplesJSONL(samples []domain.MetricSample) ([]byte, error) {
+	var buf bytes.Buffer
+	encoder := json.NewEncoder(&buf)
+	for i, sample := range samples {
+		if err := encoder.Encode(sample); err != nil {
+			return nil, fmt.Errorf("encode sample %d: %w", i, err)
+		}
+	}
+	return buf.Bytes(), nil
 }

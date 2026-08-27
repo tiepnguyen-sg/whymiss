@@ -1,5 +1,41 @@
 id: host-memory-pressure
 description: >
+  RESUMED 2026-08-26 — the helper this recipe depends on had never worked. Its
+  pressure_bytes allocator placed itself into the target cgroup with an nsenter
+  write to cgroup.procs that failed with EIO on every run, silently, so the 1GB
+  allocation was charged to the helper's own cgroup instead of the client under
+  test. Every figure in the bisection log below is therefore geth reclaiming
+  under memory.high on its own, with no help at all; the fault was roughly half
+  of what the recipe describes. Fixed in fault_cgroup.go (faultinjector performs
+  the move from the host now), so the search below is worth resuming from a much
+  looser cap than 24MB rather than a tighter one — the previous propagation trend
+  (0.199s at 64MB, 1.435s at 32MB, 2.636s at 24MB) was produced by the cap alone
+  and should move considerably further with the helper actually contributing.
+
+  LEAVES THE TARGET PERMANENTLY UNPEERED — 2026-08-27. The resumed run at
+  limit_bytes 64MB with the working helper broke the observation channel as
+  before ("poll block: fetch block header 3062: context deadline exceeded"), so
+  it still produced no record. What is new is the damage it left behind:
+  cl-1-lighthouse-geth came out of it with **zero** connected peers and did not
+  recover, not after the fault was reverted and not after a container restart.
+  Measured consequence on the shared devnet, by slot window:
+
+    2330-2380 (before this run)   0% of slots skipped
+    3050-3100 (during this run)  23%
+    3380-3430 (an hour later)    29%
+    5090-5140 (no faults at all) 39% and still climbing
+
+  cl-1 owns validators 0-31 of 96, so an isolated cl-1 costs about a third of all
+  proposals — which is what those figures are. Eight of the twelve runs queued
+  after it were correctly refused by preflightPeering; three slipped through
+  because their recipes named only cl-2 and cl-3, which still had one peer each.
+  That gap is now closed (preflight checks every consensus node in the enclave
+  against a whole mesh), but the recipe itself remains hazardous: run it LAST in
+  any batch, or recreate the devnet immediately afterwards. Records generated
+  after it on the same enclave cannot be trusted.
+
+  Original note follows.
+
   DROPPED FROM THE CORPUS, PAUSED MID-SEARCH. There is deliberately no
   test/corpus/host-memory-pressure record any more: every limit_bytes value
   tried below left the duty healthy (or broke the observation channel), so no
@@ -22,7 +58,8 @@ description: >
   observation channel rather than producing a measurably late but
   still-observable duty).
 
-  Bisection log (limit_bytes / PSI some avg10 / propagation / result):
+  Bisection log — SUPERSEDED, kept as the record of what was measured against a
+  broken helper (limit_bytes / PSI some avg10 / propagation / result):
     512MB           / 20.99% / (fast)  / healthy, no-cause/high
     128MB           / 24.97% / (fast)  / healthy, no-cause/high
      64MB (target)  / 25.14% / 0.199s  / healthy, no-cause/high
@@ -32,15 +69,17 @@ description: >
                                           /eth/v1/beacon/headers/head — lost
                                           head_updated, got unknown.no_rule_matched
 
-  24 and 16 bracket the target window. Resume by trying 20MB (20971520) next.
-  If 20MB still does not land between "healthy" and "API broke", the usable
-  window may be too narrow to hit reliably on this devnet, which is a
-  legitimate place to stop — the same conclusion Phase 1 already reached for
-  local.host.disk_io and local.el_slow (see CHANGELOG.md, "Phase 1 corpus:
-  final state for this pass"). limit_bytes below is left at 24MB (the last
-  clean, non-API-breaking data point) rather than at whatever value was tried
-  last, so a stray `make corpus.generate` run against this file doesn't
-  accidentally re-trigger the 16MB API-timeout failure mode.
+  Do not resume at 20MB. That was the next step under the old reading, where 24
+  and 16 appeared to bracket the window — but both figures came from a cap acting
+  alone, so the bracket describes a weaker fault than this recipe now applies.
+  With the helper contributing its gigabyte the same caps produce far more
+  pressure, and the usable window should be looser rather than tighter.
+
+  limit_bytes is set to 64MB, which read 25.14% PSI and left propagation at
+  0.199s under the cap alone — comfortably healthy then, and the natural place to
+  start now that the fault is at full strength. Record new runs in a fresh log
+  rather than extending the superseded one, and treat 16MB as the known floor: it
+  broke the node's beacon API even at half strength.
 
   Mechanism once tuned: the Lighthouse consensus client's cgroup v2
   memory.high is capped while a devnet-only helper allocates 1GB of file
@@ -61,7 +100,7 @@ sample_pressure: memory
 fault:
   kind: cgroup_mem
   cgroup_mem:
-    limit_bytes: 25165824
+    limit_bytes: 67108864
     pressure_bytes: 1073741824
 expect:
   cause: local.host.memory_pressure

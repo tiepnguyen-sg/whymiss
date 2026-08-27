@@ -24,7 +24,7 @@ func dockerDesktopFaultFallback(kind string) bool {
 	}
 }
 
-func runDockerDesktopNetem(ctx context.Context, containerID, action, delay, loss, peerIP string) error {
+func runDockerDesktopNetem(ctx context.Context, containerID, action, delay, loss, peerIPs string) error {
 	pidOut, err := exec.CommandContext(ctx, "docker", "inspect", containerID, "--format", "{{.State.Pid}}").Output()
 	if err != nil {
 		return fmt.Errorf("resolve Docker Desktop pid for container %s: %w", containerID, err)
@@ -40,7 +40,7 @@ pid="$1"
 action="$2"
 delay="$3"
 loss="$4"
-peer_ip="$5"
+peer_ips="$5"
 peer="$(nsenter -t "$pid" -n -- ip -o link show eth0 | sed -n 's/.*eth0@if\([0-9][0-9]*\).*/\1/p')"
 [ -n "$peer" ]
 veth="$(nsenter -t 1 -n -- ip -o link show | awk -v target="$peer" '$1 == target ":" { name=$2; sub(/@.*/, "", name); print name; exit }')"
@@ -55,7 +55,7 @@ fi
 
 cleanup=false
 trap 'if [ "$cleanup" = true ]; then tc_vm qdisc del dev "$veth" root >/dev/null 2>&1 || true; fi' EXIT
-if [ -z "$peer_ip" ]; then
+if [ -z "$peer_ips" ]; then
 	set -- qdisc add dev "$veth" root netem
 	[ -z "$delay" ] || set -- "$@" delay "$delay"
 	[ -z "$loss" ] || set -- "$@" loss "$loss"
@@ -69,10 +69,12 @@ set -- qdisc add dev "$veth" parent 1:4 handle 40: netem
 [ -z "$delay" ] || set -- "$@" delay "$delay"
 [ -z "$loss" ] || set -- "$@" loss "$loss"
 tc_vm "$@"
-tc_vm filter add dev "$veth" protocol ip parent 1: prio 1 u32 match ip src "$peer_ip/32" flowid 1:4
+for peer_ip in $peer_ips; do
+	tc_vm filter add dev "$veth" protocol ip parent 1: prio 1 u32 match ip src "$peer_ip/32" flowid 1:4
+done
 cleanup=false
 `
-	args := dockerDesktopHelperArgs("sh", "-c", script, "netem", pid, action, delay, loss, peerIP)
+	args := dockerDesktopHelperArgs("sh", "-c", script, "netem", pid, action, delay, loss, peerIPs)
 	if out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput(); err != nil {
 		return fmt.Errorf("run Docker Desktop tc qdisc %s for container %s: %w\n%s", action, containerID, err, out)
 	}

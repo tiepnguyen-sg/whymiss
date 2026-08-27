@@ -127,9 +127,26 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 		}
 	}
 
+	// Before anything is recorded: prove the devnet is still a network. See
+	// preflightPeering's doc comment for the fourteen records that made this
+	// necessary.
+	if err := preflightPeering(ctx, enclave); err != nil {
+		return err
+	}
+
 	fault, err := NewFault(s.Fault)
 	if err != nil {
 		return err
+	}
+
+	// Before the duty is chosen — see collectEngineBaseline's doc comment for
+	// why the ordering is forced.
+	var engineBaselineSample *domain.MetricSample
+	if s.SampleEngineBaseline {
+		engineBaselineSample, err = collectEngineBaseline(ctx, metricsSampler, consensusClient, timingURL, obs)
+		if err != nil {
+			return fmt.Errorf("collect Engine baseline: %w", err)
+		}
 	}
 
 	now := time.Now().UTC()
@@ -317,6 +334,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 	type peerResult struct {
 		count     float64
 		sampledAt time.Time
+		source    domain.SourceID
 		err       error
 	}
 	var peerDone chan peerResult
@@ -330,9 +348,33 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 				peerDone <- result
 				return
 			}
-			sample, err := SamplePeerCount(ctx, metricsSampler, enclave, s.PeerCountTarget)
+			// Retried, because this sample is taken from a node the scenario is
+			// actively degrading. A p2p-degrading fault makes the target slower
+			// to answer everything, its own Beacon API included, so a single
+			// timeout here is the fault working rather than evidence about
+			// peering — and abandoning the record for it throws away a run that
+			// otherwise measured exactly what it set out to. Three attempts
+			// spread across the duty window; the record is still abandoned if
+			// none succeeds, since a p2p scenario without a peer count is
+			// missing evidence R-200 requires.
+			var sample domain.MetricSample
+			var err error
+			for attempt := range peerCountAttempts {
+				if attempt > 0 {
+					waitUntil(ctx, time.Now().Add(peerCountRetryDelay))
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						err = ctxErr
+						break
+					}
+				}
+				sample, err = SamplePeerCount(ctx, enclave, s.PeerCountTarget)
+				if err == nil {
+					break
+				}
+				fmt.Printf("faultinjector: peer count attempt %d/%d failed: %v\n", attempt+1, peerCountAttempts, err)
+			}
 			result.count, result.err = sample.Value, err
-			result.sampledAt = sample.At
+			result.sampledAt, result.source = sample.At, sample.Source
 			peerDone <- result
 		}()
 	}
@@ -461,6 +503,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 			return fmt.Errorf("peer_count_target: %w", peer.err)
 		}
 		outcome.PeerCount, outcome.PeerCountSampledAt = &peer.count, peer.sampledAt
+		outcome.PeerCountSource = peer.source
 		fmt.Printf("faultinjector: sampled peer_count=%.0f for %s at duty start\n", peer.count, s.PeerCountTarget)
 	}
 
@@ -501,7 +544,17 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 		return err
 	}
 
-	replayed, err := timeline.Replay(observations, domain.MainnetPreEPBS())
+	// The samples this run collected have to go into the replay, not just into
+	// the record. Checking the verdict without them evaluates a timeline the
+	// engine will never see again: R-300 reads its baseline from tl.Samples, so a
+	// perfectly good local.el_slow record would be judged against a rule that
+	// declined for want of an input this run had already measured, and reported
+	// as a failed scenario.
+	var checkSamples []domain.MetricSample
+	if engineBaselineSample != nil {
+		checkSamples = append(checkSamples, *engineBaselineSample)
+	}
+	replayed, err := timeline.ReplayWithSamples(observations, checkSamples, domain.MainnetPreEPBS())
 	if err != nil {
 		return fmt.Errorf("replay generated observations before writing: %w", err)
 	}
@@ -526,7 +579,7 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 	}
 	readme := renderReadme(s, dutySlot, outcome)
 
-	if err := WriteCorpusScenario(outDir, manifest, observations, readme); err != nil {
+	if err := WriteCorpusScenario(outDir, manifest, observations, checkSamples, readme); err != nil {
 		return err
 	}
 
@@ -565,7 +618,12 @@ func absoluteDuration(value time.Duration) time.Duration {
 // already effectively upon us.
 const minDutyLead = 25 * time.Second
 
-const blockTimingCatchupWindow = 3 * time.Second
+// peerCountAttempts and peerCountRetryDelay bound the retry above. Two seconds
+// apart keeps all three inside the duty window a fault is live for.
+const (
+	peerCountAttempts   = 3
+	peerCountRetryDelay = 2 * time.Second
+)
 
 // inclusionPollSlack is extra time beyond domain's own required minimum
 // (domain.Slot.CollectionWindowEnd) given to CheckInclusion's poll loop, so

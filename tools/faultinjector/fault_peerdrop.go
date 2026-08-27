@@ -23,10 +23,14 @@ type PeerDropParams struct {
 // entirely is coarser: the target does not just lose one peer's *traffic*, that
 // peer stops attesting and proposing too, so a scenario built with this fault is
 // not a pure test of P2P-layer discrimination. It is still a real, verified loss
-// of connectivity to that specific peer, and — with this devnet's two
-// participants — it is the whole point when Target's only peer is PeerTarget:
-// docs/causes.md's local.p2p_degraded can be genuinely reproduced by it even
-// though the mechanism is blunter than the name "peer drop" suggests.
+// of connectivity to that specific peer.
+//
+// It no longer isolates the target, and no committed scenario uses it. That
+// claim held while the devnet had two participants and PeerTarget was Target's
+// only peer; with three, pausing one peer leaves the target connected to the
+// other, which can relay the same gossip. Anything wired to this fault now needs
+// to pause every peer, or use NetemFault's PeerTargets list instead — which is
+// what the p2p-degraded scenarios do.
 type PeerDropFault struct {
 	Params PeerDropParams
 }

@@ -23,6 +23,23 @@ participants:
     use_separate_vc: true
     count: 1
 
+  # A third node exists so that a block can be late for the *network* rather
+  # than for one observer. R-110 needs the watched node and an independent
+  # baseline node to agree that the block arrived late; with only two nodes the
+  # proposer is always one of those two, and a node does not record a gossip
+  # arrival for a block it produced itself, so one of the two measurements was
+  # always missing and network.late_block was unreproducible by construction.
+  # With three, the proposer can be a party to neither measurement.
+  #
+  # Kept as a second Prysm rather than a third client type: BUILD_PROMPT §3
+  # locks client support to Lighthouse and Prysm, and this node exists for its
+  # position in the topology, not to exercise an adapter.
+  - el_type: geth
+    cl_type: prysm
+    vc_type: prysm
+    use_separate_vc: true
+    count: 1
+
 network_params:
   # Must be the literal string "kurtosis" — the ethereum-package's dispatcher
   # (participant_network.star) treats any other value as the name of a
@@ -61,5 +78,22 @@ network_params:
 # client metrics, not this devnet's tooling. Keep the footprint to what
 # faultinjector and the corpus generator actually need.
 mev_type: null
-additional_services: []
+
+# A transaction spammer keeps real work flowing through the Engine API. Without
+# load, geth's newPayload is a handful of milliseconds (measured:
+# beacon_block_delay_execution_time = 3-5) and no cgroup CPU or io.max cap can
+# make it miss a deadline — which is why local.el_slow and local.host.disk_io
+# were attempted repeatedly across earlier cycles and never produced clean
+# evidence. A passive resource cap can only gate work that exists.
+#
+# spamoor, not tx_fuzz. tx_fuzz was tried first and logs "Spamming 6
+# transactions per account on 100 accounts" and then nothing: every EL's txpool
+# stayed at pending 0x0, every block came back gasUsed 0 / 0 txs, and
+# execution_time stayed at 3ms. The faucet it names holds ~10M ETH and the EL
+# layer is peered, so it is not a funding or connectivity problem — the spammer
+# simply never lands a transaction. Anyone reading an older cycle's "we added
+# load and it made no difference" should check that load actually existed.
+additional_services:
+  - spamoor
+
 wait_for_finalization: false

@@ -5,6 +5,18 @@ description: >
   independent baseline is collected. The RCA engine must report
   unknown.insufficient_data rather than infer that the known harness fault was
   local propagation.
+
+  r02 and r03 (2026-08-26) both failed, and neither failure was this recipe's.
+  r02 lost its peer-count sample to a client timeout against the node it was
+  degrading; r03 reported `head observation unavailable: exact validated head for
+  slot 2464 was not observed before it advanced or the deadline elapsed` and came
+  out with an empty verdict. The recipe had done its job in both — cl-1 proposed,
+  both of cl-2's peers were delayed 5s, peer_count=2 was sampled — but the
+  observer polled the head through the very API the fault degrades, so the head
+  stepped past between two 200ms samples and no stage was timed. Fixed in
+  observe_timing.go: the head is now read from the SSE event stream alongside the
+  poll, which cannot lose a transition. Treat pre-fix failures of this recipe as
+  measurement artefacts, not evidence against the fault.
 target: cl-2-prysm-geth
 timing_target: cl-2-prysm-geth
 validator_candidates: [32, 63]
@@ -15,7 +27,11 @@ fault:
   kind: netem
   netem:
     delay: 5s
-    peer_target: cl-1-lighthouse-geth
+    # Every peer, not just one: the devnet is a mesh of three nodes, so degrading
+    # a single peer's link lets the same gossip reach this node unthrottled via
+    # the third. Naming all peers of the fault target is what keeps this scenario
+    # measuring what its description claims.
+    peer_targets: [cl-1-lighthouse-geth, cl-3-prysm-geth]
 expect:
   cause: unknown.insufficient_data
   confidence: low

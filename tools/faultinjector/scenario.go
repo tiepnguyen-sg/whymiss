@@ -106,6 +106,19 @@ type Scenario struct {
 	// block-arrival metric supplies the network comparison for R-110/R-200.
 	BaselineTarget string `yaml:"baseline_target,omitempty"`
 
+	// SampleEngineBaseline spends an epoch sampling Engine counters before a
+	// duty is chosen and writes the resulting p99 into the record's
+	// samples.jsonl, which is what R-300 (local.el_slow) compares a slot's
+	// Engine cost against.
+	//
+	// Deliberately separate from SampleEngineCalls rather than implied by it.
+	// Two recipes in the release corpus already set that flag, and folding the
+	// baseline into it would have added ~6.4 minutes to every one of their runs
+	// and — more importantly — put a baseline into their records that R-300
+	// evaluates before R-310 ever sees them. Their verdicts should not change as
+	// a side effect of another cause becoming reproducible.
+	SampleEngineBaseline bool `yaml:"sample_engine_baseline,omitempty"`
+
 	// SampleEngineCalls records exact per-slot Engine durations when both
 	// required cumulative counters advance exactly once.
 	SampleEngineCalls bool `yaml:"sample_engine_calls,omitempty"`
@@ -185,11 +198,13 @@ func (s Scenario) Validate() error {
 		return fmt.Errorf("baseline_target is required for %s", s.Expect.Cause)
 	}
 	if s.Expect.Cause == "local.p2p_degraded" {
-		if s.Fault.Netem == nil || s.Fault.Netem.PeerTarget == "" {
-			return fmt.Errorf("fault.netem.peer_target is required for local.p2p_degraded so observability traffic is not faulted")
+		if s.Fault.Netem == nil || len(s.Fault.Netem.PeerTargets) == 0 {
+			return fmt.Errorf("fault.netem.peer_targets is required for local.p2p_degraded so observability traffic is not faulted")
 		}
-		if s.Fault.Netem.PeerTarget == s.Target {
-			return fmt.Errorf("fault.netem.peer_target must differ from the fault target")
+		for _, peer := range s.Fault.Netem.PeerTargets {
+			if peer == s.Target {
+				return fmt.Errorf("fault.netem.peer_targets must not contain the fault target")
+			}
 		}
 	}
 	if s.Duration <= 0 {

@@ -42,7 +42,7 @@ func TestNetemFaultAgainstDockerDesktopDevnet(t *testing.T) {
 	}
 	baselineAPI := beaconRequestDuration(t, ctx, beaconURL)
 	baselinePeer := dockerDesktopPeerPingRTT(t, ctx, peerID, targetIP)
-	fault := NetemFault{Params: NetemParams{Delay: "300ms", PeerTarget: peer}}
+	fault := NetemFault{Params: NetemParams{Delay: "300ms", PeerTargets: []string{peer}}}
 	revert, err := fault.Apply(ctx, "", target)
 	if err != nil {
 		t.Fatal(err)

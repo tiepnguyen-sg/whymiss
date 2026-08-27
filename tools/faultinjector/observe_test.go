@@ -389,3 +389,41 @@ func TestParsePSISomeAvg10RejectsImpossibleValues(t *testing.T) {
 		})
 	}
 }
+
+// TestBuildObservationsCarriesThePeerCountSource is the regression test for a
+// provenance bug that made every recorded peer count claim the wrong origin.
+// SamplePeerCount reads /eth/v1/node/peer_count (ADR-0023) and the sample it
+// returns says so, but this recorder stamped promscrape over it. R-200 prints
+// that source verbatim as its peer-evidence attribution, so a report generated
+// from such a record told an operator the count came from Prometheus — a
+// statement the collection path contradicts. It also meant the corpus never
+// exercised the beaconapi source the domain allow-list was widened to accept.
+func TestBuildObservationsCarriesThePeerCountSource(t *testing.T) {
+	t.Parallel()
+
+	slotStart := time.Date(2026, 8, 23, 2, 0, 0, 0, time.UTC)
+	reading := clock.Reading{At: slotStart.Add(-time.Minute), Server: "127.0.0.1:123"}
+	peers := 2.0
+	observations, err := buildObservations(
+		Scenario{ValidatorIndex: 7}, 788, slotStart, slotStart.Add(-time.Hour),
+		dutyOutcome{
+			PeerCount:          &peers,
+			PeerCountSampledAt: slotStart.Add(time.Second),
+			PeerCountSource:    domain.SourceBeaconAPI,
+		},
+		[]clock.Reading{reading},
+	)
+	if err != nil {
+		t.Fatalf("buildObservations: %v", err)
+	}
+	for _, observation := range observations {
+		if observation.Kind != domain.ObsPeerCountSampled {
+			continue
+		}
+		if observation.Source != domain.SourceBeaconAPI {
+			t.Fatalf("peer_count source = %q, want %q", observation.Source, domain.SourceBeaconAPI)
+		}
+		return
+	}
+	t.Fatal("buildObservations omitted peer_count_sampled")
+}

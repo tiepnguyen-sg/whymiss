@@ -10,6 +10,14 @@ description: >
   period it only adds a few hundred ms of wall-clock delay — nowhere near the
   ~4s attestation deadline. 0.1% (100us/100ms period) stretches that same
   handful of ms of real work into multiple seconds of wall-clock delay.
+  MARGINAL, MEASURED 2026-08-26. On the three-node devnet with transaction load
+  this recipe produced local.vc_slow on 2 of 3 campaign rounds. The third (r02)
+  came back local.vc_disconnected: the validator client never published at all,
+  which at 0.1% of a core is the fault being slightly too severe rather than a
+  wrong label — R-400 read the evidence correctly. Left at 0.1% because raising
+  it is what left the duty healthy when this recipe was first tuned, and a 2-in-3
+  reproduction rate with an honest failure on the third is a usable recipe. If it
+  degrades further, the window to explore is between 0.1 and 1.
 target: vc-1-geth-lighthouse
 timing_target: cl-1-lighthouse-geth
 validator_candidates: [0, 31]

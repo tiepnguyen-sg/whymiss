@@ -1,0 +1,48 @@
+id: network-late-block
+description: >
+  The third node's consensus client is paused from eight seconds before its own
+  proposal slot until five seconds into it, so the block is produced late rather
+  than not at all. The watched attester is on node 1 and the independent baseline
+  is node 2; neither is touched, and neither is the proposer.
+
+  That three-way split is what makes the scenario possible at all. R-110 requires
+  the watched node and the baseline node to *agree* that the block arrived late,
+  and a node records no gossip arrival for a block it produced itself — so on a
+  two-node devnet the proposer is always one of the two observers and one of the
+  two measurements is always missing. network.late_block was unreproducible by
+  construction until the devnet gained a third node.
+
+  Expect the block to arrive past the +4s attestation deadline at both observers,
+  within thresholds.network_deviation of each other, which is R-110's definition
+  of lateness that is the network's and not the operator's.
+
+  MEASURED BEHAVIOUR, 2026-08-26. A 13s pause releases the proposer at +5s and
+  the block lands at +5.777s, measured at node 1, with node 2's independent
+  baseline at +5.747s — 30ms apart, both past the +4s deadline, which is exactly
+  R-110's discriminating condition. The block is then **orphaned**: slot 47
+  returns 404 on the canonical chain and slot 46 stays head, so the watched
+  attester's vote for slot 46 is head-correct and the duty earns every reward
+  flag. whymiss reports network.late_block for a duty that lost nothing, which is
+  correct and is the point — it explains why the slot is empty and why the
+  attestation voted where it did.
+
+  Late-but-canonical is not reliably reachable on this devnet, and the arithmetic
+  says why rather than a guess: a block appears roughly 0.8s after release (13s
+  pause -> release +5s -> block +5.777s), all 96 validators across three nodes
+  vote promptly at the +4s deadline, and a block arriving after that has lost
+  proposer boost. The release window that would produce a late block that still
+  wins fork choice is about +3.2s to +3.7s — under half a second wide, and either
+  side of it yields an on-time block (no R-110) or an orphaned one (this record).
+  The orphaned shape is the reproducible one and is what this scenario records.
+target: cl-3-prysm-geth
+timing_target: cl-1-lighthouse-geth
+baseline_target: cl-2-prysm-geth
+validator_candidates: [0, 31]
+duration: 13s
+require_proposer_validators: [64, 95]
+fault:
+  kind: pause
+  pause: {}
+expect:
+  cause: network.late_block
+  confidence: medium

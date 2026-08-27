@@ -1,0 +1,60 @@
+id: el-slow-cpu
+description: >
+  The execution client's CPU is capped to 8% of one core (cgroup v2 cpu.max) for
+  the full duty window while spamoor keeps ~300 transactions per block flowing,
+  so newPayload has real work to be starved of. The watched attester is on the
+  same node and avoid_proposer_validators forces the block to arrive over gossip,
+  so this node must actually import and validate it rather than having produced
+  it. An unfaulted Prysm baseline separates local processing delay from a
+  network-wide late block.
+
+  This is the first scenario that can exercise R-300 at all. That rule needs a
+  rolling el_engine_calls_p99_ms baseline, which is a domain.MetricSample, and a
+  corpus record used to carry only observations — so local.el_slow was
+  unreproducible by construction, at any fault severity and under any load. Two
+  things changed: records can now carry an optional samples.jsonl
+  (timeline.LoadSamples), and faultinjector spends an epoch sampling Engine
+  counters before choosing a duty so it has a real baseline to write
+  (collectEngineBaseline). Expect roughly 6.4 minutes of extra wall clock per
+  run, which is what 32 slots of history costs.
+
+  Why 8%. Engine work measured 361ms per block under spamoor load on an
+  unthrottled node (beacon_block_delay_execution_time; it is 3-5ms on an empty
+  chain, which is why every earlier attempt at this cause on an unloaded devnet
+  was doomed regardless of the cap). R-300 needs the slot's Engine total to
+  exceed thresholds.engine_spike_multiplier — 3.0 by default — times that
+  baseline, and it needs validation to be the dominant stage with head_updated
+  past the +4s deadline. An 8% quota is roughly a 12x slowdown, which clears both
+  with margin. The neighbouring cl-slow-cpu recipes use 7-9% against the
+  consensus client for the same reason.
+
+  Bisection log (quota_percent / Engine total vs baseline / result):
+    8 / 16,295ms against a 981.8ms p99 baseline — 5.5x the 3x threshold /
+        local.el_slow at medium, first attempt. head_updated at +25.19s against a
+        4s deadline, validation 24.73s to propagation 0.45s. Not marginal in any
+        of the four conditions R-300 checks, so there is no bisection to run: the
+        value is left where it landed rather than tightened toward an edge nobody
+        needs to find.
+
+  One caution for whoever tightens this. The neighbouring cl-slow-cpu-lighthouse
+  recipe found that a CPU cap severe enough to stop the *consensus* client
+  answering its own metrics endpoint destroys the channel the scenario measures
+  through — the verdict comes back unknown.insufficient_data, not a wrong label.
+  This recipe caps the *execution* client, so the consensus client keeps
+  answering and that failure mode is further away, but it is the same wall and it
+  is what "too severe" looks like here too.
+target: el-1-geth-lighthouse
+timing_target: cl-1-lighthouse-geth
+baseline_target: cl-2-prysm-geth
+validator_candidates: [0, 31]
+avoid_proposer_validators: [0, 31]
+duration: 25s
+sample_engine_calls: true
+sample_engine_baseline: true
+fault:
+  kind: cgroup_cpu
+  cgroup_cpu:
+    quota_percent: 8
+expect:
+  cause: local.el_slow
+  confidence: medium

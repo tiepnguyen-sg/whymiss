@@ -5,6 +5,46 @@ description: >
   counters separate consensus validation time from execution latency, and
   Lighthouse-side proposers are excluded so proposal production cannot
   confound the watched attestation.
+  RE-TUNED 2026-08-26 for the three-node devnet. At quota_percent 9 this recipe
+  produced a healthy duty on both campaign rounds (r02, r03) — verdict "" at high
+  confidence, block_found and included both true. The recipe was not broken; the
+  devnet underneath it changed. With a third participant the throttled node
+  receives each block from two peers instead of one, so it still observes the
+  block in time even with its CPU cut, and beacon_block_delay_observed_slot_start
+  never slips past the deadline. The sibling cl-slow-cpu recipe passed 2/2 in the
+  same campaign at quota_percent 7, which brackets the answer: 9 is now too loose
+  and 7 still bites.
+
+  Bisection log (quota_percent / result):
+     9 / healthy, no cause — 0/2 on the three-node devnet (was tuned on two)
+     5 (current) / local.cl_slow on r04, unknown.insufficient_data on r05 — 1/2
+
+  MARGINAL AT 5%, and the failure mode is worth reading before adjusting it.
+  r05 did not come back with a wrong label; it came back with no timing at all.
+  At 5% of a core the consensus client cannot answer its own metrics endpoint in
+  time, so no promscrape block_seen is recorded, no stage boundary exists, and
+  R-999 reports unknown.insufficient_data — the fault broke the channel the
+  scenario measures through rather than the thing it means to measure. That is
+  the same wall host-memory-pressure hit at 16MB.
+
+  So 9 is too loose and 5 is at the edge of too severe. 7 is the obvious
+  candidate — the sibling cl-slow-cpu recipe passes 2/2 there against Prysm — but
+  it has not been tried against Lighthouse, and the value left here is the one
+  that has actually produced the cause. Left at 5 with the rate recorded rather
+  than moved to an untested number.
+
+  OBSERVER FIXED 2026-08-27, so retry at 5 before re-tuning. Two of the three
+  ways r05 could lose its timing were measurement bugs rather than the fault
+  being too severe, and both are now closed. The head was polled every 200ms and
+  the poll gave up the instant it read a later slot, so a starved node's head
+  stepping from slot-1 to slot+1 between samples lost the observation outright;
+  the head is now read from the SSE event stream alongside the poll, which cannot
+  drop a transition. And the arrival gauge was scraped only after the head
+  arrived, within a 3s window, aborting on the first failed scrape; it is now
+  watched from before the slot begins and tolerates a failed scrape until the
+  deadline. A node at 5% of a core that answers its metrics endpoint late but not
+  never will now be measured where it previously was not, so the 1/2 rate above
+  is a floor, not the recipe's ceiling.
 target: cl-1-lighthouse-geth
 timing_target: cl-1-lighthouse-geth
 sample_engine_calls: true
@@ -14,7 +54,7 @@ duration: 25s
 fault:
   kind: cgroup_cpu
   cgroup_cpu:
-    quota_percent: 9
+    quota_percent: 5
 expect:
   cause: local.cl_slow
   confidence: medium

@@ -737,6 +737,12 @@ type dutyOutcome struct {
 	// Scenario.PeerCountTarget was set.
 	PeerCount          *float64
 	PeerCountSampledAt time.Time
+	// PeerCountSource is the sample's own provenance, carried through rather than
+	// assumed. SamplePeerCount reads /eth/v1/node/peer_count (ADR-0023), so
+	// stamping promscrape here — as this recorder used to — put a provenance on
+	// the observation that its own collection path contradicts, and R-200 prints
+	// that source verbatim as the evidence line's attribution.
+	PeerCountSource domain.SourceID
 
 	Network          *domain.NetworkBaseline
 	NetworkSampledAt time.Time
@@ -849,7 +855,7 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 	if o.PeerCount != nil {
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsPeerCountSampled,
-			At: o.PeerCountSampledAt, Source: domain.SourcePromScrape,
+			At: o.PeerCountSampledAt, Source: o.PeerCountSource,
 			Attrs: map[domain.AttrKey]string{
 				domain.AttrPeerCount: strconv.FormatFloat(*o.PeerCount, 'f', -1, 64),
 			},

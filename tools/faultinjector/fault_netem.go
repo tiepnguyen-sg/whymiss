@@ -20,10 +20,17 @@ type NetemParams struct {
 	Delay string `yaml:"delay,omitempty"`
 	// LossPercent is packet loss, 0-100.
 	LossPercent float64 `yaml:"loss_percent,omitempty"`
-	// PeerTarget optionally scopes the fault to packets arriving from one
-	// Kurtosis service. This keeps Beacon API, metrics, and Engine traffic
+	// PeerTargets optionally scopes the fault to packets arriving from these
+	// Kurtosis services. This keeps Beacon API, metrics, and Engine traffic
 	// observable while degrading only the P2P path under test.
-	PeerTarget string `yaml:"peer_target,omitempty"`
+	//
+	// It is a list, not a single peer, because the devnet is a mesh. Scoping a
+	// p2p fault to one peer's IP degrades nothing measurable once a third node
+	// can relay the same gossip around the throttled link — which is exactly
+	// what happened when the devnet gained its third participant. Naming every
+	// peer whose gossip the scenario means to degrade is the only version of
+	// this fault that survives a topology change.
+	PeerTargets []string `yaml:"peer_targets,omitempty"`
 }
 
 // NetemFault degrades the network path to a service's container by attaching a
@@ -58,7 +65,7 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 	if err != nil {
 		return nil, err
 	}
-	peerIP, err := netemPeerIP(ctx, enclave, f.Params.PeerTarget)
+	peerIPs, err := netemPeerIPs(ctx, enclave, f.Params.PeerTargets)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +74,7 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 		if f.Params.LossPercent > 0 {
 			loss = strconv.FormatFloat(f.Params.LossPercent, 'f', -1, 64) + "%"
 		}
-		if err := runDockerDesktopNetem(ctx, id, "add", f.Params.Delay, loss, peerIP); err != nil {
+		if err := runDockerDesktopNetem(ctx, id, "add", f.Params.Delay, loss, strings.Join(peerIPs, " ")); err != nil {
 			return nil, err
 		}
 		return func(ctx context.Context) error {
@@ -98,7 +105,7 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 		}
 		return nil
 	}
-	if peerIP == "" {
+	if len(peerIPs) == 0 {
 		if err := runTC(ctx, args...); err != nil {
 			return nil, err
 		}
@@ -130,9 +137,12 @@ func (f *NetemFault) Apply(ctx context.Context, enclave, target string) (func(co
 	if err := runTC(ctx, netemArgs...); err != nil {
 		return cleanupOnError(err)
 	}
-	filterArgs := []string{"filter", "add", "dev", veth, "protocol", "ip", "parent", "1:", "prio", "1", "u32", "match", "ip", "src", peerIP + "/32", "flowid", "1:4"}
-	if err := runTC(ctx, filterArgs...); err != nil {
-		return cleanupOnError(err)
+	// One filter per peer, all steering into the same throttled band.
+	for _, peerIP := range peerIPs {
+		filterArgs := []string{"filter", "add", "dev", veth, "protocol", "ip", "parent", "1:", "prio", "1", "u32", "match", "ip", "src", peerIP + "/32", "flowid", "1:4"}
+		if err := runTC(ctx, filterArgs...); err != nil {
+			return cleanupOnError(err)
+		}
 	}
 	return revert, nil
 }
@@ -144,19 +154,23 @@ func runTC(ctx context.Context, args ...string) error {
 	return nil
 }
 
-func netemPeerIP(ctx context.Context, enclave, peerTarget string) (string, error) {
-	if peerTarget == "" {
-		return "", nil
+func netemPeerIPs(ctx context.Context, enclave string, peerTargets []string) ([]string, error) {
+	ips := make([]string, 0, len(peerTargets))
+	for _, peerTarget := range peerTargets {
+		if peerTarget == "" {
+			continue
+		}
+		id, err := dockerContainerID(ctx, enclave, peerTarget)
+		if err != nil {
+			return nil, fmt.Errorf("resolve netem peer target %s: %w", peerTarget, err)
+		}
+		ip, err := dockerContainerIPv4(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("resolve netem peer IP for %s: %w", peerTarget, err)
+		}
+		ips = append(ips, ip)
 	}
-	id, err := dockerContainerID(ctx, enclave, peerTarget)
-	if err != nil {
-		return "", fmt.Errorf("resolve netem peer target %s: %w", peerTarget, err)
-	}
-	ip, err := dockerContainerIPv4(ctx, id)
-	if err != nil {
-		return "", fmt.Errorf("resolve netem peer IP for %s: %w", peerTarget, err)
-	}
-	return ip, nil
+	return ips, nil
 }
 
 func dockerContainerIPv4(ctx context.Context, containerID string) (string, error) {

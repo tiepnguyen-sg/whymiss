@@ -17,7 +17,11 @@ fault:
   kind: netem
   netem:
     delay: 5s
-    peer_target: cl-2-prysm-geth
+    # Every peer, not just one: the devnet is a mesh of three nodes, so degrading
+    # a single peer's link lets the same gossip reach this node unthrottled via
+    # the third. Naming all peers of the fault target is what keeps this scenario
+    # measuring what its description claims.
+    peer_targets: [cl-2-prysm-geth, cl-3-prysm-geth]
 expect:
   cause: unknown.insufficient_data
   confidence: low

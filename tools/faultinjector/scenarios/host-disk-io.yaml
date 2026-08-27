@@ -1,0 +1,144 @@
+id: host-disk-io
+description: >
+  The execution client's cgroup v2 io.max is capped for the full duty window
+  while spamoor keeps ~300 transactions per block flowing, so geth's block
+  import has real disk work to be throttled. The watched attester is on the
+  same node; an unfaulted Prysm baseline distinguishes local processing delay
+  from a network-wide late block, and avoid_proposer_validators forces the
+  block to arrive over gossip so the node must actually import and validate it.
+
+  Why this is worth attempting again. Phase 1 tried io.max at several
+  severities and recorded "no measurable effect at any severity on this
+  project's devnet workload" — correctly, because the devnet had no
+  transactions. An empty block's import is a few milliseconds of CPU and
+  essentially no disk, so a bandwidth cap has nothing to bite on. With
+  transaction load the same cap throttles real writes: Engine work went from
+  3-5ms to 361ms per block once spamoor was added (see CHANGELOG.md). The
+  earlier conclusion was sound for the devnet it was measured on and does not
+  carry over to this one.
+
+  Why local.host.disk_io rather than local.el_slow. R-300 would be the more
+  specific cause, and it cannot fire on a corpus record at all: it requires an
+  el_engine_calls_p99_ms MetricSample and corpus records carry only
+  observations (CHANGELOG.md, Known issues). R-600 is then the terminal rule,
+  and docs/causes.md's own remediation for this cause anticipates exactly this
+  case — "if it is the execution client, this is really
+  local.el_slow.disk_saturation and the taxonomy should be reviewed". The label
+  matches the rule that fires and the reasoning is recorded rather than hidden.
+
+  Measured first, so the cap is chosen rather than guessed. Under spamoor load
+  el-1's geth cgroup writes 40.8 KB/s averaged over two slots (io.stat wbytes
+  64,995,328 -> 65,998,848 across 24s), arriving as a burst of roughly 500 KB
+  per block rather than a steady stream.
+
+  The first rationale drawn from that number was wrong, and the log below records
+  it rather than quietly replacing it: the cap was set *above* the average
+  (128 KB/s) on the theory that the node should keep up between blocks while each
+  block's burst was stretched to ~4s. PSI stayed at 0.00%. PSI "some" measures
+  time a task spends *stalled* waiting on I/O, and a buffered write does not stall
+  the writer — the kernel accepts it and flushes later, so throttling writeback
+  only lets dirty pages accumulate. geth stalls when it fsyncs, so what has to be
+  made slow is an individual synchronous flush, not the aggregate throughput. That
+  argues for a cap well *below* the offered rate, which is the opposite direction.
+
+  That measurement also explains the standing Phase 1 conclusion. io.max was
+  tried "at several severities" in the MB/s range against a devnet writing tens
+  of KB/s; every one of those caps was above the offered rate and throttled
+  nothing, which reads identically to "the fault has no effect". The device
+  selection was never the problem — io.stat confirms this cgroup is accounted on
+  8:0, the same whole disk the fault writes io.max for.
+
+  Bisection log (write_bytes_per_sec / PSI some avg10 / propagation / result):
+    1048576 (1 MB/s) / 0.00% / 408ms / healthy, no cause — 25x above the
+                                       40.8 KB/s offered rate, so nothing was
+                                       ever throttled
+     131072 (128 KB/s) / 0.00% / 550ms / healthy, no cause — 3x above the
+                                       average; buffered writes never stalled
+                                       the writer, so no PSI accrued
+      16384 (16 KB/s) / 0.00% / 516ms / healthy, no cause — 2.5x *below* the
+                                       offered rate and still no stall, which
+                                       ruled tuning out as the explanation
+
+  Three caps spanning a 64x range all read 0.00%, so the mechanism was tested
+  directly instead: capping the same cgroup at 16 KB/s by hand and forcing a
+  synchronous write into it took io.pressure to **some avg10=97.25%**. io.max
+  works, PSI works, the device selection is right. geth simply does not block on
+  it — its writes are buffered, so the kernel accepts them and flushes later, and
+  a throttled writeback accumulates dirty pages without ever stalling the writer.
+
+  So the fault needs something that actually blocks on the throttled device,
+  which is exactly what host-memory-pressure already does for its own controller
+  via pressure_bytes. cgroup_io now has the same helper: it moves itself into the
+  target cgroup and writes with conv=fsync, so it is charged to that cgroup and
+  stalls on the cap.
+
+     131072 + pressure_bytes 33554432 / 0.00% / — / helper never joined the
+                                       target cgroup: its nsenter write to
+                                       cgroup.procs failed with EIO on every
+                                       run, silently, so its load was charged
+                                       elsewhere (fixed in fault_cgroup.go —
+                                       faultinjector now performs the move from
+                                       the host, which the same write proves
+                                       succeeds there)
+     131072 + pressure_bytes 33554432, move fixed / 43.78% / 445ms / healthy,
+                                       no cause — PSI is finally real and well
+                                       over the 20% iowait threshold, but the
+                                       duty lost nothing: head_updated landed at
+                                       +0.44s and the attestation was included at
+                                       delay 1 with both flags. R-600 requires
+                                       dutyHasObservableLoss, correctly.
+      32768 + pressure_bytes 134217728, duration 40s / 48.36% / 444ms / healthy,
+                                       no cause — attestation_published slid to
+                                       +23.2s, yet the attestation was still
+                                       included at delay 1 with head_correct and
+                                       target_correct both true
+
+  STOPPED HERE, and the reason is structural rather than a tuning limit.
+
+  R-600 needs the duty to lose something (dutyHasObservableLoss). On this devnet
+  nothing a disk fault does costs a reward flag:
+
+    - Inclusion is unconditionally forgiving. An attestation observed 23s late
+      still landed at inclusion_delay 1 with both flags. With 96 validators and
+      no aggregation competition, lateness alone never costs timely_source or
+      timely_target here.
+    - The only flag a disk fault could realistically take is timely_head, and
+      that requires block_seen/head_updated to slip past the +4s deadline so the
+      attester votes the previous head. head_updated stayed at +1.34s under
+      48.36% I/O pressure, because geth's validation on this chain is not
+      disk-bound: a devnet a few hundred slots old with a few hundred
+      transactions per block has a state small enough to sit entirely in RAM, so
+      execution issues no disk reads to throttle. Capping reads at 32 KB/s
+      changed nothing for exactly that reason.
+
+  So the fault is real and measurable — 48.36% PSI is well over the 20% iowait
+  threshold — and it still cannot produce this cause here. That is a different
+  and better-evidenced conclusion than Phase 1's "no measurable effect at any
+  severity", which was true only because every cap tried sat above the offered
+  rate.
+
+  What would change it: a chain with enough state to push execution's trie reads
+  out of RAM, which is a devnet-scale problem, not a fault-severity one. Until
+  then this recipe stays out of CORPUS_SCENARIOS and CORPUS_CAMPAIGN so no batch
+  run creates a record whose label the fault has not earned.
+
+  If a cap loose enough to keep the node's beacon API answering never costs the
+  duty a reward flag, that is a legitimate place to stop, and the window should
+  be recorded here the way host-memory-pressure's was rather than papered over
+  with a label the fault never earned.
+target: el-1-geth-lighthouse
+timing_target: cl-1-lighthouse-geth
+baseline_target: cl-2-prysm-geth
+validator_candidates: [0, 31]
+avoid_proposer_validators: [0, 31]
+duration: 40s
+sample_pressure: io
+fault:
+  kind: cgroup_io
+  cgroup_io:
+    write_bytes_per_sec: 32768
+    read_bytes_per_sec: 32768
+    pressure_bytes: 134217728
+expect:
+  cause: local.host.disk_io
+  confidence: medium

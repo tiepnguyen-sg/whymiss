@@ -72,17 +72,14 @@ func (f *CgroupMemFault) Apply(ctx context.Context, enclave, target string) (fun
 
 func startCgroupMemoryPressure(ctx context.Context, containerID string, pressureBytes uint64) (string, error) {
 	name := fmt.Sprintf("whymiss-memory-pressure-%d-%d", os.Getpid(), time.Now().UnixNano())
+	// See moveHelperIntoCgroup: this helper used to place itself, and that write
+	// failed with EIO on every run, so its allocation was never charged to the
+	// target. The PSI values in host-memory-pressure.yaml's bisection log were
+	// therefore geth's own reclaim under memory.high, not this helper's doing.
 	script := `
 set -eu
-container_id="$1"
-pressure_bytes="$2"
-host_pid="$$"
-nsenter -t 1 -m -- sh -c '
-for candidate in "/sys/fs/cgroup/docker/$1" "/sys/fs/cgroup/system.slice/docker-$1.scope"; do
-	if [ -d "$candidate" ]; then printf "%s" "$2" > "$candidate/cgroup.procs"; exit 0; fi
-done
-exit 1
-' cgroup-move "$container_id" "$host_pid"
+pressure_bytes="$1"
+sleep 2
 workdir="$(mktemp -d /tmp/whymiss-memory-pressure.XXXXXX)"
 trap 'rm -rf "$workdir"' EXIT INT TERM
 count="$(( (pressure_bytes + 1048575) / 1048576 ))"
@@ -93,12 +90,15 @@ done
 `
 	args := []string{
 		"run", "--detach", "--rm", "--name", name, "--privileged", "--pid=host",
-		dockerDesktopHelperImage, "sh", "-c", script, "memory-pressure", containerID,
+		dockerDesktopHelperImage, "sh", "-c", script, "memory-pressure",
 		fmt.Sprintf("%d", pressureBytes),
 	}
 	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("start cgroup memory pressure helper: %w\n%s", err, out)
+	}
+	if err := moveHelperIntoCgroup(ctx, name, containerID); err != nil {
+		return "", errors.Join(err, stopCgroupMemoryPressure(ctx, name))
 	}
 	return name, nil
 }

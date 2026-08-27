@@ -7,30 +7,25 @@ import (
 	"strings"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
-	"github.com/tiepnguyen-sg/whymiss/internal/source"
+	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
 )
 
-// SamplePeerCount scrapes target's own Prometheus endpoint for its connected
-// peer count, reusing internal/source's already-verified production
-// scraper (internal/source.MetricsSampler.SamplePeerCount, which dispatches to
-// internal/source/promscrape's client-specific parsers) rather than
-// reimplementing the parsing here.
+// SamplePeerCount reads target's connected peer count from its Beacon API,
+// reusing the same production call the collector uses
+// (beaconapi.Client.PeerCount) rather than reimplementing it here.
 //
-// Client selection uses the same version-based registry as production; service
-// names are deployment metadata, never adapter selection logic (I-11).
-func SamplePeerCount(ctx context.Context, sampler *source.MetricsSampler, enclave, target string) (domain.MetricSample, error) {
+// It used to scrape each client's Prometheus endpoint. That was wrong on
+// Lighthouse, whose libp2p_peers gauge reads 0 while genuinely peered — see
+// beaconapi.Client.PeerCount. A generator recording a peer count that is always
+// zero would bake the same defect into every corpus record it wrote.
+func SamplePeerCount(ctx context.Context, enclave, target string) (domain.MetricSample, error) {
 	beaconAPI, err := resolveKurtosisPort(ctx, enclave, target, "http")
 	if err != nil {
 		return domain.MetricSample{}, err
 	}
-	_, client, metricsURL, err := prepareHeadTiming(ctx, beaconAPI, enclave, target)
+	sample, err := beaconapi.NewClient(beaconAPI, 0).PeerCount(ctx)
 	if err != nil {
-		return domain.MetricSample{}, fmt.Errorf("prepare peer-count sampling: %w", err)
-	}
-
-	sample, err := sampler.SamplePeerCount(ctx, client, metricsURL)
-	if err != nil {
-		return domain.MetricSample{}, err
+		return domain.MetricSample{}, fmt.Errorf("sample peer count for %s: %w", target, err)
 	}
 	return sample, nil
 }

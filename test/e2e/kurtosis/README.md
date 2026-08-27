@@ -1,8 +1,17 @@
 # Kurtosis devnet
 
-The devnet `tools/faultinjector` and `test/e2e` run against. Two participants —
-one Lighthouse+Geth, one Prysm+Geth — matching BUILD_PROMPT §3's "initial client
-support: Lighthouse and Prysm only."
+The devnet `tools/faultinjector` and `test/e2e` run against. Three participants —
+one Lighthouse+Geth and two Prysm+Geth — matching BUILD_PROMPT §3's "initial
+client support: Lighthouse and Prysm only." Validator ranges follow the node
+order: `0-31` on node 1, `32-63` on node 2, `64-95` on node 3.
+
+The third node is topology, not client coverage. R-110 (`network.late_block`)
+needs the watched node and an independent baseline node to agree that a block
+arrived late, and a consensus client records no gossip arrival for a block it
+produced itself. With two nodes the proposer is always one of the two observers,
+so one of the two measurements is always missing and that cause could never be
+reproduced. With three, a scenario can put the proposer outside both
+measurements — see `scenarios/network-late-block.yaml`.
 
 ## Bring it up
 
