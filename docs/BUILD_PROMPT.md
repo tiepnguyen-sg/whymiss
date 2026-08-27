@@ -430,7 +430,7 @@ A repository that builds and lints cleanly, a frozen domain model, and a reprodu
 | 1.4 | `internal/clock`: NTP offset measurement, degradation behaviour per I-9 |
 | 1.5 | `tools/faultinjector`: declarative scenarios (`tc netem`, cgroup `io.max`, container pause, `libfaketime`, peer drop) against a Kurtosis devnet |
 | 1.6 | Corpus format: `manifest.yaml` schema, `observations.jsonl` format, validator command `make corpus.validate` |
-| 1.7 | Generate **≥20 labelled scenarios** covering at least 8 distinct causes. **Revised down to 9 scenarios / 6 causes** after real devnet work — see `CHANGELOG.md`'s Phase 1 corpus notes for which causes were judged not achievable with this project's devnet and toolchain (`local.host.cpu_steal` needs real hypervisor contention a cgroup cannot produce; `network.inclusion_failure`, `network.late_block`, `local.el_slow`, and `local.host.disk_io` were each attempted multiple times against real fault severities and never produced clean evidence, most likely because this two-node devnet's per-slot workload is too light for a passive resource cap to gate). Revisiting this needs either active competing load as the fault mechanism or a devnet with real transaction load — not attempted in this pass |
+| 1.7 | Generate **≥20 labelled scenarios** covering at least 8 distinct causes. **Revised down to 9 scenarios / 6 causes** after real devnet work — see `CHANGELOG.md`'s Phase 1 corpus notes for which causes were judged not achievable with this project's devnet and toolchain (`local.host.cpu_steal` needs real hypervisor contention a cgroup cannot produce; `network.inclusion_failure`, `network.late_block`, `local.el_slow`, and `local.host.disk_io` were each attempted multiple times against real fault severities and never produced clean evidence, most likely because this two-node devnet's per-slot workload is too light for a passive resource cap to gate). **That diagnosis was wrong for three of the four causes, and 2026-08-26's work says so with measurements** (full detail in `CHANGELOG.md`). `network.late_block` was unreproducible because a two-node devnet has no third party: the proposer is always one of the two observers and a node records no gossip arrival for a block it produced, so one of the two measurements R-110 compares was always missing. The devnet has three participants now and the cause reproduces on the first attempt. `local.el_slow` was blocked by the corpus format, not the workload — R-300 reads its baseline as a `domain.MetricSample` and records carried only observations, so the rule could never fire on any record at any severity; records now carry an optional `samples.jsonl`. `local.host.disk_io` failed because every `io.max` cap tried sat in the MB/s range against a devnet writing 40.8 KB/s, so nothing was ever throttled; with load and a correct cap the fault produces 48% I/O pressure, though the cause still does not reproduce for a different and now-measured reason (geth's validation on a devnet-sized state is not disk-bound). Only `local.host.cpu_steal` stands as first written. The lesson worth keeping: "the fault had no measurable effect" and "the fault was never applied to anything" look identical from the outside |
 | 1.8 | ADR-0001 language/runtime, ADR-0002 storage, ADR-0003 pure-engine architecture, ADR-0004 dependency policy, ADR-0005 cause taxonomy governance |
 
 ### 9.3 Definition of Done
@@ -438,7 +438,7 @@ A repository that builds and lints cleanly, a frozen domain model, and a reprodu
 - [x] `make ci` green on a clean checkout
 - [x] Binary cross-compiles to `linux/amd64` and `linux/arm64`
 - [x] `make corpus.generate SCENARIO=vc-frozen-lighthouse BEACON=cl-1-lighthouse-geth` reproduces the scenario end to end on a fresh machine (originally named `el-disk-stall` here; that scenario was removed from the corpus after real devnet runs showed cgroup `io.max` disk throttling has no measurable effect at any severity on this project's devnet workload — see `CHANGELOG.md`. The requirement is unchanged: any one committed scenario ID must reproduce end to end)
-- [ ] `make corpus.validate` passes for all committed scenarios (9, not the original ≥20 target — format-v2 regeneration is the current release blocker)
+- [x] `make corpus.validate` passes for all committed scenarios — `corpusctl: 50 scenarios OK`. The note that used to sit here read "9, not the original ≥20 target — format-v2 regeneration is the current release blocker"; both halves are spent: every record is format v2, and the release gate's count of 50 is now met.
 - [x] `internal/domain` imports nothing outside the standard library — enforced by a CI check
 - [x] Five ADRs merged (six: ADR-0001 through ADR-0006, the last for `gopkg.in/yaml.v3`)
 - [x] `docs/architecture.md` describes the pipeline with a diagram
@@ -473,13 +473,13 @@ A daemon that runs beside a node for days without being noticed, and can reconst
 
 ### 10.3 Definition of Done
 
-- [ ] 72-hour soak against Hoodi testnet: RSS stays under the documented ceiling, disk respects the byte cap, zero goroutine leaks (`goleak`)
-- [ ] `whymiss timeline <slot>` returns a complete timeline for any slot in retention
-- [ ] Replaying every corpus scenario produces **byte-identical** timelines across runs
-- [ ] Request rate against the beacon node stays under the configured ceiling — proven by test
-- [ ] Adding a hypothetical third client would touch only `internal/source/` — demonstrated in `docs/architecture.md`
-- [ ] Runs as non-root, no capabilities, verified in CI
-- [ ] `docs/configuration.md` documents every option with defaults and safe ranges
+- [ ] 72-hour soak against Hoodi testnet: RSS stays under the documented ceiling, disk respects the byte cap, zero goroutine leaks (`goleak`) — **the goroutine half is already proven; the duration half is running.** `goleak` is not a soak assertion at all: `internal/app/main_test.go` calls `goleak.VerifyTestMain(m)`, so every test in the package runs under it, including `TestWatch_EveryCollectorShutsDownCleanly`, which enables every optional collector at once and asserts the whole daemon unwinds on cancellation. That passes in `make ci` today. What remains is wall-clock: the soak started 2026-08-27T01:44:21Z on `1d0bdd6d` (sha recorded in the run's own `BINARY.md`) and finishes ~2026-08-30T01:44Z. `test/soak/run.sh` decides pass/fail itself — it exits non-zero the moment RSS exceeds 262144 KiB or the database exceeds 104857600 bytes, and writes `result=PASS` to `summary.txt` only on success — so completing this item means reading that line, not eyeballing a graph.
+- [x] `whymiss timeline <slot>` returns a complete timeline for any slot in retention — checked on 2026-08-26 against the live Hoodi soak's own store, on three slots spanning its retention window (oldest, middle, newest of 68 recorded verdicts). Each returned a timeline with the attester duty recovered; the same slots also render a verdict through `whymiss <slot>`
+- [x] Replaying every corpus scenario produces **byte-identical** timelines across runs — `go test -run TestReplay_ByteIdenticalAcrossRuns ./internal/timeline`, and the test enumerates `test/corpus/` rather than naming scenarios, so new records are covered as they land
+- [x] Request rate against the beacon node stays under the configured ceiling — proven by `TestRateLimiter_EnforcesCeiling` and three siblings in `internal/source/beaconapi/ratelimit_test.go`
+- [x] Adding a hypothetical third client would touch only `internal/source/` — demonstrated in `docs/architecture.md`, and the walkthrough shrank in 2026-08-26's work: peer count left the list entirely once it came from the standardised Beacon API endpoint (ADR-0023), as did the network baseline without `--baseline-metrics-api` (ADR-0025)
+- [x] Runs as non-root, no capabilities, verified in CI — `make check.nonroot`, inside `make check`, inside `make ci`
+- [x] `docs/configuration.md` documents every option with defaults and safe ranges — all 14 CLI flags appear with a default and a constraint; checked mechanically against `cmd/whymiss` on 2026-08-26, which is also how two stale descriptions were found (`--cl-metrics-api` still claimed to govern peer sampling, which moved to the Beacon API in ADR-0023)
 
 ### 10.4 Anti-goals
 
@@ -512,13 +512,13 @@ A pure, deterministic, auditable engine that turns a `Timeline` into a `Verdict`
 
 ### 11.3 Definition of Done
 
-- [ ] `internal/rca` imports only stdlib and `internal/domain` — enforced by CI lint rule (I-6)
-- [ ] Determinism test passes
-- [ ] **Top-1 accuracy ≥ 90%** on the corpus, reported per cause in `docs/evaluation.md`
-- [ ] **Zero false-confident verdicts**: no `ConfidenceHigh` verdict is wrong on any corpus scenario. This is a hard gate — treat a single violation as a release blocker (I-8)
-- [ ] Ambiguous scenarios correctly yield `unknown.*`
-- [ ] `docs/causes.md` complete: every cause has definition, rule, evidence requirements, confidence derivation, remediation
-- [ ] A sample markdown report is in the README and is genuinely readable
+- [x] `internal/rca` imports only stdlib and `internal/domain` — enforced by `make check.purity`, inside `make check`, inside `make ci`
+- [x] Determinism test passes — `TestAnalyze_Deterministic` re-analyses a real timeline 1000 times and asserts byte-identical output
+- [x] **Top-1 accuracy ≥ 90%** on the corpus, reported per cause in `docs/evaluation.md` — 50/50 (100%) with zero false-high verdicts, verified by `make eval.check` on 2026-08-27, which enforces the count, the accuracy floor, the presence of ambiguous scenarios, and the false-high bar together.
+- [x] **Zero false-confident verdicts**: no `ConfidenceHigh` verdict is wrong on any corpus scenario. This is a hard gate — treat a single violation as a release blocker (I-8). `docs/evaluation.md` reports 0, and `tools/eval --check` fails the build on any non-zero count — a gate that was silently unenforced until 2026-08-26, when `eval.check` was found discarding its exit status
+- [x] Ambiguous scenarios correctly yield `unknown.*` — 10 of the 50 records expect an `unknown.*` label and all 10 match, including the `proposer-missed-concurrent-vc-pause*` recordings that ADR-0021 reclassified from a false exoneration
+- [x] `docs/causes.md` complete: every cause has definition, rule, evidence requirements, confidence derivation, remediation — checked mechanically across all 14 entries on 2026-08-26, which is how `local.el_slow`'s missing generic-cause remediation was found
+- [x] A sample markdown report is in the README and is genuinely readable — verified byte-identical to what the current engine produces for `test/corpus/vc-slow-cpu` on 2026-08-26, so it cannot drift into a claim the code no longer makes. Readable on task 3.5's own bar ("readable pasted into a forum post"): it names the cause, says which reward flag was lost, gives one evidence line carrying both measured timings and the deadline they violated, and three remediations specific enough to act on — a remote signer by name, CPU contention on the VC host, clock agreement
 
 ### 11.4 Anti-goals
 
@@ -552,9 +552,9 @@ A release an operator can trust on a live staking box.
 ### 12.3 Definition of Done
 
 - [ ] Fresh Linux box → running and producing verdicts in under 5 minutes following the README alone
-- [ ] Container runs as non-root with a read-only root filesystem
+- [x] Container runs as non-root with a read-only root filesystem — asserted by `make test.freshinstall` (passed 2026-08-27) on the running Compose service, not on the image: `Config.User=65532:65532`, `ReadonlyRootfs=true`, `CapDrop=["ALL"]`, `SecurityOpt=["no-new-privileges:true"]`, `Memory=268435456`, `PidsLimit=64`, `PortBindings={}`. The same run also proves the image is distroless by requiring `docker run --entrypoint /bin/sh` to fail.
 - [ ] Release artifacts carry provenance and signatures; verification steps documented and tested
-- [ ] Grafana dashboard imports cleanly and shows real data
+- [ ] Grafana dashboard imports cleanly and shows real data — **half proven.** `make test.freshinstall` (passed 2026-08-27) shows Grafana healthy, finds `whymiss-duty-causes` in `/api/search` (so provisioning and import work), and queries `up{job="whymiss"}` *through Grafana's own datasource proxy*, proving the datasource is wired and returns live data. What it cannot show is the dashboard's own panels carrying verdicts: the fresh-install mock beacon serves only genesis and spec, so no duty is ever tracked and the `cause` series stays empty. Closing this needs a screenshot or an API assertion taken against the Hoodi soak deployment, which does produce verdicts.
 - [ ] Prometheus `cause` label cardinality is bounded and documented
 - [ ] Uninstall is one documented command that leaves nothing behind
 - [ ] Threat model explicitly addresses: no key access, no egress, no privilege, resource caps

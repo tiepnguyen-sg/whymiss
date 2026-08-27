@@ -8,6 +8,156 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **`local.el_slow` has evidence for the first time.** `test/corpus/el-slow-cpu`
+  is the eighth cause covered and the first record to carry a `samples.jsonl`,
+  pinned by `samples_sha256` like the observations beside it. The numbers are not
+  marginal: an Engine total of 16,295ms across four `newPayload` calls against a
+  measured p99 baseline of 981.8ms — 5.5x the 3x spike threshold R-300 requires —
+  with `head_updated` at +25.19s against a 4s deadline and validation taking
+  24.73s to propagation's 0.45s.
+
+  Several cycles recorded this cause as unreproducible and `docs/BUILD_PROMPT.md`
+  task 1.7 blamed the devnet's workload. That was wrong twice over. Load was one
+  missing piece — Engine work is 3-5ms per block on an empty chain and 361ms under
+  transaction load, and a cgroup cap can only gate work that exists. But the
+  binding constraint was the corpus format: R-300 reads its baseline as a
+  `domain.MetricSample`, records carried only observations, and `tl.Samples` was
+  therefore nil for every scenario ever replayed. No amount of load or fault
+  severity could have produced this record before the format could carry the
+  input the rule reads.
+
+  Corpus is 41 scenarios over 8 causes, 41/41 correct, zero false-high. The share
+  asserting refusal rather than attribution is 22.0%, down from 48.5% at the start
+  of this cycle.
+
+- **Corpus records can carry metric samples, which is what `local.el_slow` was
+  missing.** A record was `observations.jsonl` plus a manifest, `timeline.Replay`
+  built a Timeline from observations alone, and so `tl.Samples` was always nil for
+  a replayed scenario. R-300 reads its `el_engine_calls_p99_ms` baseline as a
+  `domain.MetricSample` — written only by the watch daemon — so that rule could
+  never fire on a corpus record at any fault severity or load. Several cycles read
+  the resulting silence as the devnet being too quiet.
+
+  Records now carry an optional `samples.jsonl` beside the observations.
+  `timeline.LoadSamples` reads it and treats a missing file as "no samples", so
+  every record already committed replays byte-identically and no
+  `corpus_format_version` bump is needed. `ReplayWithSamples` feeds them to the
+  assembler; `Replay` is the same call with none. `tools/eval`, the golden test,
+  and `corpusctl` all pass and validate them, so a malformed sample is caught at
+  validation rather than reaching a rule as evidence.
+
+- `tools/faultinjector` now measures a real Engine baseline before choosing a
+  duty (`collectEngineBaseline`), behind its own `sample_engine_baseline` flag.
+  Deliberately not folded into `sample_engine_calls`: `cl-slow-cpu` and
+  `cl-slow-cpu-lighthouse` already set that flag and are in the release corpus, so
+  implying the baseline from it would have added ~6.4 minutes to every one of
+  their runs and, more seriously, written a baseline into their records that R-300
+  evaluates *before* R-310 ever sees them. Their verdicts must not change as a
+  side effect of another cause becoming reproducible.
+
+  The ordering within a run is forced rather than preferred: the Beacon API only guarantees duties one epoch ahead and a chosen
+  duty can be `minDutyLead` — 25 seconds — away, so there is no window between
+  "duty known" and "duty slot" long enough to gather the 32 slots
+  `EngineBaselineMinSamples` requires. Sampling first and choosing afterwards
+  costs an epoch of wall clock, about 6.4 minutes per run, and is the only
+  ordering that always has the samples in hand.
+
+  The collection loop is bounded, because every other polling loop in this
+  project is. As first written it would have spun one slot at a time until its
+  context died against a node whose Engine counters are absent, reset every slot,
+  or served by a client this build has no adapter for — a corpus run would have
+  hung instead of failing with something an operator could act on. It now gives up
+  after three times the ideal slot count and names what it got. The sampler is
+  taken as a one-method consumer interface so that bound is covered by a test
+  rather than asserted in a comment.
+
+  The p99 accumulator moved from `internal/app` to `internal/source` as
+  `EngineBaseline` so the generator computes a record's baseline exactly the way
+  a running deployment computes it. A baseline derived some other way would not
+  represent what the daemon writes, and the corpus exists to represent that.
+
+- `tools/faultinjector/scenarios/el-slow-cpu.yaml` uses all of it: an 8% CPU cap
+  on the execution client under transaction load, chosen from the measurement
+  rather than guessed — Engine work is 361ms per block loaded against 3-5ms
+  empty, and R-300 needs the slot's total to clear 3x the baseline with
+  validation dominant past the +4s deadline.
+
+- **The corpus devnet runs a transaction spammer, and the numbers show why that
+  was always required.** Engine API work was trivial without it: geth's
+  `newPayload` measured `beacon_block_delay_execution_time` of **3-5ms** on an
+  empty chain, so no cgroup CPU or `io.max` cap could push validation past a 4s
+  deadline. A passive resource cap can only gate work that exists. With
+  `spamoor` running: **276-320 transactions per block**, ~13.7M gas used, and
+  `execution_time` at **361ms** — about ninety times more Engine work to throttle.
+
+  `tx_fuzz` was tried first and does not work here. It logs `Airdropping`,
+  `Spamming 6 transactions per account on 100 accounts`, and then nothing: every
+  EL's txpool stayed at `pending 0x0`, every block came back `gasUsed 0 / 0 txs`,
+  and `execution_time` stayed at 3ms. The faucet it names holds ~10M ETH and all
+  three ELs are peered, so it is neither a funding nor a connectivity problem —
+  it simply never lands a transaction. Worth knowing before trusting any earlier
+  note that load was added and made no difference.
+
+  Verified stable afterwards: three nodes at 2 connected peers each, head
+  advancing exactly one slot per 12s, host load settling to 2.77 on 4 vCPU with
+  11.2 GB free. The heavier enclave is comfortable, which matters given the
+  previous devnet died of exhaustion after days of fault injection.
+
+- **The corpus devnet has a third node, because `network.late_block` could not be
+  reproduced without one.** R-110 fires only when the watched node *and* an
+  independent baseline node agree the block arrived late — and a consensus client
+  records no gossip arrival for a block it produced itself. On two nodes the
+  proposer is always one of the two observers, so one of the two measurements is
+  always missing, and the cause was unreproducible by construction rather than by
+  bad luck with recipes. That is why it has sat unmeasured since Phase 1.
+
+  `test/e2e/kurtosis/network_params.yaml` now provisions three participants
+  (one Lighthouse+geth, two Prysm+geth; validators `0-31`, `32-63`, `64-95`). The
+  third is topology, not client coverage — BUILD_PROMPT §3 still locks support to
+  Lighthouse and Prysm. Verified after rebuild: every node reports **2 connected
+  peers**, heads advance in lockstep, host load 0.56 on 4 vCPU with 12.5 GB free,
+  so the heavier enclave is comfortable.
+
+- `tools/faultinjector/scenarios/network-late-block.yaml` uses that topology:
+  node 3's consensus client is paused from eight seconds before its own proposal
+  slot until five seconds into it, so the block is produced late rather than not
+  at all, while the watched attester on node 1 and the baseline on node 2 are both
+  untouched and neither is the proposer. Added to `CORPUS_SCENARIOS`, and
+  generated on the first attempt: `test/corpus/network-late-block` records the
+  block at **+5.777s** on the watched node against an independent baseline of
+  **+5.747s** — 30ms apart, both past the +4s deadline, which is precisely R-110's
+  discriminating condition and the first `network.late_block` evidence this
+  project has ever had. The block is then orphaned (slot 47 returns 404; slot 46
+  stays head), so the attester's vote is head-correct and the duty earns every
+  flag — whymiss reports the cause for a duty that lost nothing, which is right:
+  it explains why the slot is empty. The recipe records why late-but-canonical is
+  not reachable here, with the arithmetic rather than an assertion.
+
+- `tools/faultinjector/scenarios/proposer-missed-upstream.yaml` restores the
+  coverage `network.proposer_missed` lost. It pauses the Prysm validator client
+  on a slot whose proposer duty belongs to the Prysm set, while the watched
+  attester duty belongs to the Lighthouse set on the other node — so the chain
+  skips the slot while the watched validator keeps its own beacon node, publishes,
+  and is included normally. That is the separation `proposer-missed-concurrent-vc-pause`
+  deliberately does not make: pausing the client that owns *both* duties leaves
+  nothing observable from the operator's own attestation path, which ADR-0021
+  makes ambiguous by design. This recipe supplies the positive evidence R-100 now
+  requires before it will exonerate, and is the only scenario that can exercise
+  that cause at high confidence.
+
+  Added to `CORPUS_SCENARIOS`, and generated: `test/corpus/proposer-missed-upstream`
+  records slot 314 with the watched Lighthouse validator publishing at +4.34s, the
+  chain skipping the slot because the paused Prysm client owned its proposer duty,
+  and the attestation included at `inclusion_delay: 1` with both `head_correct` and
+  `target_correct` true. The duty earned every reward flag while the slot was
+  skipped — exoneration in its purest form, and exactly the shape R-100's
+  high-confidence branch exists for. The corpus stood at **21** scenarios over 6 causes at that
+  point in the day, and `network.proposer_missed` had evidence again after the
+  unpeered-devnet records were deleted. (It ends this cycle larger — see "Corpus
+  is 39 scenarios" under Changed for the final state.) The run's own log carries the provenance
+  the deleted ones lacked: `preflight ok, cl-1-lighthouse-geth has 1 connected
+  peer(s)`.
+
 - **The Phase 2 soak was restarted from zero; the first 9h11m measured stale
   code and is not evidence.** The run started 2026-08-25T07:47:11Z was built at
   07:42Z, before the five collection fixes committed the same day at 16:27Z
@@ -30,9 +180,21 @@ version stays at `v0.x` until the API is stable.
   `internal/app/headfanout.go` landed and changed how duty tracking publishes a
   REST-polled head. Preferring 41 sunk minutes over a binary that matches the
   code being released would be the exact reasoning this entry exists to reject.
-  **The run that counts** started 2026-08-25T17:43:59Z from sha256
-  `d12bb358c17b92e7e723491573df92ceaa1737b528150d9c996348691eb65af0` and is due
-  to complete 2026-08-28T17:43Z. Recording the binary hash alongside a soak
+  **The run that counts** started 2026-08-26T09:16:17Z from sha256
+  `5d117d1505e143cdd65f639a2688318e8c09d15525ffd1086cd266477a3c27f1` and is due
+  to complete 2026-08-29T09:16Z. It is the sixth start; each earlier one was
+  stopped the moment a collection-visible change landed, and every discarded run
+  is kept with its reasoning under `discarded-soak-runs/` on the soak host.
+
+  The 4h40m run it replaced is the most informative yet and is worth reading
+  before the next release: 277 samples, RSS peaking at 28 MB against the 256 MB
+  ceiling and the database plus WAL/SHM at 3.1 MB against the 100 MB cap; 42
+  verdicts of which **38 were healthy duties correctly reported healthy**; three
+  ERROR lines, all the public gateway briefly declining to confirm sync state,
+  each recovered from rather than fatal. Two verdicts came back
+  `unknown.no_rule_matched` on live Hoodi data, at slots 3791371 and 3791424 —
+  the engine reporting a taxonomy gap against a real network rather than a
+  devnet, and the most interesting unexamined lead currently open. Recording the binary hash alongside a soak
   summary is now called for in `docs/runbook.md`: the version string alone said
   `-dirty` for all three runs and would not have distinguished any of them.
 
@@ -212,93 +374,259 @@ version stays at `v0.x` until the API is stable.
   libfaketime preload, and the `clock_skew` injector verifies the target process,
   changes its wall-clock offset live, and restores the exact original value.
 
-### Known issues
-
-- **The network baseline still misses roughly a third of slots on a healthy
-  node, because one catch-up window serves two different jobs.** Measured over a
-  15-minute live run: 15 warnings against 38 head updates, of which 11 were
-  `block timing gauge remained at slot N while waiting for slot N`.
-  `blockTimingCatchupWindow` is 3 s and is shared between the watched node and
-  the baseline node, which have opposite expectations — the watched node has
-  already emitted the head event being processed, so its gauge should be
-  current, while an independent baseline node is routinely a slot behind at the
-  instant of the scrape. A rule needing `tl.Network` has nothing to compare
-  against on those slots. This is I-8-safe: a missing sample degrades to
-  `unknown` rather than fabricating one, so it costs coverage, not correctness.
-  Giving the baseline its own window wants a number chosen against measured lag
-  rather than guessed, which is why it is recorded here instead of adjusted.
-
-- **`--baseline-beacon-api` cannot be used without `--baseline-metrics-api`,
-  which makes the product's core question need a node you scrape rather than an
-  API you can reach.** The baseline's arrival time comes only from the second
-  node's Prometheus endpoint, so an operator who can reach a friend's or a
-  provider's Beacon API still cannot answer "was it the network or me?".
-  ADR-0022 records the way out: poll `/eth/v1/beacon/headers/{slot}` on the
-  baseline node the way `BlockSeen` already does for the watched node, which is
-  provably about that slot, client-agnostic, and needs no metrics endpoint — at
-  ~500 ms resolution instead of milliseconds. Not taken here because it changes
-  what a baseline observation measures and the resolution trade has to be judged
-  against `thresholds.network_deviation`.
-
-- **`local.el_slow` and the four `local.host.*` causes remain unmeasured**, along
-  with `network.late_block`, `network.inclusion_failure`, and
-  `unknown.no_rule_matched` — 8 of the 14 causes in `docs/causes.md` have no
-  corpus scenario. Unmeasured is not passing. One shape now has direct evidence
-  of a gap rather than merely no coverage: `p2p-degraded-prysm-r02`, left out of
-  the corpus, records propagation 5.38 s alongside validation 4.77 s with no
-  Engine samples, so neither stage dominates and no rule matches. The engine
-  correctly returns `unknown.no_rule_matched`, which per `docs/causes.md` is a
-  bug-report signal — a real two-stage failure the taxonomy cannot yet name. The
-  record is kept out rather than labelled with the gap it exposes; it is in
-  `../whymiss-campaign-evidence-20260826/records/`.
-
-- `tools/faultinjector/scenarios/cl-slow-pause.yaml` is referenced by nothing —
-  not `CORPUS_SCENARIOS`, not `CORPUS_CAMPAIGN`, no corpus record, no bisection
-  log. It has never been run, so whether it reproduces its `local.cl_slow` label
-  is unknown, and it is not a spare record waiting to be collected. Either wire
-  it into a batch and give it a bisection log, or delete it — an unreferenced
-  recipe reads as coverage that does not exist.
-
 ### Changed
 
-- **The corpus is 33 scenarios, up from 13, and the eval report now says what
-  that number does and does not cover.** The devnet host held 40 record
-  directories from the campaign; six were empty (runs that failed before writing
-  anything), two were the recordings the previous cycle dropped as mislabelled,
-  and 11 were already committed, leaving 21 complete new records. All 21 pass
-  `corpusctl validate`. Fourteen carried labels that did not describe what the run
-  produced, and each was corrected from its own observations against
-  `docs/causes.md` — not from what the engine outputs, which would be circular.
-  Every corrected record and recipe carries the derivation in its description.
+- **Peer sampling no longer requires `--cl-metrics-api`.** After ADR-0023 the
+  connected peer count comes from the Beacon API's `/eth/v1/node/peer_count`, but
+  the sampling loop was still started only inside the `CLMetricsAPI` branch — a
+  leftover from when the count came from Prometheus. The effect was that an
+  operator running nothing but a beacon node got no peer count at all, and so
+  lost R-200's peer corroboration, for a reason the measurement had stopped
+  having. It now starts on its own.
 
-  - Four had a proven skip *plus* the duty's own `attestation_included` with
-    source and target earned, so the only flag lost was `timely_head`, which is
-    unearnable on a skipped slot: `network.proposer_missed` / `high`
-    (`cl-slow-cpu-lighthouse-r03`, `cl-slow-cpu-r02`, `cl-slow-cpu-r03`,
-    `p2p-ambiguous-no-baseline-r04`).
-  - Ten had a proven skip and nothing at all from the local attestation path:
-    `unknown.insufficient_data` / `low` per ADR-0021 (five
-    `proposer-missed-concurrent-vc-pause*` campaign rounds, `vc-frozen-lighthouse-r02`,
-    `vc-frozen-prysm-r02`, `vc-frozen-prysm-2-r02`, `vc-slow-cpu-r02`,
-    `vc-slow-cpu-r04`).
-  - One was left out entirely: `p2p-degraded-prysm-r02` (see Known issues).
+  One behaviour change worth noting: `peer_sample_interval` was validated only
+  when CL metrics were enabled, and is now validated always, because it now takes
+  effect always. The shipped default is 15s and well inside the 5s–60s range, so
+  only a config that deliberately set an out-of-range value is affected, and it
+  fails at startup with the range in the message rather than silently sampling at
+  a rate nothing checked.
 
-  The two committed `proposer-missed-concurrent-vc-pause` records and their
-  recipes were relabelled the same way, from `network.proposer_missed` / `high` to
-  `unknown.insufficient_data` / `low`. Their recipe constructs the ambiguous case
-  by design — it pauses the validator client owning both the attester and the
-  proposer duty — so they become ambiguity coverage, which Phase 3's DoD asks for
-  explicitly. The previously reported 13/13 with zero false-high verdicts rested
-  in part on those two records asserting the old behaviour was correct.
+  `docs/configuration.md` already told operators that `cl_metrics_api` "no longer
+  governs peer sampling". That was false while the branch stood, so this closes a
+  documented claim the code did not honour rather than only an internal coupling.
 
-  `docs/evaluation.md` now reads **33/33 (100.0%), 0 false-high** — and states, on
-  the same screen, that **16 of the 33 expect `unknown.*`**. Nearly half the corpus
-  asserts that whymiss correctly declines to attribute rather than that it named a
-  cause, and top-1 accuracy cannot tell those apart, so `tools/eval` prints the
-  split. Six of 14 causes are exercised. The `Makefile`'s campaign note is updated
-  to the measured yield: 33 of 50, 17 short, and the remainder must come from the
-  8 uncovered causes rather than more rounds of the recipes that already work.
+- **`whymiss doctor` now verifies every configured endpoint, not only the ones
+  collection needs.** It contacted the beacon API, the store, and NTP — exactly
+  what its contract promised — and said nothing about `--cl-metrics-api` or
+  `--baseline-beacon-api`. An operator could watch every check go green and then
+  get `unknown.insufficient_data` on every degraded duty, because without a
+  reachable CL metrics endpoint no stage of a duty is ever timed (ADR-0024), and
+  without an independent baseline the product's central question cannot be
+  answered at all (ADR-0025). Setup is exactly when that is cheap to learn.
 
+  The contract widens to "verify every configured endpoint", which needed a
+  severity distinction doctor did not have. An endpoint left unset is a
+  legitimate deployment, not a misconfiguration, so it reports `WARN` naming what
+  becomes unreportable and does not fail the command. An endpoint that *was*
+  configured and cannot be scraped reports `FAIL`, because the operator asked for
+  it and it is not there. Doctor also now rejects the two baseline
+  misconfigurations `watch` already rejects — a metrics endpoint with no beacon
+  API to name its node, and the watched node offered as its own baseline — so
+  doctor can no longer pass on a configuration `watch` will refuse to start on.
+
+  This was previously recorded as a known issue and deferred on the grounds that
+  the binary was being held stable for the 72-hour soak. That premise no longer
+  held: the soak was running `5d117d15` while the tree built `bca550eb`, so the
+  soak had to restart against a fresh artifact regardless, which made this the
+  cheapest moment to widen the contract rather than the most expensive.
+
+- `internal/source/promscrape/peers.go` is now `scraper.go`, because it no longer
+  contains any peer scraping — ADR-0023 moved that to the Beacon API and what
+  remains is the bounded HTTP client every scrape shares. A file whose name
+  describes code that was deleted from it is a small trap for the next reader.
+
+  Checked before doing it: a rename changes the built binary's hash, so it would
+  normally cost a 72-hour soak restart. It did not here, because the running soak
+  is already on `5d117d15` while the tree builds `04c92f38` — the genuine fixes
+  that landed after it started (ADR-0025's slot-driven baseline, R-100's evidence
+  timestamps, the samples format) already owe that restart. The rename rides
+  along at zero marginal cost rather than buying one.
+
+- **The README's quickstart produced a whymiss that could not attribute anything,
+  and said nothing about it.** `--cl-metrics-api` appeared nowhere in the file — not
+  in the `watch` example an operator copies first, and not in Limitations, which
+  warned about NTP and about the baseline but not about the one flag without which
+  `local.cl_slow`, `local.el_slow`, `local.vc_disconnected`, `local.vc_slow`,
+  `network.late_block`, and `local.p2p_degraded` are all unreportable. The flag is
+  now in the example and the consequence is stated in Limitations: collection still
+  works without it, attribution does not.
+
+  The same section carried three stale figures — 21 scenarios, 6 causes, 6
+  `unknown.*` — against an actual 41, 8, and 9, and claimed a two-node devnet. All
+  corrected.
+
+- **Corpus is 39 scenarios, and the shape of it improved more than the count.**
+  The campaign produced 16 usable records from 19 attempts; the three that failed
+  failed honestly, with the harness refusing to write a passing record and saying
+  so. Per-cause coverage after admission: `local.p2p_degraded` 8,
+  `unknown.insufficient_data` 9, `local.vc_disconnected` 7, `local.cl_slow` 4,
+  `network.late_block` 4, `network.proposer_missed` 4, `local.vc_slow` 3. Two of
+  those causes had a single record this morning.
+
+  The share of the corpus that merely asserts whymiss declines to attribute is now
+  **23.1%**, down from 48.5% when the session began — the earlier figure was
+  inflated by artifacts from an unpeered devnet, and every drop since has been an
+  artifact removed or a real cause covered.
+
+  Every admitted record was provenance-checked before admission, not just
+  validated: each one either observed a block proposed by a *different* node —
+  proof the devnet was peered when it was recorded — or is a scenario whose
+  intended phenomenon is the absence of a block. That check exists because 14
+  records generated during an unpeered window had to be deleted earlier in this
+  cycle.
+
+- **`cl-slow-cpu-lighthouse` re-tuned from 9% to 5% CPU quota, because the devnet
+  changed underneath it.** It produced a healthy duty on both campaign rounds —
+  no cause, `included=true` — while its sibling `cl-slow-cpu` passed 2/2 at 7%.
+  The recipe was not broken: with a third participant the throttled node receives
+  each block from two peers instead of one, so it still observes the block in time
+  even with its CPU cut. The two siblings bracket the answer, and 5% sits below the
+  7% that still bites.
+
+  At 5% it reproduces **1 of 2**, and its failure mode is the one worth reading:
+  r05 came back not with a wrong label but with **no timing at all**. At 5% of a
+  core the consensus client cannot answer its own metrics endpoint in time, so no
+  measured `block_seen` is recorded, no stage boundary exists, and R-999 reports
+  `unknown.insufficient_data` — the fault broke the channel the scenario measures
+  *through* rather than the thing it means to measure. That is the same wall
+  `host-memory-pressure` hit at 16MB, and it is what "too severe" looks like for a
+  fault aimed at a client that is also the observation source.
+
+  So 9 is too loose and 5 is at the edge of too severe. 7 is the obvious next
+  candidate — the sibling `cl-slow-cpu` passes 2/2 there against Prysm — but it
+  has not been tried against Lighthouse, so the recipe keeps the value that has
+  actually produced the cause rather than moving to a guess.
+
+  `vc-slow-cpu` is recorded as **marginal at 2/3** rather than adjusted. Its one
+  failure came back `local.vc_disconnected` because the validator client published
+  nothing at all at 0.1% of a core — the fault slightly too severe, not a wrong
+  label, and R-400 read the evidence correctly. Raising it is what left the duty
+  healthy when the recipe was first tuned, so the window is genuinely narrow and
+  saying so is more useful than picking a number.
+
+- **Operator-facing configuration docs corrected where they had drifted from the
+  code.** Both `deploy/docker/.env.example` and
+  `deploy/systemd/whymiss.env.example` told operators to "set both or leave both
+  empty" for the baseline pair, which ADR-0025 made wrong, and described
+  `CL_METRICS_API` as being "for peer-count corroboration", which ADR-0023 made
+  wrong — peer count now comes from `/eth/v1/node/peer_count`, and that endpoint
+  is what makes those local-layer causes attributable at all. These are the files
+  an operator edits before their first run, so a stale comment there costs more
+  than a stale one in an ADR.
+
+- `docs/architecture.md`'s "adding a third client" walkthrough referenced
+  `SampleLighthousePeerCount`, `SamplePrysmPeerCount`, and
+  `MetricsSampler.SamplePeerCount`, all of which were deleted with ADR-0023. It
+  now demonstrates something stronger than it used to: **peer count has dropped
+  off that list entirely.** A third client inherits it with no code, because the
+  fact comes from a standardised endpoint rather than a per-client gauge — and the
+  Lighthouse gauge it replaced was the one reading 0 on a peered node. Same for
+  the network baseline when `--baseline-metrics-api` is unset. Where the Beacon
+  API exposes the fact, taking it from there *removes* client-specific code
+  instead of adding more, which is the direction I-11 points.
+
+- `docs/BUILD_PROMPT.md` task 1.7 recorded four causes as unachievable "because
+  this two-node devnet's per-slot workload is too light for a passive resource cap
+  to gate". Three of the four now have measured counter-evidence and the entry
+  says so: `network.late_block` needed a third node, not more load;
+  `local.el_slow` was blocked by the corpus format; `local.host.disk_io` failed
+  because every cap tried sat above the offered write rate. Only
+  `local.host.cpu_steal` stands as first written. The line kept in the doc is the
+  one worth remembering: *"the fault had no measurable effect" and "the fault was
+  never applied to anything" look identical from the outside.*
+
+- `docs/architecture.md` and `STRUCTURE.md` describe the current devnet (three
+  participants plus a transaction spammer) and the current record layout
+  (`samples.jsonl`, optional).
+
+- **The network baseline no longer requires a second node you run — only one you
+  can reach** (ADR-0025). `--baseline-metrics-api` becomes optional. Without it,
+  `runNetworkBaseline` polls the independent node's own
+  `/eth/v1/beacon/headers/{slot}` — the same call `BlockSeen` already makes
+  against the watched node — and derives propagation from the slot start.
+
+  This is the difference between the product's headline question being answerable
+  by most operators and by almost none. R-110 and R-200 are the only rules that
+  separate "the block was late for everyone" from "it was late here", both need
+  `tl.Network`, and until now producing it meant running *and scraping* a second
+  beacon node. A friend's node, a provider's endpoint, or any reachable API now
+  works.
+
+  Client detection is skipped on that path: it exists only to pick a Prometheus
+  adapter, and every client serves the same headers endpoint, so demanding a
+  recognised client would have rejected a usable baseline for no reason.
+
+  **The first version of this had a false-attribution trap in it, and the fix is
+  the reason the path is driven by the slot clock.** It was triggered by the
+  watched node's `head_updated`, like the metrics path. But `BlockSeen` returns as
+  soon as the baseline node has the block, so starting the poll only once *our*
+  node reported a head makes the reading an upper bound shaped by our own latency:
+  a node seeing the block at +6s would produce a ~6.1s baseline for a peer that
+  actually had it at +0.1s. R-110 would then see local and network agreeing above
+  the deadline and report `network.late_block` — exonerating a local fault, which
+  is precisely what I-8 exists to prevent and precisely the class of bug this
+  cycle spent the day removing. `runNetworkBaselineFromAPI` polls from the slot
+  boundary instead, which makes the number an arrival time rather than a
+  reflection of our own lateness.
+
+  A second gap in the same change was caught by its test rather than by review:
+  `NetworkBaseline.Validate` carries its own source check, separate from the
+  observation allow-list, and still rejected `beaconapi`. The observation would
+  have been built and stored and then failed to decode, leaving `tl.Network` nil
+  and the whole feature silently doing nothing.
+
+  **The trade, stated rather than buried:** `BlockSeen` polls at 500ms, so an
+  API-derived arrival is quantised to that where the Prometheus gauge is
+  millisecond-precise, and `thresholds.network_deviation` defaults to 750ms — the
+  quantisation is a meaningful fraction of the window those rules compare within.
+  It is acceptable because the error runs one way only: coarseness can push the
+  deviation outside the threshold and make the rules **decline**, never make them
+  attribute wrongly, which is the failure I-8 asks for. A one-sample baseline is
+  already capped at `medium` confidence however it was measured. Operators whose
+  baseline node is their own keep the precise path by setting the flag.
+
+  `domain`'s allow-list for `ObsNetworkBaselineSampled` widens additively to
+  accept `beaconapi`, so every recorded corpus scenario stays valid.
+
+- **The corpus passed through 19 scenarios, up from 13 — after 14 records were
+  admitted and then deleted the same day for coming from a devnet that had stopped
+  being a network.** (19 is the figure at that step, not the cycle's final size.) The devnet host held 40 campaign directories; six were empty, two
+  were the recordings the previous cycle dropped, and 11 were already committed,
+  leaving 21 complete new records that all passed `corpusctl validate`. They were
+  relabelled from their own observations and admitted, taking the corpus to 33.
+
+  Then the devnet was inspected directly and found with **zero connected peers on
+  both consensus nodes**, each advancing its own fork — 8 slots in 7 minutes
+  instead of 35. Checking every record for whether it ever observed a block
+  proposed by the *other* node gave a clean split at a single moment:
+
+  ```
+  … 2026-08-25T08:11  every record: CROSS-NODE block seen   (peering worked)
+    2026-08-25T08:30  every record: no block observed       (isolated)
+  ```
+
+  The 14 records after that boundary are exactly the 14 whose labels had not
+  matched. Their `block_skipped` observations record a node that could not see
+  its peer's blocks, not a proposer that missed — and ADR-0015's skip proof
+  cannot tell the difference, because an isolated node truthfully reports itself
+  synced, execution-valid, and past the slot on its own fork. All 14 were
+  deleted. Corpus 33 → **19**, still 19/19 with zero false-high verdicts, and the
+  share of scenarios expecting `unknown.*` falls from 48.5% to 31.6% — the
+  inflated ambiguity was the artefact announcing itself.
+
+  Six campaign records from before the boundary survive
+  (`p2p-degraded-lighthouse-r02/-r03/-r04`, `p2p-degraded-prysm-r03`,
+  `p2p-ambiguous-no-baseline-r02/-r03`), each with a cross-node block on record.
+  The two committed `proposer-missed-concurrent-vc-pause*` records also stay:
+  generated 2026-08-23, well before the break, and their recipe *intends* no
+  block by pausing the validator client that owns both duties. They keep the
+  relabel to `unknown.insufficient_data` / `low`, which ADR-0021 justifies on the
+  evidence rather than on provenance.
+
+  One record was then generated on the rebuilt devnet and admitted, taking the
+  corpus to **20**: `p2p-degraded-lighthouse-r05`, the first recorded with the
+  peering preflight in front of it and the first whose peer count is truthful
+  rather than a Lighthouse zero. Its log line is the provenance the earlier
+  fourteen lacked — `preflight ok, cl-1-lighthouse-geth has 1 connected peer(s)`,
+  `preflight ok, cl-2-prysm-geth has 1 connected peer(s)` — and its observations
+  carry a block proposed by validator 47, i.e. by the *other* node, alongside a
+  148 ms independent baseline against 5.509 s of local propagation.
+
+  `tools/eval` now also prints what share of the corpus expects `unknown.*`,
+  because top-1 accuracy cannot distinguish "named the right cause" from
+  "correctly declined to answer", and this episode is exactly how that
+  distinction gets lost. The `Makefile`'s campaign note carries the measured
+  yield instead of the assumed one.
 - **The `corpus.generate.campaign` retry batch was killed mid-run; the devnet it was
   recording against had partitioned.** Eight retry records were queued
   (`cl-slow-cpu-r02/r03`, `cl-slow-cpu-lighthouse-r02/r03/r04`,
@@ -400,6 +728,352 @@ version stays at `v0.x` until the API is stable.
   produces trustworthy timing verdicts.
 
 ### Fixed
+
+- **`docs/causes.md`'s observation vocabulary listed sources the domain model had
+  stopped agreeing with.** `peer_count_sampled` was documented as `promscrape`
+  only, though ADR-0023 moved the count to `/eth/v1/node/peer_count` and widened
+  the allow-list to accept `beaconapi`; `network_baseline_sampled` was documented
+  as `xatu / promscrape`, though ADR-0025 added `beaconapi` there too. That file
+  is the cause-taxonomy contract and §8.1 requires undocumented keys to fail
+  validation, so a table disagreeing with `sourcePermittedFor` is the contract
+  contradicting the code it governs. Both rows corrected, and every one of the
+  fourteen observation kinds cross-checked against the allow-list rather than
+  spot-checked — the other twelve already matched.
+
+- **`el-slow-cpu` was absent from `CORPUS_SCENARIOS` despite having an admitted
+  record.** It is the recipe that produced this project's first-ever
+  `local.el_slow` record, and `make corpus.generate.all` would never have
+  regenerated it. Added. Every recipe with a corpus record is now in that list;
+  the four still outside it (`cl-slow-pause`, `host-disk-io`,
+  `host-memory-pressure`, `vc-slow-cpu-prysm`) have no records, which is the
+  intended state for each.
+
+- **The corpus generator's peering preflight only guarded the nodes a recipe
+  happened to name, and its peer floor was stale.** `minPreflightPeers` was fixed
+  at 1 and documented as "the corpus devnet has exactly two consensus nodes" —
+  correct when written, silently wrong from the moment a third participant was
+  added to make `network.late_block` reproducible. A test pinned the constant at
+  1 and justified the two-node premise, so the stale assumption was guarded
+  rather than caught.
+
+  What that permitted, measured on 2026-08-26: `host-memory-pressure` left
+  cl-1-lighthouse-geth with zero connected peers, and the node did not recover
+  after the fault was reverted or after a container restart. cl-1 owns validators
+  0-31 of 96, so roughly a third of all proposals stopped happening — the skip
+  rate on the shared devnet went from 0% before that run to 23%, 29%, and 39% as
+  the hours passed with no faults running at all. Eight of the twelve runs queued
+  afterwards were correctly refused, because their recipes named cl-1 as a
+  baseline target. Three were not: they named only cl-2 and cl-3, which each
+  still reported one peer, which cleared a floor of 1. Those three records were
+  discarded rather than admitted.
+
+  Preflight now enumerates every consensus node in the enclave from
+  `kurtosis enclave inspect` and requires each to report the whole mesh — every
+  other consensus node — rather than at least one peer. The requirement is
+  derived from the node count, so the topology can change again without the check
+  quietly weakening. `host-memory-pressure`'s recipe now records that it leaves
+  its target unpeered and must run last in any batch, or be followed immediately
+  by recreating the devnet.
+
+- **Two remediation lines told operators to configure things that would not have
+  helped.** Both are text the engine prints mid-incident, which is the moment the
+  product exists to be right about.
+
+  R-999's unmeasured-duty verdict said to "set `--baseline-beacon-api` **and**
+  `--baseline-metrics-api`". ADR-0025 had already made the metrics endpoint
+  optional — that was the whole point of it, so that answering "was it me or the
+  network" needs a node an operator can *reach* rather than a second one they run
+  and scrape. The remediation was still asking for the barrier the ADR removed.
+
+  R-100's ambiguous-skip verdict said to "keep `--cl-metrics-api` set so peer
+  count and block timing are recorded even on slots the chain skips", and both
+  halves were wrong. Peer count comes from the Beacon API and is sampled on a
+  timer regardless of that flag (ADR-0023, and since this cycle it does not even
+  require it); the arrival gauge needs a block, so a skipped slot yields no timing
+  from it either. That line is removed rather than reworded: no configuration
+  makes this case diagnosable, the missing fact is whether the validator client
+  was alive, and the two remaining lines already ask for exactly that. One fewer
+  instruction beats a confident wrong one.
+
+  Found by auditing operator-facing text against the ADRs that landed after it
+  was written — the same drift that had `docs/configuration.md` claiming peer
+  sampling was already decoupled and the changelog claiming
+  `network.proposer_missed` had no corpus coverage.
+
+- **Every recorded peer count claimed a provenance its own collection path
+  contradicted.** `SamplePeerCount` reads `/eth/v1/node/peer_count` and the
+  `domain.MetricSample` it returns is stamped `beaconapi` (ADR-0023), but the
+  corpus recorder discarded that and wrote `Source: promscrape` onto the
+  `peer_count_sampled` observation. R-200 prints the peer fact's source verbatim
+  as its evidence attribution, so a report generated from any such record told an
+  operator the count came from Prometheus — from the gauge ADR-0023 abandoned
+  precisely because Lighthouse's reads 0 on a peered node. The source is now
+  carried through from the sample.
+
+  It also meant the corpus never exercised the `beaconapi` source that
+  `domain.Observation`'s allow-list for `ObsPeerCountSampled` was widened to
+  accept. `p2p-degraded-prysm-r06`, generated after the fix, is the first record
+  to carry it and gives that widening its first recorded coverage; the thirteen
+  older records still read `promscrape`.
+
+  All 13 existing records carrying a peer count are affected and are left as
+  recorded rather than rewritten: editing a `source` field on committed evidence
+  is asserting something about how a fact was collected, and the honest fix is a
+  fresh run. The seven records reading `peer_count: 0` are a separate and older
+  artefact — they predate ADR-0023 and their zeros are the Lighthouse gauge bug
+  itself, so for those the `promscrape` label is the accurate one. No verdict
+  changes either way: R-200 gates on the value against `peer_count_min`, never on
+  the source.
+
+- **The corpus generator measured a faulted node through the very channel the
+  fault was degrading, and lost the measurement instead of recording it.** Two
+  races, one shape: the harness read both the head and the block-arrival gauge
+  *after* the head had arrived, which on a node under load is after the window
+  the reading was available in.
+
+  The head was read by polling `/eth/v1/beacon/headers/head` every 200ms, and
+  `headUpdatedUncached` gives up the moment it reads a slot past the one asked
+  for. A node under a `cl_slow` or `p2p` fault is precisely a node whose head
+  advances in bursts while its HTTP server answers slowly, so the head stepped
+  from `slot-1` to `slot+1` between two samples and was never observed. Every run
+  of `cl-slow-cpu-lighthouse` and `p2p-ambiguous-no-baseline-prysm` was lost this
+  way: no stage was timed, R-110 declined, and the duty came out healthy with no
+  cause — the fault was real and the record said nothing.
+
+  The head is now read from the `/eth/v1/events` SSE stream alongside the poll,
+  taking whichever answers first. The stream cannot lose a transition: it pushes
+  one head event per head change, so a throttled node delays the event rather
+  than dropping it. It also makes a distinction the poll cannot — a slot the
+  stream steps over was *genuinely skipped*, where a poll's not-found conflates
+  a skip with a sample that arrived too late. The deadline, not the poll, is what
+  now ends the wait negatively: the poll's not-found carries no information,
+  since it is returned the instant the head is past, and letting it end the wait
+  reported "not observed" while the stream still had its whole window.
+
+  The arrival gauge had the same shape with a different cause. `p2p-degraded-prysm-r04`
+  measured propagation of 6.19s against an independent baseline of 449ms with a
+  peer count of 2 — an unambiguous `local.p2p_degraded` — and reported
+  `unknown.insufficient_data`, because by the time the gauge was scraped it had
+  advanced to the next slot and `SampleBlockTimingForSlot` could only fail.
+  `p2p-degraded-prysm-r05`, the same recipe against the same devnet minutes
+  later, kept its arrival and produced the verdict. The recipe was never the
+  variable; which side won the race was. The gauge is now watched from before the
+  slot begins, so it is observed *through* its transition into the slot rather
+  than sampled after it. A genuinely skipped slot still yields the same
+  "advanced to slot N+1" error, because the gauge still steps over it.
+
+  Harness-only (`tools/faultinjector`); the shipped binary is untouched. See
+  "Known issues" for the narrower form of the gauge race that remains in the
+  collector.
+
+- **A p2p scenario could abandon a good record because its own fault made the
+  peer-count sample time out.** `p2p-ambiguous-no-baseline-prysm-r02` measured
+  block propagation at 8.096s — the fault working exactly as intended — and was
+  then thrown away because one `GET /eth/v1/node/peer_count` against the node it
+  was degrading exceeded the 10s client timeout.
+
+  Not a regression from ADR-0023, which is where the suspicion pointed first: both
+  the Beacon API client and the Prometheus scraper bound requests at 10s, so
+  moving peer count between them changed no deadline. Production is unaffected
+  either way — `runPeerSampling` logs a failed sample at debug and keeps its loop,
+  so the daemon loses one sample and nothing else. It is the generator that treats
+  the sample as required and abandons the record.
+
+  Abandoning is right: a p2p scenario without a peer count is missing evidence
+  R-200 requires, and writing it would produce a record whose label the run cannot
+  earn. But a single timeout from a node the scenario is *actively degrading* is
+  the fault working, not evidence about peering — the same reasoning the Engine
+  baseline collector already applies to a failed scrape. It now retries three
+  times, two seconds apart so all three land inside the window the fault is live
+  for, and still abandons the record if none succeeds.
+
+  The class was swept rather than the one instance patched. Every other place the
+  generator abandons a record on a failed measurement was checked: the setup and
+  clock samples all happen before the fault is applied, `sample_pressure` reads a
+  local cgroup file, and the two that do poll a degraded node — `poll block` and
+  `poll attestation publish` — already tolerate a transient error the way
+  `HeadUpdated` was taught to in d56ac76, checking the context and continuing to
+  poll rather than returning. Peer count was the only one missing that tolerance,
+  because it is a single one-shot call rather than a poll loop.
+
+- **The generator threw away every valid `local.el_slow` record it produced.**
+  `runScenarioCmd` checks its own output before writing by replaying the
+  observations and comparing the verdict against the recipe's `expect:` block, and
+  it called `timeline.Replay(observations, ...)` — without the samples it had just
+  spent an epoch collecting. R-300 reads its baseline from `tl.Samples`, so the
+  check evaluated a timeline the engine will never see again, the rule declined
+  for want of an input the run had already measured, and a correct record was
+  reported as a failed scenario.
+
+  Caught on the first real `el-slow-cpu` run. The record it wrote is right —
+  `tools/eval` scores it `local.el_slow` at medium, 1/1 — while the generator's
+  own log called it `unknown.no_rule_matched`. The numbers were never marginal:
+  Engine total 16,295ms against a measured 981.8ms baseline, 5.5x the 3x spike
+  threshold, `head_updated` at +25.19s against a 4s deadline, validation 24.73s
+  to propagation 0.45s. Samples now flow into the check and the record from one
+  slice, so the two cannot diverge again.
+
+  This is the cost of wiring a new input into four consumers and missing the
+  fifth: `tools/eval`, the golden test, and `corpusctl` all got samples when the
+  format was added; the generator that produces them did not.
+
+- **Three queued devnet drivers raced and ran two fault injections at once.**
+  Each waited for the devnet with `while pgrep faultinjector; do sleep 30; done`,
+  and a poll landed in the gap between one run exiting and the next starting — so
+  `el-slow-cpu` and a top-up record executed concurrently on a 4-vCPU host. That
+  is the contention this project already recorded as producing bad records, and it
+  is exactly what the preflight peering check cannot catch, because the devnet
+  stays healthy while the *measurements* get noisy.
+
+  The two records generated during the overlap were discarded rather than
+  inspected — a record made under known contention is not evidence worth
+  arguing about. Replaced by a single sequential driver: one process running one
+  scenario at a time cannot race with itself.
+
+- **`samples.jsonl` was evidence nobody could prove had not been hand-edited.**
+  `observations.jsonl` is pinned by `observations_sha256` in the manifest and
+  `corpusctl` verifies it — that checksum is what the previous cycle relied on to
+  show two mislabelled records had not been tampered with. The samples file
+  introduced alongside it had no checksum at all: it only had to parse. An engine
+  baseline is precisely the value that decides whether R-300 sees a spike, so
+  "it parses" is not a standard that file can be held to.
+
+  The manifest now carries `samples_sha256` when a record has samples, written
+  before the manifest is marshalled rather than after — the first version set it
+  afterwards, so the file on disk would have pinned observations and said nothing
+  about samples. `corpusctl` verifies the hash and rejects both halves of the
+  mismatch: a `samples.jsonl` with no checksum to pin it, and a manifest
+  declaring a checksum for a file that is not there. Records without samples are
+  unchanged, with no file and no field.
+
+- **The goroutine-leak gate covered three of the daemon's nine collectors, with
+  the Phase 2 DoD item ticked.** `goleak.VerifyTestMain` runs for `internal/app`,
+  but `validWatchConfig` enables none of the optional collectors, and every other
+  `BaselineBeaconAPI` reference in the test file is a config-validation case that
+  never starts the daemon. Block timing, peer sampling, clock sampling, duty
+  tracking, host sampling, and the metrics-path network baseline all start only
+  under configuration no test set, so a leak in any of them would have shipped
+  with "zero goroutine leaks (goleak)" recorded as met.
+
+  Two tests close it. `TestWatch_EveryCollectorShutsDownCleanly` turns every
+  collector on at once against `httptest` servers and asserts the whole daemon
+  unwinds on cancellation, and `TestWatch_BaselineFromBeaconAPIShutsDownCleanly`
+  covers ADR-0025's collector specifically — it sits inside a `BlockSeen` poll
+  with a 15s deadline, so a missed context check there would hang a shutdown
+  rather than fail loudly.
+
+- **Both cgroup pressure helpers never joined the cgroup they were meant to load,
+  and had never worked.** `startCgroupMemoryPressure` — and the I/O helper copied
+  from it — ran `nsenter -t 1 -m -- sh -c 'printf ... > cgroup.procs'` from inside
+  the helper container to place itself in the target's cgroup. That write failed
+  with `printf: I/O error` on every run, and nothing checked it: the helper stayed
+  in its own cgroup and its load was charged there, not to the client under test.
+
+  Proven rather than inferred. Writing the same PID to the same
+  `cgroup.procs` **directly from the host succeeds** — the target's process count
+  goes from 2 to 3, and the cgroup is a plain `domain` leaf with empty
+  `cgroup.subtree_control`, so nothing about it forbids the move. The namespace
+  hop was the only thing failing. `faultinjector` already runs privileged on the
+  host, so it now performs the move itself through the existing
+  `writeContainerCgroupFile` path, and the helper simply waits two seconds before
+  issuing any I/O so its first write is already charged and throttled.
+
+  It stayed invisible because `memory.high` throttles the target's own processes
+  directly, so PSI rose whether or not the helper joined —
+  `host-memory-pressure.yaml`'s bisection figures (45.41%, 25.14%, …) were geth's
+  own reclaim, not the helper's doing, and that recipe should be re-bisected now
+  that its helper actually contributes. `io.max` has no such side effect, which is
+  what finally exposed the bug: four consecutive disk-io attempts read
+  `io.pressure some avg10=0.00%`, and the fifth, with the move fixed, read
+  **43.78%**.
+
+- **The netem p2p fault degraded one peer's link, which stopped meaning anything
+  the moment the devnet became a mesh.** `NetemParams.PeerTarget` scoped the tc
+  filter to a single `ip src <peer>/32`, and the four p2p scenarios relied on that
+  peer being the target's *only* peer. With a third node the same gossip reaches
+  the target unthrottled via the relay, so the fault would have degraded nothing
+  measurable while the recipes still claimed a 5s delay on block propagation —
+  a scenario silently measuring the wrong thing, which is worse than one that
+  fails.
+
+  It is now `peer_targets`, a list, with one tc filter per peer steering into the
+  same throttled band, and the four scenarios name every peer of their fault
+  target. Validation requires a non-empty list for `local.p2p_degraded` and
+  rejects one containing the target itself. `PeerDropFault`'s doc comment carried
+  the same two-node assumption in prose ("Target's only peer is PeerTarget") and
+  is corrected; no committed scenario uses that fault.
+
+  Committed p2p records are unaffected — they are honest recordings of a two-node
+  devnet — but regenerating them requires this fix, which is why it lands with the
+  topology change rather than after it.
+
+- **On the default deployment, any degraded duty was reported as a bug in
+  whymiss** (ADR-0024, taxonomy 3.0.0 → 4.0.0, engine 0.14.0 → 0.15.0). Found in
+  the soak's own output, not by reading code: 2 of the first 42 verdicts against
+  live Hoodi came back `unknown.no_rule_matched`, whose remediation is "this is a
+  taxonomy gap and a project bug, not an operator problem — file an issue".
+
+  Slot 3791424 is not short of facts — `block_seen` at +6.18s past the +4s
+  deadline, `head_updated` +7.32s, `attestation_published` +12.68s, outcome
+  degraded — yet its verdict said every stage was "unavailable because its timing
+  boundary was not observed". `timedBlockSeen` only accepts a `block_seen` sourced
+  from `promscrape`, which is right: the Beacon API's polled `block_seen` records
+  when the collector *noticed* the block, not when it arrived, and using it as a
+  stage boundary would invent precision nobody measured. But a collector without
+  `--cl-metrics-api` records only that polled observation, so no stage is ever
+  timed, every timing rule declines for want of input, and R-999 blamed the
+  project for a configuration the operator never made. That is also a direct
+  contradiction of the cause's own definition in `docs/causes.md` — "data was
+  complete and trustworthy" — when the data was never collected.
+
+  R-999 now branches. Nothing timed and something lost → `unknown.insufficient_data`
+  naming `--cl-metrics-api` as the fix. Any stage measured → unchanged
+  `unknown.no_rule_matched` with the full decomposition, which for the first time
+  is a claim worth trusting and a project-health metric worth tracking, since its
+  rate was previously dominated by deployments that simply had no metrics
+  endpoint. Nothing lost → unchanged, deliberately: the branch is gated on
+  `dutyHasObservableLoss` because the engine turns `no_rule_matched` into its
+  clean-pass verdict, and without the gate a duty that earned every reward flag
+  would have been reported as "we could not tell" instead of "nothing went wrong".
+  `TestAnalyze_HealthyDutyThroughRealRules` caught that regression during
+  implementation.
+
+- **Lighthouse's peer count read 0 while the node was genuinely peered, which
+  made R-200's corroboration vacuous there** (ADR-0023). `local.p2p_degraded`
+  only fires when the connected peer count is *below*
+  `thresholds.peer_count_min`, so a permanent zero meant that check — the one
+  that establishes insufficient peering rather than some other local cause —
+  passed unconditionally on every Lighthouse deployment. Measured on a fresh
+  two-node devnet at one instant: `/eth/v1/node/peer_count` returned
+  `connected: 1`, Prysm's `connected_libp2p_peers{agent="lighthouse"}` returned
+  1, Lighthouse's own `block_mesh_peers_per_client{Client="Prysm"}` returned 1 —
+  and every `libp2p_peers*` series, the one whymiss read, returned 0.
+
+  The recorded fixture the unit test replays contains `libp2p_peers 0` too, so
+  the test agreed with the adapter and neither noticed. A real capture proves the
+  parser reads the file; it cannot prove the file means what the parser assumed.
+
+  Peer count now comes from `GET /eth/v1/node/peer_count`, the standardised
+  Beacon API endpoint, through `beaconapi.Client.PeerCount`. The Lighthouse and
+  Prysm peer parsers and their dispatcher were deleted rather than left in place
+  where a refactor could wire the wrong one back in; the normalised metric name
+  R-200 reads is unchanged. `tools/faultinjector` reads the same endpoint through
+  the same call, so a generator can no longer bake a permanent zero into every
+  record it writes. Two allow-lists widen additively so no committed corpus
+  record needs regenerating.
+
+- **`tools/faultinjector` now refuses to record a scenario on an isolated node.**
+  `preflightPeering` reads each consensus service's connected peer count before
+  the fault is applied and aborts with instructions to recreate the devnet if any
+  of them is at zero. This is the check whose absence cost 14 corpus records: an
+  isolated node reports `is_syncing=false`, `sync_distance=0`, and an advancing
+  head, all truthfully about its own fork, so ADR-0015's skipped-slot proof is
+  satisfied while being wrong about the canonical chain. Peer count is the fact
+  that separates "the network skipped this slot" from "this node is alone", and
+  it is now checked before a recording exists to be trusted. The fault target
+  itself is deliberately excluded — it is often a validator client, which has no
+  peer count, and a peer-degradation scenario is allowed to reduce peering on a
+  node it names elsewhere.
 
 - **R-100 no longer exonerates an operator whose duty produced no attestation at
   all** (ADR-0021, taxonomy 2.0.0 → 3.0.0, engine 0.13.0 → 0.14.0). It used to
@@ -854,6 +1528,202 @@ version stays at `v0.x` until the API is stable.
   instead of an empty one. Prometheus already mapped an empty cause to `none`,
   so healthy duties scrape as `{cause="none",outcome="ok"}` with no change to
   the documented cardinality bound.
+
+### Known issues
+
+- **The collector loses this slot's block arrival when the block is more than a
+  slot late.** `runBlockTiming` is driven by `head_updated` and scrapes the
+  client's latest-value arrival gauge once the head has arrived
+  (`internal/app/blocktiming.go`). The gauge carries no slot label, so
+  `SampleBlockTimingForSlot` fails outright when it finds the gauge already past
+  the slot asked for — which happens when propagation exceeds one slot, because
+  the next slot's block has then already moved the gauge on. The polled
+  `block_seen` from the Beacon API is still written, but `timedBlockSeen` does not
+  accept it as a stage boundary (ADR-0024), so no stage is timed and the duty
+  resolves to `unknown.insufficient_data`.
+
+  Two reasons this is recorded rather than fixed. It fails in the direction I-8
+  prefers — an honest `unknown`, never a wrong confident verdict — and the
+  condition is narrow: propagation has to exceed a full 12s slot, not merely the
+  4s attestation deadline. And the fix worth having is the one ADR-0024 already
+  names as deferred: teaching the rules to use the polled arrival as a coarse
+  boundary with its resolution declared. That is not a free widening. A polled
+  timestamp is biased *late*, so it inflates propagation and would make R-110 and
+  R-200 fire more readily rather than less — the opposite of the safe direction
+  ADR-0025 relied on for the network baseline, and the direction that puts the
+  corpus's zero-false-high record at risk. It needs the resolution carried on the
+  observation, a conservative comparison against it, and a major taxonomy bump
+  under ADR-0005.
+
+  The same race in the corpus generator, where deliberate faults make
+  multi-second propagation the norm rather than the exception, is fixed — see
+  "Fixed" above.
+
+- **`local.host.disk_io` cannot be produced on this devnet, and the reason is now
+  understood rather than assumed.** With the helper fixed, the fault works: 48.36%
+  I/O pressure, well over the 20% `iowait_pct` threshold. It still yields no
+  record, because R-600 requires the duty to have lost something and nothing a
+  disk fault does here costs a reward flag.
+
+  Two measured reasons, both structural:
+
+  - Inclusion on this devnet is unconditionally forgiving. An attestation observed
+    **23.2s** late still landed at `inclusion_delay: 1` with `head_correct` and
+    `target_correct` both true. With 96 validators and no aggregation competition,
+    lateness alone never costs `timely_source` or `timely_target`.
+  - The only flag a disk fault could plausibly take is `timely_head`, which needs
+    `head_updated` to slip past the +4s deadline so the attester votes the previous
+    head. It stayed at **+1.34s** under 48.36% pressure, because geth's validation
+    on this chain is not disk-bound: a devnet a few hundred slots old holds a state
+    small enough to sit entirely in RAM, so execution issues no trie reads to
+    throttle. Capping reads at 32 KB/s changed nothing, for exactly that reason.
+
+  Changing this needs a chain with enough state to push execution's reads out of
+  RAM — a devnet-scale problem, not a fault-severity one. The recipe stays out of
+  `CORPUS_SCENARIOS` and `CORPUS_CAMPAIGN` with the full six-run bisection log so
+  no batch creates a record whose label the fault has not earned.
+
+- **Phase 1's "io.max has no measurable effect at any severity" was true and
+  misdiagnosed.** Measured on the loaded devnet: el-1's geth cgroup writes
+  **40.8 KB/s**, averaged over two slots (`io.stat` wbytes 64,995,328 ->
+  65,998,848 across 24s), arriving as a burst of roughly 500 KB per block. The
+  first attempt here capped `write_bytes_per_sec` at 1 MB/s — **25 times above
+  the rate being offered** — and produced exactly what earlier cycles saw:
+  `io.pressure some avg10=0.00%`, propagation 408ms, a healthy duty. A cap above
+  the offered rate throttles nothing, and that is indistinguishable from "the
+  fault does not work" unless the offered rate is measured first.
+
+  The mechanism was never at fault. `io.stat` confirms the container's cgroup is
+  accounted on device `8:0`, the same whole disk `CgroupIOFault` resolves and
+  writes `io.max` for, and the cgroup carries the `io` and `memory` controllers
+  so writeback is attributed rather than escaping to the root cgroup. Severities
+  in the MB/s range against a devnet writing tens of KB/s is the entire
+  explanation.
+
+  The first cap chosen from that measurement was also wrong, in the opposite
+  direction, and the recipe's bisection log keeps both rather than quietly
+  replacing one: 128 KB/s — above the average, on the theory that each block's
+  ~500 KB burst would stretch to about 4s — again produced `0.00%` PSI, with
+  propagation at 550ms against 408ms unthrottled. PSI `some` measures time a task
+  spends *stalled* on I/O, and a buffered write does not stall the writer: the
+  kernel accepts it and flushes later, so throttling writeback only lets dirty
+  pages accumulate. geth stalls when it fsyncs. What has to be made slow is an
+  individual synchronous flush, not aggregate throughput, which argues for a cap
+  well *below* the offered rate.
+
+  `tools/faultinjector/scenarios/host-disk-io.yaml` records the measurement, both
+  rationales, and a bisection log in the same format `host-memory-pressure` uses. The harness
+  refused to write a passing record for the failed attempt on its own —
+  "recorded evidence yielded verdict \"\" (high), expected \"local.host.disk_io\";
+  fixture was preserved for diagnosis but does not pass the labelled scenario" —
+  which is the check that stops a mislabelled record reaching the corpus.
+
+- **RESOLVED later the same day — kept because the diagnosis is the useful part.**
+  `local.el_slow` was unreproducible in the corpus for a reason that had nothing
+  to do with the devnet, and every earlier cycle's diagnosis was wrong. The format
+  was built and the cause now has a record; see "`local.el_slow` has evidence for
+  the first time" under Added. What follows is why it could not have worked before. The
+  standing explanation was that this devnet's per-slot workload is too light for a
+  passive resource cap to gate. Half of that is true and now fixed (see the
+  transaction-load entry under Added). The other half is the actual blocker:
+
+  R-300 requires a rolling baseline, `tl.SampleValue(ComponentEL,
+  el_engine_calls_p99_ms)`. That value is a `domain.MetricSample`, and it is
+  written in exactly one place — `internal/app/blocktiming.go`, inside the watch
+  daemon. `tools/faultinjector` never writes it. Worse, it *could not*: a corpus
+  record is `observations.jsonl` plus a manifest, `timeline.Replay` builds a
+  Timeline from observations alone, and so `tl.Samples` is always nil for every
+  replayed scenario. R-300's baseline check therefore fails on every corpus record
+  that will ever be generated, at any load, under any fault severity.
+
+  R-200 has the same dual-form problem and solves it: `peerCountFact` reads the
+  peer count from either a `peer_count_sampled` observation (the corpus form) or a
+  `MetricSample` (the live form). R-300 has no such reader, and there is no
+  observation kind that carries an Engine baseline.
+
+  The load fix is real and measured, so the concept now works — Engine work went
+  from 3-5ms to **361ms** per block once transactions flowed, and a CPU-capped EL
+  against a ~361ms baseline is a spike R-300 would name. Only the plumbing is
+  missing. Closing it needs, roughly: an optional `samples.jsonl` beside
+  `observations.jsonl` (absent means no samples, so no `corpus_format_version`
+  bump), a loader and a Replay path that accepts it, `tools/eval`, the golden
+  test and `corpusctl` updated to pass and validate it, `engineBaseline` extracted
+  out of `internal/app` so the generator can share it, and a pre-fault sampling
+  loop in `faultinjector` long enough to fill it — `engineBaselineMinSamples` is
+  32 slots, about 6.4 minutes.
+
+  Not attempted here deliberately. It crosses the corpus-format contract and
+  `internal/timeline`, which the shipped binary replays. It was built later the
+  same day with tests and a checksum, and `docs/BUILD_PROMPT.md` task 1.7 has been
+  corrected to say this rather than blame the devnet's workload.
+
+- **The corpus cannot test R-200's peer threshold at all, and never could.**
+  `thresholds.peer_count_min` defaults to 40, while this devnet's ceiling is the
+  number of other participants — **one** when it had two nodes, **two** since the
+  third was added for `network.late_block`. Either way `peerCount <
+  peer_count_min` is trivially true for every scenario it generates, degraded or
+  healthy, so the peer half of the rule is satisfied by the topology rather than
+  by the fault. The corpus now spans the whole range this devnet can produce —
+  `peer_count` 0, 1, and 2 across thirteen records — and no value in it can
+  distinguish a peering fault from a healthy node. (The zeros are the older
+  Lighthouse gauge artefact, not a reading: see the peer-count provenance entry
+  under Fixed.)
+
+  What those records do exercise is the timing half, and that part is real:
+  `p2p-degraded-lighthouse-r05` measured propagation of 5.509 s locally against
+  an independent baseline of 148 ms. Testing the peer half needs either a devnet
+  with dozens of peers per node or per-scenario thresholds in the corpus
+  manifest, which `tools/eval` and the golden tests do not have — they analyse
+  every record with `rca.DefaultConfig()`.
+
+- **Proposer duty tracking is blocked by the taxonomy, not by the collector.**
+  `beaconapi.Client.FetchProposerDuties` exists and is called by nothing;
+  `deriveOutcome` already handles `DutyProposer` (block proposed → ok, otherwise
+  missed). Wiring it into `runDutyTracking` is small. It was not done, because
+  the verdict it would produce is worse than no verdict — replaying a missed
+  own-proposal through `rca.Analyze` today gives:
+
+  ```
+  outcome=missed  cause="unknown.insufficient_data"  confidence=low
+  evidence: no stage of this duty was timed: block arrival was never measured,
+            so propagation, validation, and signing durations are all unknown
+            and no timing rule could be evaluated
+  ```
+
+  That output was re-measured against the current engine rather than quoted from
+  when this entry was written. It used to read `unknown.no_rule_matched` with
+  "data was complete and trustworthy, yet no rule matched — this is a taxonomy
+  gap, not an operator problem", which is precisely the claim ADR-0024 split R-999
+  to stop making. The verdict is better than it was and still not worth shipping.
+
+  Every rule that could explain it keys on attestation observations, and R-100
+  excludes the operator's own proposer duty by design (ADR-0015: the taxonomy
+  cannot distinguish a local proposal failure from an upstream network event).
+  So an operator who just lost a block proposal — the most expensive miss there
+  is — would be told the data was insufficient, on a duty where nothing about the
+  collection was actually wrong. `docs/causes.md` has no cause for a local
+  proposal failure, and adding one is a taxonomy change under ADR-0005 that needs
+  its own evidence and remediation contract. That comes first; the collector
+  wiring is an afternoon after it.
+
+- **6 of the 14 causes in `docs/causes.md` still have no corpus scenario**:
+  `network.inclusion_failure`, all four `local.host.*`, and
+  `unknown.no_rule_matched`. (`network.late_block` and `local.el_slow` were on this
+  list when it was written and both gained records the same day.) Unmeasured is not passing. One
+  gap has direct evidence rather than merely no coverage:
+  `p2p-degraded-prysm-r02`, held out of the corpus, records propagation 5.38 s
+  alongside validation 4.77 s with no Engine samples, so neither stage dominates
+  and no rule matches. The engine correctly returns `unknown.no_rule_matched`,
+  which `docs/causes.md` defines as a bug-report signal — a real two-stage
+  failure the taxonomy cannot yet name. Kept in
+  `../whymiss-campaign-evidence-20260826/records/` rather than labelled with the
+  gap it exposes.
+
+- `tools/faultinjector/scenarios/cl-slow-pause.yaml` is referenced by nothing —
+  not `CORPUS_SCENARIOS`, not `CORPUS_CAMPAIGN`, no corpus record, no bisection
+  log. It has never been run, so whether it reproduces its `local.cl_slow` label
+  is unknown. Either wire it into a batch and give it a bisection log, or delete
+  it — an unreferenced recipe reads as coverage that does not exist.
 
 ## [0.1.0] - 2026-08-22
 

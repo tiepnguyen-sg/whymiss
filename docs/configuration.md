@@ -73,10 +73,10 @@ inside the node's trust boundary or use a local reverse proxy that injects auth.
 |---|---|---:|---|
 | `watch.min_request_interval` / `--min-request-interval` | `WHYMISS_MIN_REQUEST_INTERVAL` | `200ms` | `100ms`–`2s` |
 | `watch.host_sample_interval` / `--host-sample-interval` | `WHYMISS_HOST_SAMPLE_INTERVAL` | `10s` | `0` or `5s`–`60s` |
-| `watch.cl_metrics_api` / `--cl-metrics-api` | `WHYMISS_CL_METRICS_API` | empty | Absolute HTTP(S) URL; empty disables peer sampling |
-| `watch.peer_sample_interval` / `--peer-sample-interval` | `WHYMISS_PEER_SAMPLE_INTERVAL` | `15s` | `5s`–`60s` when enabled |
-| `watch.baseline_beacon_api` / `--baseline-beacon-api` | `WHYMISS_BASELINE_BEACON_API` | empty | Absolute HTTP(S) URL of a **different** beacon node; empty disables the network baseline |
-| `watch.baseline_metrics_api` / `--baseline-metrics-api` | `WHYMISS_BASELINE_METRICS_API` | empty | That same node's Prometheus endpoint; required together with `baseline_beacon_api` |
+| `watch.cl_metrics_api` / `--cl-metrics-api` | `WHYMISS_CL_METRICS_API` | empty | Absolute HTTP(S) URL. Supplies measured block-arrival timing and Engine-call durations — the inputs every timing-based cause is attributed from. Empty means no stage of a duty is timed, so `local.cl_slow`, `local.el_slow`, `local.vc_*`, `network.late_block`, and `local.p2p_degraded` can never be reported (ADR-0024). It no longer governs peer sampling, which reads `/eth/v1/node/peer_count` (ADR-0023) |
+| `watch.peer_sample_interval` / `--peer-sample-interval` | `WHYMISS_PEER_SAMPLE_INTERVAL` | `15s` | `5s`–`60s`. How often the watched node's connected peer count is read from `/eth/v1/node/peer_count` |
+| `watch.baseline_beacon_api` / `--baseline-beacon-api` | `WHYMISS_BASELINE_BEACON_API` | empty | Absolute HTTP(S) URL of a **different** beacon node you can reach; empty disables the network baseline. Sufficient on its own |
+| `watch.baseline_metrics_api` / `--baseline-metrics-api` | `WHYMISS_BASELINE_METRICS_API` | empty | That same node's Prometheus endpoint. **Optional** — without it the baseline is polled from the node's own `/eth/v1/beacon/headers/{slot}` at 500ms resolution instead of read from its metrics at millisecond resolution (ADR-0025). Set it when the baseline node is yours |
 | `watch.ntp_servers` / `--ntp-server` | `WHYMISS_NTP_SERVERS` | empty | Non-empty hostnames/IPs; YAML list, comma-separated env, repeatable flag |
 | `watch.clock_sample_interval` / `--clock-sample-interval` | `WHYMISS_CLOCK_SAMPLE_INTERVAL` | `1m` | `10s`–`1m` when NTP is enabled |
 | `watch.retention_max_age` / `--retention-max-age` | `WHYMISS_RETENTION_MAX_AGE` | `336h` | `24h`–`2160h` when retention is enabled |
@@ -124,6 +124,15 @@ PSI I/O `some avg10`, not `/proc/stat` CPU iowait.
 
 `doctor` uses the configured request interval and clock-offset threshold, so its
 result matches the settings `watch` will enforce.
+
+`doctor` checks every endpoint that is configured, not only the ones collection
+needs. `cl_metrics_api`, `baseline_beacon_api`, and `baseline_metrics_api` are
+contacted and reported on, because leaving them unset is what decides whether a
+cause can ever be attributed rather than whether whymiss runs. Left unset they
+report `WARN` naming what becomes unreportable; configured and unreachable they
+report `FAIL`, since the operator asked for something that is not there. Only a
+`FAIL` makes the command exit non-zero, so a deliberately minimal deployment
+still passes.
 
 ## Other commands
 

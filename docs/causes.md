@@ -1,6 +1,6 @@
 # Cause Taxonomy
 
-**Taxonomy version: `3.0.0`** · Status: draft until release gates pass
+**Taxonomy version: `4.0.0`** · Status: draft until release gates pass
 
 This document is a contract, not documentation. Every `Verdict` embeds
 `taxonomy_version`, and consumers may depend on cause IDs remaining stable.
@@ -377,7 +377,17 @@ collectors do not emit an EL-specific sub-cause signal, so this build emits the
 generic `local.el_slow` at `medium`; the sub-cause IDs remain reserved public
 taxonomy entries rather than inferred labels.
 
-**Remediation** (sub-cause specific — generic advice is worthless here):
+**Remediation.** This build emits the generic cause, so the generic advice is what
+an operator actually receives, and R-300 emits exactly these two lines:
+
+- check the execution client version against the latest release
+- inspect execution-client logs and host I/O telemetry for the exact canonical-head
+  window before assigning a sub-cause
+
+The second is deliberate: whymiss has proven an Engine slowdown but not *why*, and
+naming a sub-cause it cannot establish would be a guess (I-8). Once a sub-cause is
+established, it is specific — generic advice is worthless there:
+
 - `syncing` — wait for sync to complete; do not attest from an unsynced node.
 - `snapshot` / `pruning` — schedule offline maintenance outside your duty-dense
   windows; consult your execution client's documented pruning procedure.
@@ -512,10 +522,11 @@ is one of the most under-diagnosed staking problems.
 **Definition.** Required observations were unavailable, so no honest attribution is
 possible.
 
-**Rule (R-010, R-011, R-100, R-500, or fall-through from R-110).** One or more
-required observations are absent, or clock trust failed, or a rule required the
-network baseline and it was disabled, or a proven canonical skip coincides with no
-observation at all from the operator's own attestation path (R-100, ADR-0021).
+**Rule (R-010, R-011, R-100, R-500, R-999, or fall-through from R-110).** One or
+more required observations are absent, or clock trust failed, or a rule required
+the network baseline and it was disabled, or a proven canonical skip coincides with
+no observation at all from the operator's own attestation path (R-100, ADR-0021),
+or a duty was lost with no stage of it timed at all (R-999, ADR-0024).
 
 **Required evidence.** Explicitly list which observations were missing and why they
 mattered. This is the most important evidence block in the taxonomy — it tells the
@@ -532,7 +543,14 @@ missing metrics endpoint, install NTP, and so on.
 
 **Definition.** Data was complete and trustworthy, yet no rule matched.
 
-**Rule (R-999).** Terminal fall-through.
+**Rule (R-999).** Terminal fall-through, **and only when the stage decomposition
+was actually measured**. If no stage boundary was observed — the normal shape when
+`--cl-metrics-api` is unset, because the Beacon API's polled `block_seen` records
+when the collector noticed the block rather than when it arrived and is not used
+as a stage boundary — the data was *not* complete, so R-999 reports
+`unknown.insufficient_data` instead and names the flag that would fix it
+(ADR-0024). A healthy duty is never reported here either: the engine turns this
+cause into its clean-pass verdict when nothing was lost.
 
 **Required evidence.** The full stage decomposition with all durations and shares, so
 the timeline can be attached to a bug report unmodified.
@@ -563,12 +581,12 @@ Closed set. Adding a kind is a taxonomy change (minor bump + ADR).
 | `attestation_included` | beaconapi (REST) | Attestation observed on chain |
 | `block_proposed` | beaconapi | This node's proposal was broadcast |
 | `reorg` | beaconapi (SSE) | Chain reorganisation observed |
-| `peer_count_sampled` | promscrape | Peer count at a point in time |
+| `peer_count_sampled` | beaconapi (REST) / promscrape | Peer count at a point in time |
 | `engine_call` | promscrape | Per-method Engine API call count and total duration in an exact canonical-head window |
 | `host_sampled` | hostmetrics | Host resource sample |
 | `clock_sampled` | clock | NTP offset measurement |
 | `collection_completed` | derived | Every required query completed and the final valid Deneb inclusion slot ended |
-| `network_baseline_sampled` | xatu / promscrape | Network block-arrival p50, p90, and sample count for one slot |
+| `network_baseline_sampled` | beaconapi (REST) / xatu / promscrape | Network block-arrival p50, p90, and sample count for one slot |
 
 ### 8.1 Attribute keys
 

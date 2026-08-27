@@ -41,7 +41,8 @@ make build
 ./bin/whymiss --beacon-api http://127.0.0.1:5052 --db whymiss.db \
     doctor --ntp-server pool.ntp.org
 ./bin/whymiss watch --beacon-api http://127.0.0.1:5052 --db whymiss.db \
-    --validator-index 24 --ntp-server pool.ntp.org --metrics-addr :9101 &
+    --validator-index 24 --ntp-server pool.ntp.org --metrics-addr :9101 \
+    --cl-metrics-api http://127.0.0.1:5054/metrics &
 ./bin/whymiss 2001 --db whymiss.db          # once a duty at slot 2001 has completed
 ```
 
@@ -128,7 +129,7 @@ $ whymiss 5528 --db whymiss.db
 3. confirm validator client and beacon node clocks agree
 
 ---
-Engine 0.14.0 · Taxonomy 3.0.0
+Engine 0.15.0 · Taxonomy 4.0.0
 ```
 
 This illustrates the operator-facing output shape using the recorded
@@ -143,14 +144,23 @@ Read these before trusting whymiss on a live staking box.
 - **Attester duties only, right now.** `whymiss watch --validator-index` tracks and
   explains missed/late attestations continuously. Proposer duties are not yet wired
   into that automatic pipeline.
-- **Small evaluation corpus, and half of it measures refusal.** RCA accuracy
-  (`docs/evaluation.md`) is measured against 33 labelled scenarios covering 6 of the
-  taxonomy's 14 causes, generated on a 2-node Lighthouse+Prysm / geth Kurtosis devnet —
-  not yet validated against mainnet incidents or other client pairings. Read the
-  100% top-1 figure with the rest of that report: 16 of the 33 scenarios expect
-  `unknown.*`, so they assert that whymiss correctly declines to attribute rather
-  than that it named a cause. Eight causes have no scenario at all and are
-  therefore unmeasured, which is not the same as passing.
+- **Without `--cl-metrics-api`, no timing-based cause can ever be reported.** It
+  points at your consensus client's own Prometheus endpoint and supplies measured
+  block arrival and Engine-call durations. Without it the Beacon API's polled
+  `block_seen` is all there is, and that records when the collector *noticed* the
+  block rather than when it arrived — too coarse to use as a stage boundary. So
+  `local.cl_slow`, `local.el_slow`, `local.vc_disconnected`, `local.vc_slow`,
+  `network.late_block`, and `local.p2p_degraded` all become unreportable, and a
+  degraded duty comes back `unknown.insufficient_data` naming the flag that would
+  have made it diagnosable. Collection still works without it; attribution does not.
+- **Small evaluation corpus.** RCA accuracy (`docs/evaluation.md`) is measured against
+  50 labelled scenarios covering 8 of the taxonomy's 14 causes, generated on a 3-node
+  Lighthouse+Prysm / geth Kurtosis devnet carrying transaction load — not yet
+  validated against mainnet incidents or other client pairings. Read the 100% top-1
+  figure with the rest of that report: 10 of the 50 scenarios expect `unknown.*`, so
+  they assert that whymiss correctly declines to attribute rather than that it named
+  a cause. Six causes have no scenario at all and are therefore unmeasured, which is
+  not the same as passing.
 - **Closed taxonomy, on purpose (I-8).** whymiss prefers `unknown` over a wrong
   confident guess. If your failure mode isn't in
   [`docs/causes.md`](docs/causes.md) yet, expect `unknown`, not a plausible-looking
@@ -166,7 +176,10 @@ Read these before trusting whymiss on a live staking box.
   `--ntp-server`, observations are still collected but timing-based verdicts become
   `unknown.insufficient_data`; whymiss never assumes the host clock is correct.
 - **Network-vs-local propagation requires an independent baseline node.** Configure
-  both `--baseline-beacon-api` and `--baseline-metrics-api`; without them, a late
+  `--baseline-beacon-api` with any second beacon node you can reach; add
+  `--baseline-metrics-api` as well when that node is yours, for a
+  millisecond-precise measurement instead of a 500ms-resolution poll. Without a
+  baseline, a late
   block that cannot be localized becomes `unknown.insufficient_data`.
 - **No ePBS support yet.** The slot schedule defaults to `MainnetPreEPBS()`; ePBS
   readiness is Phase 5.

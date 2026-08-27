@@ -107,9 +107,9 @@ harness that never ships in the `whymiss` binary:
 ```mermaid
 flowchart LR
     yaml["tools/faultinjector/scenarios/*.yaml<br/>(declared fault + expected cause)"]
-    devnet[("Kurtosis devnet<br/>test/e2e/kurtosis<br/>Lighthouse+Geth, Prysm+Geth")]
+    devnet[("Kurtosis devnet<br/>test/e2e/kurtosis<br/>Lighthouse+Geth, 2x Prysm+Geth<br/>+ spamoor transaction load")]
     fi["tools/faultinjector<br/>applies the fault, polls the<br/>real beacon API concurrently,<br/>reverts, records what happened"]
-    corpus["test/corpus/&lt;id&gt;/<br/>manifest.yaml + observations.jsonl + README.md"]
+    corpus["test/corpus/&lt;id&gt;/<br/>manifest.yaml + observations.jsonl<br/>+ samples.jsonl (optional) + README.md"]
     ctl["tools/corpusctl validate<br/>checks manifest against the<br/>closed taxonomy, decodes<br/>observations as a valid Timeline"]
 
     yaml --> fi
@@ -167,16 +167,27 @@ say) would need, file by file, against the code as it exists today.
 1. **`internal/source/registry.go`** — add `ConsensusTeku` alongside
    `ConsensusLighthouse`/`ConsensusPrysm`, and a `strings.HasPrefix(versionString,
    "Teku")` case in `DetectConsensusClient`.
-2. **`internal/source/promscrape`** — add Teku adapters for peer count,
-   slot-qualified block timing, and cumulative Engine-call counters, reading metric
-   names captured from a real node first. For example,
-   `SampleLighthousePeerCount`/`SamplePrysmPeerCount`'s own doc comments
-   record the real, verified metric name each existing client uses,
-   `libp2p_peers` vs. label-summed `connected_libp2p_peers{agent="..."}` —
-   these two already differ completely from each other, which is the
-   proof this isn't a coincidence that happens to generalise.
+2. **`internal/source/promscrape`** — add Teku adapters for slot-qualified block
+   timing and cumulative Engine-call counters, reading metric names captured from
+   a real node first. `SampleLighthouseBlockTiming`/`SamplePrysmBlockTiming`
+   record the real, verified name each existing client uses —
+   `beacon_block_delay_observed_slot_start` vs.
+   `block_arrival_latency_milliseconds_gauge` — and those two already differ
+   completely from each other, which is the proof this isn't a coincidence that
+   happens to generalise.
 3. **`internal/source/peers.go`** — add `ConsensusTeku` arms to
-   `SamplePeerCount`, `SampleBlockTiming`, and `SampleEngineCounters`.
+   `SampleBlockTiming` and `SampleEngineCounters`.
+
+**Peer count is no longer on this list, and that is the interesting part.** It
+used to need an adapter per client, and the Lighthouse one was wrong: its
+`libp2p_peers` gauge reads 0 on a genuinely peered node, which made R-200's peer
+corroboration vacuous there for as long as it existed (ADR-0023). It now comes
+from `/eth/v1/beacon/headers`'s neighbour, `GET /eth/v1/node/peer_count` — a
+standardised endpoint every client serves identically — so a third client
+inherits it with no code at all. The same applies to the network baseline when
+`--baseline-metrics-api` is unset (ADR-0025). Where the Beacon API exposes the
+fact, taking it from there removes the client-specific code rather than adding
+more of it, which is the direction I-11 points.
 
 That's it. **Every line above is under `internal/source/`.**
 `internal/app/watch.go` — the composition root, the only caller of

@@ -76,7 +76,7 @@ The binary name *is* the question. Do not add a subcommand that restates it.
 whymiss <slot>              # THE primary command. Explains that slot.
 whymiss watch               # collector daemon
 whymiss timeline <slot>     # raw timeline, no interpretation
-whymiss doctor              # verify config, connectivity, clock
+whymiss doctor              # verify every configured endpoint, storage, clock
 ```
 
 There is deliberately no `whymiss explain` — `whymiss 12345678` already reads as

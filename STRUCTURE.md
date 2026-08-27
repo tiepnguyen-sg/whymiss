@@ -69,6 +69,7 @@ whymiss/
 │   │   └── <scenario-id>/
 │   │       ├── manifest.yaml      expected cause, confidence, description
 │   │       ├── observations.jsonl recorded raw observations
+│   │       ├── samples.jsonl      optional metric samples (absent = none)
 │   │       └── README.md          what was broken and how
 │   ├── e2e/                       against a Kurtosis devnet
 │   ├── freshinstall/              isolated Compose operator-path verification
