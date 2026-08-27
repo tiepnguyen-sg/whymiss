@@ -64,27 +64,6 @@ func TestBlockSeenFromTimingRejectsDifferentMetricSlot(t *testing.T) {
 	}
 }
 
-func TestEngineBaselineP99(t *testing.T) {
-	var baseline engineBaseline
-	for i := range engineBaselineMinSamples {
-		baseline.add(float64(i + 1))
-	}
-	got, ok := baseline.p99()
-	if !ok || got != engineBaselineMinSamples {
-		t.Fatalf("p99 = %v, %v; want %d, true", got, ok, engineBaselineMinSamples)
-	}
-}
-
-func TestEngineBaselineIsBounded(t *testing.T) {
-	var baseline engineBaseline
-	for i := range engineBaselineMaxSamples + 10 {
-		baseline.add(float64(i))
-	}
-	if len(baseline.totals) != engineBaselineMaxSamples || baseline.totals[0] != 10 {
-		t.Fatalf("baseline = len %d first %v", len(baseline.totals), baseline.totals[0])
-	}
-}
-
 func TestEngineWindowTrackerRequiresConsecutiveCanonicalHeads(t *testing.T) {
 	t.Parallel()
 	snapshot := func(at time.Time, count uint64, sum float64) source.EngineCounters {

@@ -109,3 +109,79 @@ func networkBaselineFromTiming(head domain.Observation, timing source.BlockTimin
 		},
 	})
 }
+
+// runNetworkBaselineFromAPI measures when the independent node saw each slot's
+// block by polling its own /eth/v1/beacon/headers/{slot}, the same call
+// BlockSeen makes against the watched node (ADR-0025).
+//
+// It is driven by the slot clock, not by the watched node's head event, and that
+// distinction is the whole correctness of the path. Polling only once our own
+// node reports a head would start the measurement late by exactly however late
+// our node was: BlockSeen returns as soon as the baseline node has the block, so
+// a watched node seeing the block at +6s would produce a baseline reading of
+// ~6.1s for a peer that actually had it at +0.1s. R-110 would then see local and
+// network agreeing above the deadline and report network.late_block — exonerating
+// a local fault, which is precisely the false attribution I-8 exists to prevent.
+// Starting at the slot boundary makes the reading an arrival time rather than an
+// upper bound shaped by our own latency.
+//
+// Cost is bounded (I-5): BlockSeen polls at 500ms until the block appears, so a
+// healthy slot costs two or three requests against a node that may not be the
+// operator's own.
+func runNetworkBaselineFromAPI(ctx context.Context, st *store.Store, client *beaconapi.Client, genesis beaconapi.GenesisInfo, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		now := time.Now().UTC()
+		if until := genesis.GenesisTime.Sub(now); until > 0 {
+			waitUntil(ctx, genesis.GenesisTime)
+			continue
+		}
+		currentSlot := domain.Slot(now.Sub(genesis.GenesisTime) / genesis.SecondsPerSlot) //nolint:gosec // G115: guarded by the genesis check above, so the duration is never negative
+		nextStart := genesis.SlotStart(uint64(currentSlot) + 1)
+		waitUntil(ctx, nextStart)
+		if ctx.Err() != nil {
+			return
+		}
+
+		slot := currentSlot + 1
+		deadline := nextStart.Add(blockTimingCatchupWindow + genesis.SecondsPerSlot)
+		seen, found, err := client.BlockSeen(ctx, slot, deadline)
+		if err != nil {
+			logger.Warn("poll network baseline arrival", "error", err, "slot", slot)
+			continue
+		}
+		if !found {
+			logger.Debug("network baseline saw no block for slot", "slot", slot)
+			continue
+		}
+		obs, err := baselineFromArrival(slot, nextStart, seen.At)
+		if err != nil {
+			logger.Warn("reject network baseline arrival", "error", err, "slot", slot)
+			continue
+		}
+		if err := st.WriteObservation(ctx, stampClockProvenance(clk, clockMaxAge, obs, false)); err != nil {
+			logger.Error("write network baseline observation", "error", err, "slot", slot)
+		}
+	}
+}
+
+// baselineFromArrival turns a measured arrival instant into the one-sample
+// baseline observation the rules read.
+func baselineFromArrival(slot domain.Slot, slotStart, arrivedAt time.Time) (domain.Observation, error) {
+	propagation := arrivedAt.Sub(slotStart)
+	if propagation < 0 {
+		return domain.Observation{}, fmt.Errorf("baseline arrival for slot %d precedes its slot start", slot)
+	}
+	propagationMS := strconv.FormatFloat(propagation.Seconds()*1000, 'f', -1, 64)
+	return domain.NewObservation(domain.Observation{
+		Slot: slot, Kind: domain.ObsNetworkBaselineSampled, At: arrivedAt,
+		Source: domain.SourceBeaconAPI,
+		Attrs: map[domain.AttrKey]string{
+			domain.AttrBlockArrivalP50MS: propagationMS,
+			domain.AttrBlockArrivalP90MS: propagationMS,
+			domain.AttrSampleCount:       "1",
+		},
+	})
+}

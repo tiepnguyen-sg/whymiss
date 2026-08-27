@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
-	"sort"
 	"strconv"
 	"time"
 
@@ -21,7 +19,7 @@ const blockTimingCatchupWindow = 3 * time.Second
 func runBlockTiming(ctx context.Context, st *store.Store, sampler *source.MetricsSampler, jobs <-chan domain.Observation, client source.ConsensusClient, metricsURL string, genesis beaconapi.GenesisInfo, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	processed := make(map[domain.Slot]struct{})
 	var windows engineWindowTracker
-	var baseline engineBaseline
+	var baseline source.EngineBaseline
 	for {
 		select {
 		case <-ctx.Done():
@@ -68,7 +66,7 @@ func runBlockTiming(ctx context.Context, st *store.Store, sampler *source.Metric
 				logger.Debug("warm or reset Engine counter window", "slot", head.Slot)
 				continue
 			}
-			if p99, ok := baseline.p99(); ok {
+			if p99, ok := baseline.P99(); ok {
 				sample := domain.MetricSample{
 					At: genesis.SlotStart(uint64(head.Slot)), Component: domain.ComponentEL,
 					Name: source.MetricELEngineCallsP99MS, Value: p99, Source: domain.SourceDerived,
@@ -97,7 +95,7 @@ func runBlockTiming(ctx context.Context, st *store.Store, sampler *source.Metric
 					logger.Error("write Engine call observation", "error", err, "slot", head.Slot)
 				}
 			}
-			baseline.add(totalMS)
+			baseline.Add(totalMS)
 		}
 	}
 }
@@ -127,35 +125,6 @@ func (t *engineWindowTracker) advance(slot domain.Slot, after source.EngineCount
 		return nil, false, err
 	}
 	return calls, true, nil
-}
-
-const (
-	engineBaselineMinSamples = 32
-	engineBaselineMaxSamples = 256
-)
-
-type engineBaseline struct{ totals []float64 }
-
-func (b *engineBaseline) add(totalMS float64) {
-	if totalMS < 0 || math.IsNaN(totalMS) || math.IsInf(totalMS, 0) {
-		return
-	}
-	if len(b.totals) == engineBaselineMaxSamples {
-		copy(b.totals, b.totals[1:])
-		b.totals[len(b.totals)-1] = totalMS
-		return
-	}
-	b.totals = append(b.totals, totalMS)
-}
-
-func (b *engineBaseline) p99() (float64, bool) {
-	if len(b.totals) < engineBaselineMinSamples {
-		return 0, false
-	}
-	values := append([]float64(nil), b.totals...)
-	sort.Float64s(values)
-	index := int(math.Ceil(0.99*float64(len(values)))) - 1
-	return values[index], true
 }
 
 func blockSeenFromTiming(head domain.Observation, timing source.BlockTiming, genesis beaconapi.GenesisInfo) (domain.Observation, error) {

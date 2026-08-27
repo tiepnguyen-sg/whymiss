@@ -98,3 +98,46 @@ func TestNetworkBaselineFromTimingRejectsStaleGauge(t *testing.T) {
 		t.Errorf("arrival at exactly the sample instant was rejected: %v", err)
 	}
 }
+
+// TestBaselineFromArrival pins the measurement the slot-driven path produces,
+// and the reason that path exists at all.
+//
+// The first version of this collector was triggered by the watched node's
+// head_updated, and that is a false-attribution trap: BlockSeen returns as soon
+// as the baseline node has the block, so starting the poll only once *our* node
+// reported a head makes the reading an upper bound shaped by our own latency. A
+// node seeing the block at +6s would have produced a ~6.1s baseline for a peer
+// that actually had it at +0.1s, and R-110 would then see local and network
+// agreeing above the deadline and report network.late_block — exonerating a
+// local fault. Driving from the slot boundary is what makes the number an
+// arrival time.
+func TestBaselineFromArrival(t *testing.T) {
+	t.Parallel()
+	slotStart := time.Date(2026, 8, 26, 0, 0, 0, 0, time.UTC)
+
+	obs, err := baselineFromArrival(100, slotStart, slotStart.Add(115*time.Millisecond))
+	if err != nil {
+		t.Fatalf("baselineFromArrival: %v", err)
+	}
+	if obs.Kind != domain.ObsNetworkBaselineSampled {
+		t.Errorf("Kind = %q, want %q", obs.Kind, domain.ObsNetworkBaselineSampled)
+	}
+	if obs.Source != domain.SourceBeaconAPI {
+		t.Errorf("Source = %q, want %q", obs.Source, domain.SourceBeaconAPI)
+	}
+	baseline, err := domain.NetworkBaselineFromObservation(obs)
+	if err != nil {
+		t.Fatalf("NetworkBaselineFromObservation: %v", err)
+	}
+	if baseline.BlockArrivalP50 != 115*time.Millisecond {
+		t.Errorf("p50 = %s, want 115ms", baseline.BlockArrivalP50)
+	}
+	if baseline.SampleCount != 1 {
+		t.Errorf("SampleCount = %d, want 1 — one node is one sample, however it was measured", baseline.SampleCount)
+	}
+
+	// An arrival before its own slot start is not a measurement.
+	if _, err := baselineFromArrival(100, slotStart, slotStart.Add(-time.Millisecond)); err == nil {
+		t.Error("an arrival preceding its slot start was accepted")
+	}
+}
