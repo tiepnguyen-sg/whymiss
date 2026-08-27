@@ -1,0 +1,25 @@
+corpus_format_version: 2
+generator_engine_version: 0.15.0
+id: p2p-ambiguous-no-baseline-prysm-r04
+recipe_id: p2p-ambiguous-no-baseline-prysm
+description: |
+    The Prysm counterpart of p2p-ambiguous-no-baseline: 5s of peer-scoped latency creates a genuinely late local block-arrival signal, but no independent baseline is collected. The RCA engine must report unknown.insufficient_data rather than infer that the known harness fault was local propagation.
+expect:
+    cause: unknown.insufficient_data
+    confidence: low
+slot: 736
+validator_index: 35
+fault_kind: netem
+fault_target: cl-2-prysm-geth
+duration: 25s
+generated_at: 2026-08-27T04:57:21.022532313Z
+clock_samples:
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-27T04:44:13.110892588Z
+      offset: -354.301µs
+      round_trip: 4.393917ms
+    - server: pool.ntp.org:123
+      sampled_at: 2026-08-27T04:57:21.021818472Z
+      offset: -454.357µs
+      round_trip: 4.082585ms
+observations_sha256: 14511176369eaf128bd2ba94e442ecd85c9b1fdff9dcd9216c72e332cf17e67e
