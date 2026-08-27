@@ -78,7 +78,7 @@ func newWatchCmd(flags *globalFlags) *cobra.Command {
 	cmd.Flags().StringVar(&clMetricsAPI, "cl-metrics-api", defaults.CLMetricsAPI, "consensus client's own Prometheus endpoint, e.g. http://127.0.0.1:5054/metrics (empty disables peer-count sampling)")
 	cmd.Flags().DurationVar(&peerSampleInterval, "peer-sample-interval", defaults.PeerSampleInterval, "how often to sample peer count when --cl-metrics-api is set")
 	cmd.Flags().StringVar(&baselineBeaconAPI, "baseline-beacon-api", defaults.BaselineBeaconAPI, "a second, independent beacon node's API, used only to tell network-wide lateness from local lateness (empty disables; must differ from --beacon-api)")
-	cmd.Flags().StringVar(&baselineMetricsAPI, "baseline-metrics-api", defaults.BaselineMetricsAPI, "that same independent node's Prometheus endpoint; required with --baseline-beacon-api")
+	cmd.Flags().StringVar(&baselineMetricsAPI, "baseline-metrics-api", defaults.BaselineMetricsAPI, "that same independent node's Prometheus endpoint (optional; without it the baseline is polled from its Beacon API at 500ms resolution)")
 	cmd.Flags().StringSliceVar(&ntpServers, "ntp-server", defaults.NTPServers, "NTP server for clock-offset sampling; repeatable. Empty disables timing attribution (I-9)")
 	cmd.Flags().DurationVar(&clockInterval, "clock-sample-interval", defaults.ClockSampleInterval, "how often to sample clock offset")
 	cmd.Flags().DurationVar(&retentionMaxAge, "retention-max-age", defaults.RetentionMaxAge, "delete recorded facts older than this")

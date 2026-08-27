@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/clock"
+	"github.com/tiepnguyen-sg/whymiss/internal/source"
 	"github.com/tiepnguyen-sg/whymiss/internal/source/beaconapi"
 	"github.com/tiepnguyen-sg/whymiss/internal/store"
 )
@@ -20,6 +21,14 @@ type DoctorConfig struct {
 	NTPServers         []string
 	MinRequestInterval time.Duration
 	ClockOffsetMax     time.Duration
+
+	// CLMetricsAPI, BaselineBeaconAPI, and BaselineMetricsAPI are the endpoints
+	// that decide whether attribution is possible at all, as opposed to whether
+	// collection works. They are checked because an operator who sees every other
+	// check green has no way to tell that no timing cause will ever be reported.
+	CLMetricsAPI       string
+	BaselineBeaconAPI  string
+	BaselineMetricsAPI string
 }
 
 // DoctorCheck is one independently actionable preflight result.
@@ -27,13 +36,31 @@ type DoctorCheck struct {
 	Name   string
 	Detail string
 	Err    error
+
+	// Warn marks a check that found a real limitation in a configuration that is
+	// nonetheless legitimate: an endpoint left unset narrows what whymiss can
+	// conclude without being a misconfiguration. A warning is reported and does
+	// not fail the command, where an endpoint that was configured and does not
+	// work is an Err — the operator asked for it and it is not there.
+	Warn bool
 }
 
-// Doctor verifies the three prerequisites required for trustworthy operation:
-// beacon API connectivity, a writable store location, and a fresh NTP reading.
-// It performs read-only beacon calls and no unconfigured network egress.
+// Doctor verifies every configured endpoint, plus the two prerequisites that are
+// not endpoints: a writable store location and a fresh NTP reading.
+//
+// It reports on the attribution endpoints as well as the collection ones. Doctor
+// used to check only what it took to collect — beacon API, store, clock — which
+// meant an operator could watch every check pass and then get
+// unknown.insufficient_data on every degraded duty, because without a reachable
+// CL metrics endpoint no stage of a duty is ever timed (ADR-0024) and without an
+// independent baseline the product's central question cannot be answered at all
+// (ADR-0025). Those are exactly the conditions worth learning at setup rather
+// than during the incident being diagnosed.
+//
+// It performs read-only calls against operator-configured endpoints only, and no
+// unconfigured network egress (I-1, I-4).
 func Doctor(ctx context.Context, cfg DoctorConfig) []DoctorCheck {
-	checks := make([]DoctorCheck, 0, 3)
+	checks := make([]DoctorCheck, 0, 5)
 
 	if cfg.BeaconAPI == "" || cfg.DBPath == "" || cfg.MinRequestInterval <= 0 || cfg.ClockOffsetMax <= 0 {
 		checks = append(checks, DoctorCheck{Name: "config", Err: fmt.Errorf("beacon API, database path, request interval, and clock threshold are required")})
@@ -45,9 +72,9 @@ func Doctor(ctx context.Context, cfg DoctorConfig) []DoctorCheck {
 	}
 
 	client := beaconapi.NewClient(cfg.BeaconAPI, cfg.MinRequestInterval)
+	var version string
 	genesis, err := client.FetchGenesis(ctx)
 	if err == nil {
-		var version string
 		version, err = client.FetchNodeVersion(ctx)
 		if err == nil {
 			checks = append(checks, DoctorCheck{
@@ -59,6 +86,9 @@ func Doctor(ctx context.Context, cfg DoctorConfig) []DoctorCheck {
 	if err != nil {
 		checks = append(checks, DoctorCheck{Name: "beacon", Err: err})
 	}
+
+	checks = append(checks, checkCLMetrics(ctx, cfg, version))
+	checks = append(checks, checkBaseline(ctx, cfg)...)
 
 	if err := checkDBPath(ctx, cfg.DBPath); err != nil {
 		checks = append(checks, DoctorCheck{Name: "database", Err: err})
@@ -137,4 +167,97 @@ func checkDBPath(ctx context.Context, path string) error {
 		return fmt.Errorf("remove database-directory probe: %w", err)
 	}
 	return nil
+}
+
+// checkCLMetrics reports whether local stage timing is available. An unset
+// endpoint is a warning naming what becomes unreportable; a configured endpoint
+// that cannot be scraped for this client's arrival gauge is an error.
+func checkCLMetrics(ctx context.Context, cfg DoctorConfig, nodeVersion string) DoctorCheck {
+	if cfg.CLMetricsAPI == "" {
+		return DoctorCheck{
+			Name: "metrics",
+			Warn: true,
+			Detail: "no --cl-metrics-api: no stage of a duty is timed, so local.cl_slow, " +
+				"local.el_slow, local.vc_slow, local.vc_disconnected, network.late_block and " +
+				"local.p2p_degraded can never be reported (ADR-0024). Collection still works.",
+		}
+	}
+	if err := validateHTTPEndpoint("CL metrics API", cfg.CLMetricsAPI); err != nil {
+		return DoctorCheck{Name: "metrics", Err: err}
+	}
+	if nodeVersion == "" {
+		return DoctorCheck{Name: "metrics", Err: fmt.Errorf(
+			"cannot check the CL metrics API because the beacon API did not report a node version to identify the client by")}
+	}
+	consensus := source.DetectConsensusClient(nodeVersion)
+	if consensus == source.ConsensusUnknown {
+		return DoctorCheck{Name: "metrics", Err: fmt.Errorf(
+			"consensus client %q is not one this build can read metrics from; block arrival and Engine timings would be unavailable", nodeVersion)}
+	}
+	timing, err := source.NewMetricsSampler().SampleBlockTiming(ctx, consensus, cfg.CLMetricsAPI)
+	if err != nil {
+		return DoctorCheck{Name: "metrics", Err: fmt.Errorf("scrape block arrival from the CL metrics API: %w", err)}
+	}
+	return DoctorCheck{
+		Name:   "metrics",
+		Detail: fmt.Sprintf("scraped; client=%s head_slot=%d block_arrival=%s", consensus, timing.Slot, timing.Propagation),
+	}
+}
+
+// checkBaseline reports whether the independent comparison the product's central
+// question needs is available. It returns one check for the baseline beacon API
+// and, when configured, a second for its metrics endpoint, because they fail for
+// different reasons and an operator fixes them separately.
+func checkBaseline(ctx context.Context, cfg DoctorConfig) []DoctorCheck {
+	if cfg.BaselineBeaconAPI == "" {
+		if cfg.BaselineMetricsAPI != "" {
+			// Mirrors watchConfig.validate: a metrics endpoint alone names no node.
+			return []DoctorCheck{{Name: "baseline", Err: fmt.Errorf(
+				"baseline metrics API needs a baseline beacon API to name the node it belongs to")}}
+		}
+		return []DoctorCheck{{
+			Name: "baseline",
+			Warn: true,
+			Detail: "no --baseline-beacon-api: nothing independent to compare local timing against, " +
+				"so network.late_block and local.p2p_degraded decline and \"was it me or the network\" " +
+				"resolves to unknown.insufficient_data (ADR-0025).",
+		}}
+	}
+	if err := validateHTTPEndpoint("baseline beacon API", cfg.BaselineBeaconAPI); err != nil {
+		return []DoctorCheck{{Name: "baseline", Err: err}}
+	}
+	if sameHTTPEndpoint(cfg.BaselineBeaconAPI, cfg.BeaconAPI) {
+		return []DoctorCheck{{Name: "baseline", Err: fmt.Errorf(
+			"baseline beacon API must be a different node than the watched beacon API; the same node would report local lateness as network-wide and exonerate a real local fault")}}
+	}
+
+	baseline := beaconapi.NewClient(cfg.BaselineBeaconAPI, cfg.MinRequestInterval)
+	version, err := baseline.FetchNodeVersion(ctx)
+	if err != nil {
+		return []DoctorCheck{{Name: "baseline", Err: fmt.Errorf("reach the baseline beacon API: %w", err)}}
+	}
+	checks := []DoctorCheck{{
+		Name:   "baseline",
+		Detail: fmt.Sprintf("connected; client=%s (arrival read from its Beacon API)", version),
+	}}
+	if cfg.BaselineMetricsAPI == "" {
+		return checks
+	}
+
+	if err := validateHTTPEndpoint("baseline metrics API", cfg.BaselineMetricsAPI); err != nil {
+		return append(checks, DoctorCheck{Name: "baseline+", Err: err})
+	}
+	consensus := source.DetectConsensusClient(version)
+	if consensus == source.ConsensusUnknown {
+		return append(checks, DoctorCheck{Name: "baseline+", Err: fmt.Errorf(
+			"baseline consensus client %q is not one this build can read metrics from; unset --baseline-metrics-api to read arrival from its Beacon API instead", version)})
+	}
+	timing, err := source.NewMetricsSampler().SampleBlockTiming(ctx, consensus, cfg.BaselineMetricsAPI)
+	if err != nil {
+		return append(checks, DoctorCheck{Name: "baseline+", Err: fmt.Errorf("scrape block arrival from the baseline metrics API: %w", err)})
+	}
+	return append(checks, DoctorCheck{
+		Name:   "baseline+",
+		Detail: fmt.Sprintf("scraped; head_slot=%d block_arrival=%s (millisecond precision)", timing.Slot, timing.Propagation),
+	})
 }

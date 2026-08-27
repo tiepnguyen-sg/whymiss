@@ -1,9 +1,12 @@
 package main
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/tiepnguyen-sg/whymiss/internal/app"
 	appconfig "github.com/tiepnguyen-sg/whymiss/internal/config"
 )
 
@@ -93,5 +96,44 @@ func TestRequestedValidator(t *testing.T) {
 	}
 	if _, err := requestedValidator([]uint{24, 40}); err == nil {
 		t.Fatal("multiple selectors were accepted")
+	}
+}
+
+// TestRenderDoctorChecksFailsOnlyOnErrors pins the severity rule the widened
+// doctor contract rests on. A warning names a real limitation of a configuration
+// the operator is entitled to run, so a deliberately minimal deployment — no CL
+// metrics endpoint, no baseline — must still pass the command it runs to decide
+// whether setup is complete.
+func TestRenderDoctorChecksFailsOnlyOnErrors(t *testing.T) {
+	warnings := []app.DoctorCheck{
+		{Name: "beacon", Detail: "connected"},
+		{Name: "metrics", Warn: true, Detail: "no --cl-metrics-api"},
+		{Name: "baseline", Warn: true, Detail: "no --baseline-beacon-api"},
+	}
+	var out strings.Builder
+	failed, err := renderDoctorChecks(&out, warnings)
+	if err != nil {
+		t.Fatalf("renderDoctorChecks: %v", err)
+	}
+	if failed {
+		t.Error("warnings alone failed the command")
+	}
+	for _, want := range []string{"OK   beacon", "WARN metrics", "WARN baseline"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, out.String())
+		}
+	}
+
+	out.Reset()
+	failed, err = renderDoctorChecks(&out, append(warnings,
+		app.DoctorCheck{Name: "clock", Err: errors.New("offset exceeds trust limit")}))
+	if err != nil {
+		t.Fatalf("renderDoctorChecks: %v", err)
+	}
+	if !failed {
+		t.Error("an error did not fail the command")
+	}
+	if !strings.Contains(out.String(), "FAIL clock") {
+		t.Errorf("output missing the failed check:\n%s", out.String())
 	}
 }

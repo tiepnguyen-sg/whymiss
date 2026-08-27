@@ -51,8 +51,10 @@ type WatchConfig struct {
 	// degrades cleanly, not a crash).
 	CLMetricsAPI string
 
-	// PeerSampleInterval is how often CLMetricsAPI is scraped for peer
-	// count, when CLMetricsAPI is set.
+	// PeerSampleInterval is how often the watched node's connected peer count is
+	// read. The count comes from the Beacon API's /eth/v1/node/peer_count
+	// (ADR-0023), not from CLMetricsAPI, so this sampling runs whether or not a
+	// metrics endpoint is configured.
 	PeerSampleInterval time.Duration
 
 	// BaselineBeaconAPI and BaselineMetricsAPI point at a second, independent
@@ -141,23 +143,33 @@ func (c WatchConfig) Validate() error {
 	if c.HostSampleInterval != 0 && (c.HostSampleInterval < minHostInterval || c.HostSampleInterval > maxHostInterval) {
 		return fmt.Errorf("host sample interval must be zero or between %s and %s, got %s", minHostInterval, maxHostInterval, c.HostSampleInterval)
 	}
-	if c.CLMetricsAPI != "" && (c.PeerSampleInterval < minPeerInterval || c.PeerSampleInterval > maxPeerInterval) {
-		return fmt.Errorf("peer sample interval must be between %s and %s when CL metrics are enabled, got %s", minPeerInterval, maxPeerInterval, c.PeerSampleInterval)
+	// Validated unconditionally: peer sampling no longer depends on CLMetricsAPI,
+	// so an out-of-range interval now takes effect on every deployment rather
+	// than only on metrics-enabled ones.
+	if c.PeerSampleInterval < minPeerInterval || c.PeerSampleInterval > maxPeerInterval {
+		return fmt.Errorf("peer sample interval must be between %s and %s, got %s", minPeerInterval, maxPeerInterval, c.PeerSampleInterval)
 	}
 	if c.CLMetricsAPI != "" {
 		if err := validateHTTPEndpoint("CL metrics API", c.CLMetricsAPI); err != nil {
 			return err
 		}
 	}
-	if (c.BaselineBeaconAPI == "") != (c.BaselineMetricsAPI == "") {
-		return fmt.Errorf("baseline beacon API and baseline metrics API must be set together")
+	// --baseline-metrics-api is optional: without it the baseline is measured
+	// from the independent node's Beacon API instead of its Prometheus surface
+	// (ADR-0025), which is what lets an operator use a node they can reach
+	// rather than one they run. The reverse is still nonsense — a metrics
+	// endpoint with no Beacon API names no node to compare against.
+	if c.BaselineBeaconAPI == "" && c.BaselineMetricsAPI != "" {
+		return fmt.Errorf("baseline metrics API needs a baseline beacon API to name the node it belongs to")
 	}
 	if c.BaselineBeaconAPI != "" {
 		if err := validateHTTPEndpoint("baseline beacon API", c.BaselineBeaconAPI); err != nil {
 			return err
 		}
-		if err := validateHTTPEndpoint("baseline metrics API", c.BaselineMetricsAPI); err != nil {
-			return err
+		if c.BaselineMetricsAPI != "" {
+			if err := validateHTTPEndpoint("baseline metrics API", c.BaselineMetricsAPI); err != nil {
+				return err
+			}
 		}
 		// A baseline that is just this node again proves nothing: it would
 		// report local lateness as network-wide lateness and exonerate a real
@@ -341,6 +353,14 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 	if cfg.HostSampleInterval > 0 {
 		start(func() { runHostSampling(ctx, st, cfg.HostSampleInterval, clk, clockMaxAge, logger) })
 	}
+	// Peer sampling reads /eth/v1/node/peer_count on the watched node's own Beacon
+	// API (ADR-0023), so gating it behind CLMetricsAPI denied R-200's peer
+	// corroboration to every operator without a metrics endpoint for no reason
+	// the measurement required. It is started on its own.
+	start(func() {
+		runPeerSampling(ctx, st, client, cfg.PeerSampleInterval, clk, clockMaxAge, logger)
+	})
+
 	var heads headFanout
 	if cfg.CLMetricsAPI != "" {
 		versionString, err := client.FetchNodeVersion(ctx)
@@ -352,9 +372,6 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 			return fmt.Errorf("CL metrics collection is not supported for consensus client version %q", versionString)
 		}
 		logger.Info("detected consensus client", "version", versionString, "client", consensusClient)
-		start(func() {
-			runPeerSampling(ctx, st, metricsSampler, consensusClient, cfg.CLMetricsAPI, cfg.PeerSampleInterval, clk, clockMaxAge, logger)
-		})
 		// One pending head bounds memory if metrics scraping stalls. Dropped
 		// timing work degrades to unknown rather than delaying collection.
 		heads.timing = make(chan domain.Observation, 1)
@@ -372,19 +389,38 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 		if err := validateBaselineGenesis(genesis, baselineGenesis); err != nil {
 			return err
 		}
-		versionString, err := baselineClient.FetchNodeVersion(ctx)
-		if err != nil {
-			return fmt.Errorf("fetch baseline node version: %w", err)
+		// Client detection is only needed to pick a Prometheus adapter. The
+		// Beacon API path reads the baseline node's own
+		// /eth/v1/beacon/headers/{slot}, which every client serves identically,
+		// so demanding a recognised client there would reject a perfectly usable
+		// baseline for no reason (ADR-0025).
+		var baselineConsensus source.ConsensusClient
+		if cfg.BaselineMetricsAPI != "" {
+			versionString, err := baselineClient.FetchNodeVersion(ctx)
+			if err != nil {
+				return fmt.Errorf("fetch baseline node version: %w", err)
+			}
+			baselineConsensus = source.DetectConsensusClient(versionString)
+			if baselineConsensus == source.ConsensusUnknown {
+				return fmt.Errorf("network baseline metrics are not supported for consensus client version %q; unset --baseline-metrics-api to use the Beacon API instead", versionString)
+			}
+			logger.Info("detected baseline consensus client", "version", versionString, "client", baselineConsensus)
+		} else {
+			logger.Info("network baseline reads the independent node's Beacon API", "baseline_beacon_api", cfg.BaselineBeaconAPI)
 		}
-		baselineConsensus := source.DetectConsensusClient(versionString)
-		if baselineConsensus == source.ConsensusUnknown {
-			return fmt.Errorf("network baseline is not supported for consensus client version %q", versionString)
+		// Only the metrics path is head-driven; the Beacon API path runs off the
+		// slot clock so its measurement is not shifted by however late this node
+		// saw the block. See runNetworkBaselineFromAPI.
+		if cfg.BaselineMetricsAPI != "" {
+			heads.baseline = make(chan domain.Observation, 1)
+			start(func() {
+				runNetworkBaseline(ctx, st, metricsSampler, heads.baseline, baselineConsensus, cfg.BaselineMetricsAPI, genesis, clk, clockMaxAge, logger)
+			})
+		} else {
+			start(func() {
+				runNetworkBaselineFromAPI(ctx, st, baselineClient, genesis, clk, clockMaxAge, logger)
+			})
 		}
-		logger.Info("detected baseline consensus client", "version", versionString, "client", baselineConsensus)
-		heads.baseline = make(chan domain.Observation, 1)
-		start(func() {
-			runNetworkBaseline(ctx, st, metricsSampler, heads.baseline, baselineConsensus, cfg.BaselineMetricsAPI, genesis, clk, clockMaxAge, logger)
-		})
 	}
 	start(func() { runSlotClock(ctx, st, genesis, clk, clockMaxAge, logger) })
 
@@ -508,13 +544,14 @@ func runSlotClock(ctx context.Context, st *store.Store, genesis beaconapi.Genesi
 	}
 }
 
-// runPeerSampling periodically scrapes consensusClient's peer count via
-// source.MetricsSampler.SamplePeerCount — the dispatcher, not a client-named function —
-// so this file itself never needs to know which client it's talking to.
-// See internal/source/peers.go's doc comment: adding a third client means
-// a new case there and a new function in internal/source/promscrape,
-// nothing here.
-func runPeerSampling(ctx context.Context, st *store.Store, sampler *source.MetricsSampler, consensusClient source.ConsensusClient, metricsURL string, interval time.Duration, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
+// runPeerSampling periodically reads the watched node's connected peer count
+// from the standardised Beacon API endpoint rather than from either client's
+// Prometheus surface. beaconapi.Client.PeerCount's doc comment records why:
+// Lighthouse's libp2p_peers gauge reads 0 on a genuinely peered node, which
+// made R-200's peer corroboration vacuous there. One spec-defined endpoint also
+// means no client-specific code for this fact at all, which is where I-11
+// points.
+func runPeerSampling(ctx context.Context, st *store.Store, client *beaconapi.Client, interval time.Duration, clk *clock.Tracker, clockMaxAge time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -522,7 +559,7 @@ func runPeerSampling(ctx context.Context, st *store.Store, sampler *source.Metri
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sample, err := sampler.SamplePeerCount(ctx, consensusClient, metricsURL)
+			sample, err := client.PeerCount(ctx)
 			if err != nil {
 				logger.Debug("sample peer count unavailable", "error", err)
 				continue
