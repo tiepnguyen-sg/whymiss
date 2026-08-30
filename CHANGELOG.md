@@ -6,6 +6,34 @@ version stays at `v0.x` until the API is stable.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-30
+
+Everything in 0.2.0, which was tagged but never published. Its release workflow
+built, signed, and generated SLSA provenance for the artifacts, then failed at
+the step that verifies them before anything becomes public — so no 0.2.0 release
+exists and this is the first published release since 0.1.0.
+
+### Fixed
+
+- **The release workflow could not read the draft release it had just created.**
+  The `verify published artifacts` job ran with `contents: read`, and GitHub
+  shows draft releases only to tokens with push access, so `gh release download`
+  answered `release not found` and the run stopped there — after `build, sign,
+  sbom` and all four SLSA provenance jobs had already passed. The draft held all
+  seven expected assets the whole time; nothing was wrong with the artifacts.
+
+  Raised to `contents: write` for that job alone. There is no narrower scope that
+  can read a draft, and the obvious alternative — verifying the job's own build
+  artifacts instead of the uploaded ones — would check something other than what
+  the world downloads, which is the one thing this job exists to prevent.
+
+  Two things this cost, both worth stating. `v0.2.0` is burned: the tag ruleset
+  makes release tags immutable, and a `push`-triggered workflow re-runs the
+  workflow file from the tag's own commit, so a fix on `main` cannot rescue it.
+  That is the intended trade-off, not a surprise. And the last three jobs —
+  `verify`, the GHCR image publish, and the un-drafting — had still never
+  executed at that point, because 0.1.0's release never ran this far either.
+
 ## [0.2.0] - 2026-08-30
 
 ### Added

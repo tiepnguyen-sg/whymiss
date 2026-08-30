@@ -120,7 +120,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      # write, not read, and it is not an oversight. The assets this job checks
+      # belong to a release that is still a draft — that is the whole point of
+      # the sequence, since nothing may reach the public before it verifies — and
+      # GitHub only shows draft releases to tokens with push access. With
+      # contents: read, `gh release download` reports "release not found" and the
+      # verification never runs, which is how v0.2.0 failed. There is no narrower
+      # scope that can read a draft; downloading the job's own build artifacts
+      # instead would verify something other than what the world downloads.
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
