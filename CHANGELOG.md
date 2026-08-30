@@ -59,6 +59,37 @@ version stays at `v0.x` until the API is stable.
   artefact is kept as written, next to the log that contradicts it, because a
   status file that once lied is more useful shown than quietly corrected.
 
+### Fixed
+
+- **A clean shutdown was logged as a collection failure.** Every in-flight
+  collector reaching a cancelled context wrote `logger.Error` — the release soak
+  ended with `check inclusion ... context canceled` as its last line, which reads
+  as something breaking at the exact moment nothing did. `collectionError` now
+  reports a cancelled context at DEBUG and a genuine failure at ERROR. The duty
+  is still marked incomplete either way: collection really was cut short, so
+  `collection_completed` must not be written for it, and no timeline changes
+  meaning. Only the report does.
+
+- **One unreachable endpoint could bury every real error in the log.** The
+  72-hour soak wrote 18,006 lines, of which **17,275 were the same warning** —
+  96% of the file — because the gateway answers `/eth/v1/events` with `501` and
+  `internal/source/beaconapi` retries for the life of the process. That retrying
+  is deliberate and unchanged: a node that gains the endpoint after an upgrade is
+  picked up with no operator action, and the backoff was already correct
+  (exponential, full jitter, capped at 30s, measured p50 16.0s). What was wrong
+  was that 55 real errors sat underneath an identical line repeated every fifteen
+  seconds.
+
+  `streamHealth` now reports the first failure, repeats it at most every fifteen
+  minutes while it persists — 288 lines across a 72-hour outage rather than
+  17,275 — and logs a recovery line with the attempt count and how long it was
+  down. A *different* error is always reported immediately, because two failure
+  modes in succession are two events. Recovery is reported when an observation
+  actually arrives, since that is the only evidence the stream works: the
+  reconnect loop cannot tell a connection that succeeded from one about to fail.
+  Durations in these lines are strings (`"2m0s"`) rather than slog's default
+  nanosecond integers, because a person reads this log during an incident.
+
 ### Changed
 
 - **The install instructions named a tag that has no release.** README and the

@@ -309,8 +309,9 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 	}
 	logger.Info("connected to beacon node", "beacon_api", cfg.BeaconAPI, "genesis_time", genesis.GenesisTime)
 
+	streamState := newStreamHealth(func() time.Time { return time.Now().UTC() })
 	events := client.Stream(ctx, func(streamErr error) {
-		logger.Warn("event stream error, reconnecting", "error", streamErr)
+		streamState.failed(logger, streamErr)
 	})
 	var background sync.WaitGroup
 	fatalErrors := make(chan error, 1)
@@ -489,6 +490,10 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 				}
 				return fmt.Errorf("beacon event stream stopped unexpectedly")
 			}
+			// An observation in hand is the only proof the stream works; the
+			// reconnect loop cannot tell a connection that succeeded from one
+			// that is about to fail.
+			streamState.recovered(logger)
 			trusted := stampClock(clk, clockMaxAge, obs)
 			if err := st.WriteObservation(ctx, trusted); err != nil {
 				logger.Error("write observation", "error", err, "kind", obs.Kind, "slot", obs.Slot)

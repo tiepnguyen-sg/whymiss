@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -134,24 +135,21 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 		defer wg.Done()
 		obs, found, err := client.BlockSeen(ctx, d.Slot, watchDeadline)
 		if err != nil {
-			collectionFailed.Store(true)
-			logger.Error("poll block_seen", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "poll block_seen", err, d.Slot)
 			return
 		}
 		if !found {
 			return
 		}
 		if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
-			collectionFailed.Store(true)
-			logger.Error("write block_seen", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "write block_seen", err, d.Slot)
 		}
 	}()
 	go func() {
 		defer wg.Done()
 		obs, found, err := client.HeadUpdated(ctx, d.Slot, watchDeadline)
 		if err != nil {
-			collectionFailed.Store(true)
-			logger.Error("poll head_updated", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "poll head_updated", err, d.Slot)
 			return
 		}
 		if !found {
@@ -159,8 +157,7 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 		}
 		trusted := stampClock(clk, clockMaxAge, obs)
 		if err := st.WriteObservation(ctx, trusted); err != nil {
-			collectionFailed.Store(true)
-			logger.Error("write head_updated", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "write head_updated", err, d.Slot)
 			return
 		}
 		// This is the only head_updated a node without an event stream ever
@@ -172,16 +169,14 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 		defer wg.Done()
 		obs, found, err := client.AttestationPublished(ctx, d, watchDeadline)
 		if err != nil {
-			collectionFailed.Store(true)
-			logger.Error("poll attestation_published", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "poll attestation_published", err, d.Slot)
 			return
 		}
 		if !found {
 			return
 		}
 		if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
-			collectionFailed.Store(true)
-			logger.Error("write attestation_published", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "write attestation_published", err, d.Slot)
 		}
 	}()
 	wg.Wait()
@@ -190,12 +185,10 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 	collectionDeadline := collectionWindowEnd(d.Slot, slotStart, genesis.SecondsPerSlot)
 	obs, found, err := client.CheckInclusion(ctx, d.Slot, d, inclusionEndSlot, collectionDeadline)
 	if err != nil {
-		collectionFailed.Store(true)
-		logger.Error("check inclusion", "error", err, "slot", d.Slot)
+		collectionError(ctx, logger, &collectionFailed, "check inclusion", err, d.Slot)
 	} else if found {
 		if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, obs)); err != nil {
-			collectionFailed.Store(true)
-			logger.Error("write attestation_included", "error", err, "slot", d.Slot)
+			collectionError(ctx, logger, &collectionFailed, "write attestation_included", err, d.Slot)
 		}
 	}
 
@@ -239,4 +232,21 @@ func waitUntil(ctx context.Context, t time.Time) {
 	case <-ctx.Done():
 	case <-timer.C:
 	}
+}
+
+// collectionError records a failed collection step and reports it, except when
+// the cause is the daemon shutting down.
+//
+// A cancelled context is how a clean stop reaches a call that is still waiting
+// on the beacon node, and the 72-hour release soak logged exactly that at ERROR
+// on its way out. The duty stays marked incomplete either way — collection
+// really was cut short, so collection_completed must not be written for it — and
+// only the report changes, never what the timeline ends up saying.
+func collectionError(ctx context.Context, logger *slog.Logger, failed *atomic.Bool, msg string, err error, slot domain.Slot) {
+	failed.Store(true)
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+		logger.Debug(msg+": stopped by shutdown", "error", err, "slot", slot)
+		return
+	}
+	logger.Error(msg, "error", err, "slot", slot)
 }
