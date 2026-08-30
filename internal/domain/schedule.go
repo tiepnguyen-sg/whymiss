@@ -30,7 +30,32 @@ type SlotSchedule struct {
 	// does not attribute aggregator duties in v1 but needs the boundary to bound
 	// the inclusion window.
 	AggregationDeadline time.Duration `json:"aggregation_deadline"`
+
+	// PayloadRevealDeadline is how far into the slot the builder must reveal the
+	// execution payload, under a fork that separates consensus block from payload
+	// (EIP-7732). Zero means the schedule is pre-ePBS: the payload arrives with
+	// the block and there is no separate deadline to miss.
+	//
+	// Deliberately no default anywhere in this package. The spec value is not
+	// final, and a plausible-looking constant compiled in would be indistinguishable
+	// from a measured one at the point where it produced a wrong verdict (I-8).
+	// An operator running an ePBS network sets it; everyone else leaves it zero.
+	PayloadRevealDeadline time.Duration `json:"payload_reveal_deadline"`
+
+	// PTCDeadline is how far into the slot the payload-timeliness committee votes
+	// on whether the payload was revealed on time. Zero means pre-ePBS, and it is
+	// meaningless without PayloadRevealDeadline — Validate rejects that pairing
+	// rather than letting it read as "PTC at an unknown payload deadline".
+	PTCDeadline time.Duration `json:"ptc_deadline"`
 }
+
+// IsPostEPBS reports whether this schedule describes a fork that separates the
+// consensus block from the execution payload.
+//
+// It is the presence of a payload-reveal deadline that decides, not a version
+// number or a fork name: whymiss never asks which fork is running, only what the
+// timing model says, which is what makes a fork a configuration change.
+func (s SlotSchedule) IsPostEPBS() bool { return s.PayloadRevealDeadline > 0 }
 
 // MainnetPreEPBS is the pre-ePBS mainnet schedule (docs/causes.md §3.1).
 //
@@ -65,6 +90,29 @@ func (s SlotSchedule) Validate() error {
 	case s.AggregationDeadline > s.SecondsPerSlot:
 		return fmt.Errorf("invalid schedule: aggregation_deadline %s exceeds seconds_per_slot %s",
 			s.AggregationDeadline, s.SecondsPerSlot)
+
+	// The ePBS pair. Both are zero on a pre-ePBS schedule and every case below
+	// passes untouched; the checks exist so a half-configured ePBS schedule fails
+	// at load rather than producing timings nobody meant.
+	case s.PayloadRevealDeadline < 0:
+		return fmt.Errorf("invalid schedule: payload_reveal_deadline is %s, must not be negative", s.PayloadRevealDeadline)
+	case s.PTCDeadline < 0:
+		return fmt.Errorf("invalid schedule: ptc_deadline is %s, must not be negative", s.PTCDeadline)
+	case s.PTCDeadline > 0 && s.PayloadRevealDeadline == 0:
+		return fmt.Errorf("invalid schedule: ptc_deadline %s is set without payload_reveal_deadline, "+
+			"so there is no payload deadline for the committee to vote on", s.PTCDeadline)
+	case s.PayloadRevealDeadline > 0 && s.PayloadRevealDeadline <= s.AttestationDeadline:
+		return fmt.Errorf("invalid schedule: payload_reveal_deadline %s is at or before attestation_deadline %s",
+			s.PayloadRevealDeadline, s.AttestationDeadline)
+	case s.PayloadRevealDeadline > s.SecondsPerSlot:
+		return fmt.Errorf("invalid schedule: payload_reveal_deadline %s exceeds seconds_per_slot %s",
+			s.PayloadRevealDeadline, s.SecondsPerSlot)
+	case s.PTCDeadline > 0 && s.PTCDeadline <= s.PayloadRevealDeadline:
+		return fmt.Errorf("invalid schedule: ptc_deadline %s is at or before payload_reveal_deadline %s",
+			s.PTCDeadline, s.PayloadRevealDeadline)
+	case s.PTCDeadline > s.SecondsPerSlot:
+		return fmt.Errorf("invalid schedule: ptc_deadline %s exceeds seconds_per_slot %s",
+			s.PTCDeadline, s.SecondsPerSlot)
 	default:
 		return nil
 	}
@@ -79,4 +127,26 @@ func (s SlotSchedule) AttestationDeadlineAt(slotStart time.Time) time.Time {
 // SlotEndAt returns the wall-clock instant the slot ends.
 func (s SlotSchedule) SlotEndAt(slotStart time.Time) time.Time {
 	return slotStart.Add(s.SecondsPerSlot)
+}
+
+// PayloadRevealDeadlineAt returns the instant the payload must be revealed by,
+// and false on a pre-ePBS schedule, where no such instant exists.
+//
+// The bool is the point. A caller that ignored it would get slotStart back and
+// read it as "the deadline already passed", turning a fork that has no payload
+// deadline into one that misses it on every slot.
+func (s SlotSchedule) PayloadRevealDeadlineAt(slotStart time.Time) (time.Time, bool) {
+	if !s.IsPostEPBS() {
+		return time.Time{}, false
+	}
+	return slotStart.Add(s.PayloadRevealDeadline), true
+}
+
+// PTCDeadlineAt returns the instant the payload-timeliness committee's vote is
+// due, and false when this schedule has no PTC deadline.
+func (s SlotSchedule) PTCDeadlineAt(slotStart time.Time) (time.Time, bool) {
+	if s.PTCDeadline <= 0 {
+		return time.Time{}, false
+	}
+	return slotStart.Add(s.PTCDeadline), true
 }

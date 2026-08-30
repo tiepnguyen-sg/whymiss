@@ -36,6 +36,11 @@ schedule:
   seconds_per_slot: 12s
   attestation_deadline: 4s
   aggregation_deadline: 8s
+  # Post-ePBS only, and commented out on purpose: this example is meant to be
+  # safe to copy onto a node running today, where the payload ships with the
+  # block and neither deadline exists. Illustrative values, not spec constants.
+  # payload_reveal_deadline: 6s
+  # ptc_deadline: 9s
 
 thresholds:
   dominance: 0.5
@@ -104,6 +109,20 @@ active consensus specification.
 | `schedule.seconds_per_slot` | `WHYMISS_SECONDS_PER_SLOT` | `12s` | Positive, at most 1m |
 | `schedule.attestation_deadline` | `WHYMISS_ATTESTATION_DEADLINE` | `4s` | Positive and not after aggregation deadline |
 | `schedule.aggregation_deadline` | `WHYMISS_AGGREGATION_DEADLINE` | `8s` | At or before slot end |
+| `schedule.payload_reveal_deadline` | `WHYMISS_PAYLOAD_REVEAL_DEADLINE` | `0s` (off) | After the attestation deadline, at or before slot end |
+| `schedule.ptc_deadline` | `WHYMISS_PTC_DEADLINE` | `0s` (off) | After the payload-reveal deadline, at or before slot end; rejected if that deadline is unset |
+
+The last two describe a fork that separates the consensus block from the
+execution payload (EIP-7732). **Both default to off, and whymiss ships no
+post-ePBS defaults at all** — a plausible-looking constant compiled in would be
+indistinguishable from a measured one at the point where it produced a wrong
+verdict, and the spec values are not final. On such a network an operator sets
+them from that network's own specification; everywhere else they stay unset and
+nothing about the timing model changes.
+
+Setting `ptc_deadline` alone is a configuration error, not a partial
+configuration: `whymiss` refuses to start rather than attribute lateness against
+a payload deadline nobody supplied.
 
 ## RCA thresholds
 

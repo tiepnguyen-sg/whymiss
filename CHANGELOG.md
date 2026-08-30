@@ -8,6 +8,36 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **`SlotSchedule` carries the two post-ePBS deadlines, so a fork that moves the
+  timing model is a configuration change.** `PayloadRevealDeadline` and
+  `PTCDeadline` join the schedule additively, exactly as that type's doc comment
+  said they would; `IsPostEPBS()`, `PayloadRevealDeadlineAt`, and `PTCDeadlineAt`
+  read them. Both arrive through YAML (`schedule.payload_reveal_deadline`,
+  `schedule.ptc_deadline`) and the environment
+  (`WHYMISS_PAYLOAD_REVEAL_DEADLINE`, `WHYMISS_PTC_DEADLINE`) like every other
+  setting, and `TestLoadSwitchesToPostEPBSTimingByConfigurationAlone` loads the
+  same binary twice to prove it: no configuration yields the pre-ePBS mainnet
+  schedule, a YAML file yields a post-ePBS one with both deadlines resolving
+  against the slot start, and nothing differs between the runs but the file.
+
+  **No post-ePBS default ships anywhere, deliberately.** The spec values are not
+  final, and a plausible-looking constant compiled in would be indistinguishable
+  from a measured one at the moment it produced a wrong verdict (I-8). Whether a
+  schedule is post-ePBS is decided by whether a payload-reveal deadline was
+  configured, never by a fork name — whymiss does not ask which fork is running,
+  only what the timing model says.
+
+  `Validate` rejects a half-configured pair at load rather than later: a
+  `ptc_deadline` with no `payload_reveal_deadline` names no boundary for the
+  committee to vote against, and both deadlines must fall after the ones they
+  follow and inside the slot. The accessors return `(zero, false)` on a pre-ePBS
+  schedule instead of the slot start, so a caller that ignores the bool cannot
+  read "this fork has no payload deadline" as "the deadline already passed on
+  every slot".
+
+  What this does not claim: **no rule consumes either deadline yet.** That is
+  BUILD_PROMPT task 5.5, and its evidence has to come from an ePBS devnet.
+
 - **The release soak's evidence is in the repository, not just in a claim.**
   `test/soak/evidence/20260827T014421Z/` holds the `summary.txt` that
   `test/soak/run.sh` wrote itself, the 4321 samples gzipped, the daemon's whole

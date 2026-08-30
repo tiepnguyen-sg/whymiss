@@ -16,7 +16,9 @@ func configMap(cfg Config) map[string]any {
 		},
 		"schedule": map[string]any{
 			"seconds_per_slot": cfg.Schedule.SecondsPerSlot.String(), "attestation_deadline": cfg.Schedule.AttestationDeadline.String(),
-			"aggregation_deadline": cfg.Schedule.AggregationDeadline.String(),
+			"aggregation_deadline":    cfg.Schedule.AggregationDeadline.String(),
+			"payload_reveal_deadline": cfg.Schedule.PayloadRevealDeadline.String(),
+			"ptc_deadline":            cfg.Schedule.PTCDeadline.String(),
 		},
 		"thresholds": map[string]any{
 			"dominance": cfg.RCA.Dominance, "clock_offset_max": cfg.RCA.ClockOffsetMax.String(),
@@ -48,6 +50,8 @@ func fileConfigMap(raw fileConfig) map[string]any {
 	setPointer(out, "schedule.seconds_per_slot", raw.Schedule.SecondsPerSlot)
 	setPointer(out, "schedule.attestation_deadline", raw.Schedule.AttestationDeadline)
 	setPointer(out, "schedule.aggregation_deadline", raw.Schedule.AggregationDeadline)
+	setPointer(out, "schedule.payload_reveal_deadline", raw.Schedule.PayloadRevealDeadline)
+	setPointer(out, "schedule.ptc_deadline", raw.Schedule.PTCDeadline)
 	setPointer(out, "thresholds.dominance", raw.Threshold.Dominance)
 	setPointer(out, "thresholds.clock_offset_max", raw.Threshold.ClockOffsetMax)
 	setPointer(out, "thresholds.clock_sample_max_age", raw.Threshold.ClockSampleMaxAge)
@@ -72,7 +76,9 @@ func envMap(lookup func(string) (string, bool)) map[string]any {
 		"WHYMISS_RETENTION_INTERVAL": "watch.retention_interval", "WHYMISS_VALIDATOR_INDICES": "watch.validator_indices",
 		"WHYMISS_METRICS_ADDR": "watch.metrics_addr", "WHYMISS_SECONDS_PER_SLOT": "schedule.seconds_per_slot",
 		"WHYMISS_ATTESTATION_DEADLINE": "schedule.attestation_deadline", "WHYMISS_AGGREGATION_DEADLINE": "schedule.aggregation_deadline",
-		"WHYMISS_DOMINANCE": "thresholds.dominance", "WHYMISS_CLOCK_OFFSET_MAX": "thresholds.clock_offset_max",
+		"WHYMISS_PAYLOAD_REVEAL_DEADLINE": "schedule.payload_reveal_deadline",
+		"WHYMISS_PTC_DEADLINE":            "schedule.ptc_deadline",
+		"WHYMISS_DOMINANCE":               "thresholds.dominance", "WHYMISS_CLOCK_OFFSET_MAX": "thresholds.clock_offset_max",
 		"WHYMISS_CLOCK_SAMPLE_MAX_AGE": "thresholds.clock_sample_max_age", "WHYMISS_NETWORK_DEVIATION": "thresholds.network_deviation",
 		"WHYMISS_ENGINE_SPIKE_MULTIPLIER": "thresholds.engine_spike_multiplier", "WHYMISS_PEER_COUNT_MIN": "thresholds.peer_count_min",
 		"WHYMISS_IOWAIT_PCT":    "thresholds.iowait_pct",

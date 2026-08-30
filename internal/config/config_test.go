@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 )
 
 func TestLoadPrecedence(t *testing.T) {
@@ -123,5 +125,107 @@ func TestLoadRejectsOversizedConfig(t *testing.T) {
 	}
 	if _, err := Load(path, func(string) (string, bool) { return "", false }); err == nil {
 		t.Fatal("Load: want oversized-file error")
+	}
+}
+
+// TestLoadSwitchesToPostEPBSTimingByConfigurationAlone is the test BUILD_PROMPT
+// task 5.4 asks for: a fork that moves the timing model must be a configuration
+// change, not a code change.
+//
+// It loads the same binary twice. With no schedule block the result is the
+// pre-ePBS mainnet default and carries no payload deadline at all; with a
+// schedule block naming the two ePBS deadlines the result is a post-ePBS
+// schedule whose deadlines resolve against the slot start. Nothing between the
+// two runs differs but the file.
+//
+// The durations here are illustrative, not spec constants. The point being
+// proven is that the values come from configuration — which is exactly why
+// internal/domain ships no post-ePBS default for a test to assert against.
+func TestLoadSwitchesToPostEPBSTimingByConfigurationAlone(t *testing.T) {
+	t.Parallel()
+
+	noEnv := func(string) (string, bool) { return "", false }
+
+	preEPBS, err := Load("", noEnv)
+	if err != nil {
+		t.Fatalf("Load with no configuration: %v", err)
+	}
+	if preEPBS.Schedule.IsPostEPBS() {
+		t.Fatal("the default schedule reports itself as post-ePBS")
+	}
+	if preEPBS.Schedule != domain.MainnetPreEPBS() {
+		t.Errorf("default schedule = %+v, want %+v", preEPBS.Schedule, domain.MainnetPreEPBS())
+	}
+
+	path := filepath.Join(t.TempDir(), "whymiss.yaml")
+	data := []byte(`schedule:
+  seconds_per_slot: 12s
+  attestation_deadline: 3s
+  aggregation_deadline: 8s
+  payload_reveal_deadline: 6s
+  ptc_deadline: 9s
+`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	postEPBS, err := Load(path, noEnv)
+	if err != nil {
+		t.Fatalf("Load with a post-ePBS schedule: %v", err)
+	}
+	if !postEPBS.Schedule.IsPostEPBS() {
+		t.Fatal("a schedule configured with a payload-reveal deadline does not report itself as post-ePBS")
+	}
+	if got, want := postEPBS.Schedule.PayloadRevealDeadline, 6*time.Second; got != want {
+		t.Errorf("payload_reveal_deadline = %s, want %s", got, want)
+	}
+	if got, want := postEPBS.Schedule.PTCDeadline, 9*time.Second; got != want {
+		t.Errorf("ptc_deadline = %s, want %s", got, want)
+	}
+
+	slotStart := time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC)
+	if got, ok := postEPBS.Schedule.PayloadRevealDeadlineAt(slotStart); !ok || !got.Equal(slotStart.Add(6*time.Second)) {
+		t.Errorf("PayloadRevealDeadlineAt() = %v, %v", got, ok)
+	}
+	if got, ok := postEPBS.Schedule.PTCDeadlineAt(slotStart); !ok || !got.Equal(slotStart.Add(9*time.Second)) {
+		t.Errorf("PTCDeadlineAt() = %v, %v", got, ok)
+	}
+}
+
+// A half-configured ePBS schedule must fail at load. Reaching the rules with a
+// PTC deadline and no payload deadline would mean attributing lateness against a
+// boundary nobody set.
+func TestLoadRejectsAPTCDeadlineWithoutAPayloadDeadline(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "whymiss.yaml")
+	data := []byte(`schedule:
+  ptc_deadline: 9s
+`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path, func(string) (string, bool) { return "", false }); err == nil {
+		t.Fatal("Load accepted a ptc_deadline with no payload_reveal_deadline")
+	}
+}
+
+// The environment reaches these two the same way it reaches every other setting.
+func TestLoadReadsEPBSDeadlinesFromTheEnvironment(t *testing.T) {
+	t.Parallel()
+
+	env := map[string]string{
+		"WHYMISS_PAYLOAD_REVEAL_DEADLINE": "7s",
+		"WHYMISS_PTC_DEADLINE":            "10s",
+	}
+	cfg, err := Load("", func(key string) (string, bool) { value, ok := env[key]; return value, ok })
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got, want := cfg.Schedule.PayloadRevealDeadline, 7*time.Second; got != want {
+		t.Errorf("payload_reveal_deadline = %s, want %s", got, want)
+	}
+	if got, want := cfg.Schedule.PTCDeadline, 10*time.Second; got != want {
+		t.Errorf("ptc_deadline = %s, want %s", got, want)
 	}
 }

@@ -129,6 +129,9 @@ type fileSchedule struct {
 	SecondsPerSlot      *string `yaml:"seconds_per_slot"`
 	AttestationDeadline *string `yaml:"attestation_deadline"`
 	AggregationDeadline *string `yaml:"aggregation_deadline"`
+	// Both zero unless the network separates block from payload (EIP-7732).
+	PayloadRevealDeadline *string `yaml:"payload_reveal_deadline"`
+	PTCDeadline           *string `yaml:"ptc_deadline"`
 }
 
 type fileThresholds struct {
@@ -211,6 +214,9 @@ func decode(k *koanf.Koanf) (Config, error) {
 		{"schedule.seconds_per_slot", &cfg.Schedule.SecondsPerSlot},
 		{"schedule.attestation_deadline", &cfg.Schedule.AttestationDeadline},
 		{"schedule.aggregation_deadline", &cfg.Schedule.AggregationDeadline},
+		// Default to "0s", which parses here and means pre-ePBS in the domain.
+		{"schedule.payload_reveal_deadline", &cfg.Schedule.PayloadRevealDeadline},
+		{"schedule.ptc_deadline", &cfg.Schedule.PTCDeadline},
 		{"thresholds.clock_offset_max", &cfg.RCA.ClockOffsetMax},
 		{"thresholds.clock_sample_max_age", &cfg.RCA.ClockSampleMaxAge},
 		{"thresholds.network_deviation", &cfg.RCA.NetworkDeviation},
