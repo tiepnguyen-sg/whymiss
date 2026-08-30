@@ -6,6 +6,29 @@ version stays at `v0.x` until the API is stable.
 
 ## [Unreleased]
 
+### Added
+
+- **The release soak's evidence is in the repository, not just in a claim.**
+  `test/soak/evidence/20260827T014421Z/` holds the `summary.txt` that
+  `test/soak/run.sh` wrote itself, the 4321 samples gzipped, the daemon's whole
+  18,006-line log gzipped, and the binary sha recorded before the run — 244 KB in
+  total. Its README gives the commands to recompute `max_rss_kib=34688` and
+  `max_database_bytes=25447600` from the raw samples and to reproduce the 55-line
+  error taxonomy, so the figures quoted here and in `docs/BUILD_PROMPT.md` can be
+  checked rather than believed.
+
+  Kept because the host that produced it has been deleted, and because a soak is
+  the one gate whose result cannot be re-run on demand. The 22.8 MB database and
+  the 17 MB binary stay out of git: neither is needed to check any claim, and the
+  binary differs from a build of the same tree only in build IDs, the module
+  pseudo-version, and `vcs.revision`/`vcs.time`.
+
+  `PHASE2_STATUS.txt` is included **with its wrong error count intact**. The
+  watcher that wrote it grepped `level=ERROR` in logfmt while the daemon emits
+  JSON, so it reported `errors : 0` for a run with 55. The script was fixed; the
+  artefact is kept as written, next to the log that contradicts it, because a
+  status file that once lied is more useful shown than quietly corrected.
+
 ### Changed
 
 - **The install instructions named a tag that has no release.** README and the

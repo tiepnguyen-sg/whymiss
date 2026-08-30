@@ -172,7 +172,11 @@ Do not create or push the release tag until every item below is complete:
    `make eval.check`. The committed report must cover at least 50 records, reach
    at least 90% top-1 accuracy, include ambiguous `unknown.*` cases, and contain
    zero wrong high-confidence verdicts.
-2. Archive a passing 72-hour Hoodi soak directory and run `make ci`,
+2. Archive a passing 72-hour Hoodi soak directory — commit the summary, the
+   gzipped samples and log, and the binary sha under
+   `test/soak/evidence/<run id>/` as
+   [`20260827T014421Z`](../test/soak/evidence/20260827T014421Z/README.md) does,
+   and keep the database and the binary itself outside git. Then run `make ci`,
    `make test.freshinstall`, `make test.image`, `make test.faults.clock`, and
    `make release.snapshot` from the release commit.
 3. Move the release notes from `[Unreleased]` to the exact version and date in

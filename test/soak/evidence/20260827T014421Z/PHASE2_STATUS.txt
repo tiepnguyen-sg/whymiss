@@ -1,0 +1,8 @@
+PHASE 2: CLOSED
+soak result : PASS
+binary sha  : 1d0bdd6d5660219b73f7bb10196222f6e67cfb0b5c7750d8bd60853f6421d08d
+peak rss    : 34688 KiB / 262144
+final db    : 22786048 bytes / 104857600
+errors      : 55
+verdicts    : 674
+ended       : 2026-08-30T04:12:14Z
