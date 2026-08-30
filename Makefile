@@ -179,7 +179,7 @@ vuln:
 	govulncheck ./...
 
 ## check: enforce invariants that lint cannot express
-check: check.purity check.isolation check.egress check.globals check.nonroot check.placeholders check.workflows release.check
+check: check.purity check.isolation check.egress check.globals check.nonroot check.placeholders check.workflows check.toolchain release.check
 
 ## check.globals: reject mutable package-level production state
 check.globals:
@@ -205,6 +205,32 @@ check.workflows:
 	actionlint
 	sh -n test/freshinstall/run.sh
 	sh -n test/soak/run.sh
+
+## check.toolchain: CI must build with the compiler go.mod's toolchain line names
+#
+# This exists because the two drifted silently and CI was red for three days
+# before anyone read the reason. `go-version-file: go.mod` makes setup-go install
+# the *language minimum* (the `go` line), not the `toolchain` line — it ignores
+# the latter entirely — so the runner built with a compiler the release soak
+# never exercised while `make ci` stayed green locally. Both halves are checked:
+# no workflow may go back to reading the file, and every pinned version must be
+# the toolchain go.mod names.
+check.toolchain:
+	@want=$$(sed -n 's/^toolchain go//p' go.mod); \
+	if [ -z "$$want" ]; then \
+		echo "FAIL: go.mod has no toolchain directive to check against"; \
+		exit 1; \
+	fi; \
+	if grep -rn 'go-version-file:' .github/workflows/*.yml; then \
+		echo "FAIL: setup-go reads the go directive from go.mod, not toolchain — pin go-version: \"$$want\" instead"; \
+		exit 1; \
+	fi; \
+	bad=$$(grep -rn 'go-version:' .github/workflows/*.yml | grep -v "go-version: \"$$want\"" || true); \
+	if [ -n "$$bad" ]; then \
+		echo "$$bad"; \
+		echo "FAIL: workflow Go version must be $$want, the toolchain go.mod names"; \
+		exit 1; \
+	fi
 
 ## release.check: validate the GoReleaser configuration
 release.check:
@@ -429,7 +455,7 @@ eval.check: corpus.validate
 clean:
 	rm -rf bin/
 
-.PHONY: help build build.all build.faultinjector test test.golden test.faults.darwin test.faults.clock test.freshinstall test.image test.soak lint fmt check.format check.tidy vuln check check.workflows release.check release.snapshot \
+.PHONY: help build build.all build.faultinjector test test.golden test.faults.darwin test.faults.clock test.freshinstall test.image test.soak lint fmt check.format check.tidy vuln check check.workflows check.toolchain release.check release.snapshot \
         check.purity check.isolation check.egress check.globals check.nonroot check.placeholders ci \
 	devnet.image devnet.check devnet.up devnet.down devnet.info \
         corpus.validate corpus.generate corpus.generate.all corpus.generate.campaign eval eval.check clean

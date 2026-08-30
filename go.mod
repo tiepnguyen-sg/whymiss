@@ -11,8 +11,13 @@ go 1.25.14
 
 // The toolchain CI builds with, kept separate from the language minimum above on
 // purpose: `go` is the oldest release that can compile this module, `toolchain`
-// is the exact compiler the release artifact is produced by. setup-go reads this
-// line, so CI installs it and GOTOOLCHAIN=local then has nothing to switch to.
+// is the exact compiler the release artifact is produced by.
+//
+// setup-go does NOT read this line — it installs the `go` directive above and
+// ignores `toolchain` entirely (measured on setup-go v7.0.0: "Setup go version
+// spec 1.25.14"). The workflows therefore pin `go-version:` literally, and
+// `make check.toolchain` fails the build if any of them stops matching this
+// line. That check is the only thing keeping the two honest.
 //
 // It is not cosmetic. The release soak ran a binary built by go1.26.6; the same
 // source built by go1.25.14 is a different 14258360-byte binary rather than the

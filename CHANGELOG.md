@@ -767,12 +767,26 @@ version stays at `v0.x` until the API is stable.
   differing. The soak evidence would have described a compiler the release
   artifact was never produced by.
 
-  Fixed by adding an explicit `toolchain go1.26.6` line beside the unchanged
-  `go 1.25.14`: the language minimum for anyone building from source stays where
-  it was, while CI installs and builds with the compiler the soak actually
-  exercised. Verified by rebuilding after the change and diffing against the
-  soaked binary again — still identical but for build IDs, the module
-  pseudo-version, and `vcs.revision`/`vcs.time`.
+  Fixed in three parts. `go.mod` gains a `toolchain go1.26.6` line beside the
+  unchanged `go 1.25.14`, so the language minimum for anyone building from source
+  stays where it was while the compiler the release is produced by is stated
+  explicitly. The workflows pin `go-version: "1.26.6"` literally instead of
+  `go-version-file: go.mod` — **`setup-go` reads the `go` directive and ignores
+  `toolchain` entirely**, which the first attempt at this fix assumed otherwise
+  and which the runner then reported in as many words: `Setup go version spec
+  1.25.14`. And `make check.toolchain`, now inside `make check`, fails the build
+  if a workflow's pinned version stops matching go.mod's toolchain line or
+  reverts to reading the file. The check was verified by breaking it on purpose:
+  setting one workflow back to 1.25.14 makes it exit non-zero naming the file and
+  line, and restoring the value makes it pass.
+
+  A guard is warranted rather than a note, because the failure was invisible in
+  both directions: `make ci` was green on every developer machine for three days
+  while the runner never executed a single check, and the version that would have
+  built the release lived in a file nobody edits during a release. Verified after
+  the change by rebuilding and diffing against the soaked binary again — still
+  identical but for build IDs, the module pseudo-version, and
+  `vcs.revision`/`vcs.time`.
 
 - **`docs/causes.md`'s observation vocabulary listed sources the domain model had
   stopped agreeing with.** `peer_count_sampled` was documented as `promscrape`
