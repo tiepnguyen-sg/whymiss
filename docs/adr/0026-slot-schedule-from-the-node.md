@@ -60,9 +60,12 @@ attestation deadline, a 6s payload-reveal deadline and a 9s PTC deadline with no
 operator action.
 
 `docs/configuration.md`'s schedule settings become an override rather than the
-only source, and `whymiss` logs which of the two it is using at startup, because
-an operator debugging a timing verdict must be able to see the deadline it was
-measured against.
+only source. The daemon logs the schedule whenever it is not the mainnet default
+— an adoption that changed something, an operator override, or a node that could
+not be read — and stays silent when the node agrees with the defaults, which is
+every pre-Glamsterdam network. An operator debugging a timing verdict can
+therefore see the deadline it was measured against in exactly the cases where it
+is not the documented one.
 
 **One schedule per process, which is wrong inside a fork transition.** The epoch
 is read once at start-up, so a daemon that was running before the fork keeps

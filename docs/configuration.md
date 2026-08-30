@@ -107,9 +107,14 @@ These values are data, not hard-coded RCA constants.
 reads `GET /eth/v1/config/spec` and adopts the timing model the node reports, so
 a fork that moves the deadlines needs no action (ADR-0026). Setting any of them
 to something other than the mainnet defaults below overrides that entirely — the
-schedule you configure is the schedule used, and `whymiss watch` logs which of
-the two it is running with. Configure them to pin a schedule deliberately, or
-when the node is too old to publish its own.
+schedule you configure is the schedule used. Configure them to pin a schedule
+deliberately, or when the node is too old to publish its own.
+
+`whymiss watch` logs the schedule only when it is not the mainnet default it
+would have used anyway: an adoption that changes something, a configured
+schedule that overrides the node, or a node that could not be read. Silence at
+start-up means the node agreed with the defaults, which is the case on every
+pre-Glamsterdam network.
 
 | YAML key | Environment | Default | Constraint |
 |---|---|---:|---|
