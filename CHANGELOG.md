@@ -241,6 +241,15 @@ version stays at `v0.x` until the API is stable.
 
 ### Changed
 
+- **The README claimed whymiss has no ePBS support.** It said the schedule
+  defaults to `MainnetPreEPBS()` and that ePBS readiness was future work, which
+  stopped being true the same day: the schedule is read from the node, a live
+  public Glamsterdam devnet was collected from end to end, and
+  `network.payload_late` exists. The bullet now states both halves — what works
+  and the two gaps, that the cause is unmeasured and that the duty it costs is the
+  proposer's, which whymiss does not track. Its taxonomy counts were stale too:
+  8 of 15 causes exercised, seven unmeasured, not 8 of 14 and six.
+
 - **The install instructions named a tag that has no release.** README and the
   Compose file pointed at `v0.2.1`'s predecessor throughout — the archive
   download, both `cosign verify` identities, `WHYMISS_IMAGE`, and the

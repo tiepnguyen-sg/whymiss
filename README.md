@@ -154,12 +154,12 @@ Read these before trusting whymiss on a live staking box.
   degraded duty comes back `unknown.insufficient_data` naming the flag that would
   have made it diagnosable. Collection still works without it; attribution does not.
 - **Small evaluation corpus.** RCA accuracy (`docs/evaluation.md`) is measured against
-  52 labelled scenarios covering 8 of the taxonomy's 14 causes, generated on a 3-node
+  52 labelled scenarios covering 8 of the taxonomy's 15 causes, generated on a 3-node
   Lighthouse+Prysm / geth Kurtosis devnet carrying transaction load — not yet
   validated against mainnet incidents or other client pairings. Read the 100% top-1
   figure with the rest of that report: 11 of the 52 scenarios expect `unknown.*`, so
   they assert that whymiss correctly declines to attribute rather than that it named
-  a cause. Six causes have no scenario at all and are therefore unmeasured, which is
+  a cause. Seven causes have no scenario at all and are therefore unmeasured, which is
   not the same as passing.
 - **Closed taxonomy, on purpose (I-8).** whymiss prefers `unknown` over a wrong
   confident guess. If your failure mode isn't in
@@ -181,8 +181,20 @@ Read these before trusting whymiss on a live staking box.
   millisecond-precise measurement instead of a 500ms-resolution poll. Without a
   baseline, a late
   block that cannot be localized becomes `unknown.insufficient_data`.
-- **No ePBS support yet.** The slot schedule defaults to `MainnetPreEPBS()`; ePBS
-  readiness is Phase 5.
+- **Glamsterdam/ePBS: collection works, one cause is unmeasured.** whymiss reads the
+  slot schedule from the node's own `/eth/v1/config/spec`, so a post-ePBS network's
+  deadlines — payload reveal, PTC — are picked up with no configuration
+  (ADR-0026). It was run against a live public Glamsterdam devnet on 2026-08-30,
+  adopting a 3s attestation deadline and 6s payload-reveal deadline and collecting
+  duties end to end. `network.payload_late` names a builder that misses the payload
+  deadline, read from the payload-timeliness committee's own vote.
+
+  Two honest gaps. That cause **has no corpus scenario, so it is unmeasured** — and
+  the reason is that the duty it costs is the *proposer's*, which whymiss does not
+  track yet: 116 attester duties watched on that network stayed clean while the
+  committee reported the payload absent on roughly half of all slots, which is what
+  ePBS decoupling is for. And no local devnet built here can run ePBS well enough to
+  inject the fault (ADR-0027 tabulates four attempts).
 
 ## Non-goals
 
