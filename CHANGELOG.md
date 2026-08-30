@@ -8,6 +8,21 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **A case study reproduces a public incident's root cause with whymiss's own
+  output.** `docs/case-studies/2023-05-mainnet-finality.md` takes the May 2023
+  mainnet finality incidents — finality lost twice in 24 hours, participation down
+  to ~75% at epoch 411,448 — and reproduces the **first link** of their published
+  chain: an execution client that stops responding. Steps three through five are a
+  consensus-client cache bug and out of scope for a node-local tool, which the
+  study states plainly rather than claiming the whole incident.
+
+  The reproduction is a real fault on a real devnet, `test/corpus/el-slow-cpu`,
+  and the verdict is quoted unedited: `local.el_slow` at medium confidence, Engine
+  calls totalling 9970.78ms against that node's own 491.23ms rolling p99 — 20.3x
+  its normal behaviour — with `block_seen` at +0.50s showing propagation was fine.
+  It also says what whymiss would *not* have told an operator in 2023, because a
+  case study that only lists strengths is an advertisement.
+
 - **The slot schedule is read from the node instead of typed by an operator
   (ADR-0026).** `GET /eth/v1/config/spec` publishes the whole timing model —
   `SECONDS_PER_SLOT` plus the deadlines as basis points — so `whymiss watch` now
@@ -91,6 +106,16 @@ version stays at `v0.x` until the API is stable.
   status file that once lied is more useful shown than quietly corrected.
 
 ### Fixed
+
+- **This changelog quoted measurements the committed record does not support.**
+  The `local.el_slow` entry described an Engine total of 16,295ms against a 981.8ms
+  baseline with `head_updated` at +25.19s. Replaying `test/corpus/el-slow-cpu`
+  gives 9970.78ms against 491.23ms with `head_updated` at +10.92s: the old figures
+  belong to a bisection run that was never admitted as a record. Both occurrences
+  are corrected and each says where the wrong numbers came from. Found while
+  writing the case study, by reading the numbers back out of the record instead of
+  copying them from prose — which is the only way a figure in this file should be
+  produced.
 
 - **whymiss produced no verdict at all on a post-ePBS chain.** Its Electra-era
   check that `attestation.data.index` must be 0 rejected the whole block on
@@ -207,10 +232,17 @@ exists and this is the first published release since 0.1.0.
 - **`local.el_slow` has evidence for the first time.** `test/corpus/el-slow-cpu`
   is the eighth cause covered and the first record to carry a `samples.jsonl`,
   pinned by `samples_sha256` like the observations beside it. The numbers are not
-  marginal: an Engine total of 16,295ms across four `newPayload` calls against a
-  measured p99 baseline of 981.8ms — 5.5x the 3x spike threshold R-300 requires —
-  with `head_updated` at +25.19s against a 4s deadline and validation taking
-  24.73s to propagation's 0.45s.
+  marginal: an Engine total of **9970.78ms** — 9928.92ms across three `newPayload`
+  calls plus 41.86ms of `forkchoiceUpdated` — against a measured rolling p99 of
+  **491.23ms**, which is 20.3x the baseline and 6.8x the 3x spike threshold R-300
+  requires, with `block_seen` at +0.50s and `head_updated` at **+10.92s** against
+  a 4s deadline.
+
+  (An earlier version of this entry quoted 16,295ms against a 981.8ms baseline
+  with `head_updated` at +25.19s. Those figures belong to a bisection run that was
+  not admitted; the committed record does not support them. The numbers above were
+  read back out of `test/corpus/el-slow-cpu` by replaying it, which is the only
+  form a number in this file should take.)
 
   Several cycles recorded this cause as unreproducible and `docs/BUILD_PROMPT.md`
   task 1.7 blamed the devnet's workload. That was wrong twice over. Load was one
@@ -1157,10 +1189,12 @@ exists and this is the first published release since 0.1.0.
   Caught on the first real `el-slow-cpu` run. The record it wrote is right —
   `tools/eval` scores it `local.el_slow` at medium, 1/1 — while the generator's
   own log called it `unknown.no_rule_matched`. The numbers were never marginal:
-  Engine total 16,295ms against a measured 981.8ms baseline, 5.5x the 3x spike
-  threshold, `head_updated` at +25.19s against a 4s deadline, validation 24.73s
-  to propagation 0.45s. Samples now flow into the check and the record from one
-  slice, so the two cannot diverge again.
+  Engine total 9970.78ms against a measured 491.23ms rolling p99, 20.3x the
+  baseline and 6.8x the 3x spike threshold, with `head_updated` at +10.92s against
+  a 4s deadline. Samples now flow into the check and the record from one slice, so
+  the two cannot diverge again. (This paragraph first quoted 16,295ms against
+  981.8ms, figures from an unadmitted bisection run; corrected against a replay of
+  the committed record.)
 
   This is the cost of wiring a new input into four consumers and missing the
   fifth: `tools/eval`, the golden test, and `corpusctl` all got samples when the
