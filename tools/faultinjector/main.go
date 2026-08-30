@@ -525,6 +525,17 @@ func RunScenario(ctx context.Context, s Scenario, enclave, beaconAPI, outDir, nt
 	if err != nil {
 		return fmt.Errorf("check inclusion: %w", err)
 	}
+
+	// Post-ePBS only. A pre-Gloas chain carries no payload attestations and
+	// reports found=false, which is silence rather than a failed collection —
+	// so this cannot make a pre-fork recipe start failing.
+	if present, votes, found, ptcErr := obs.PayloadAttested(ctx, dutySlot); ptcErr != nil {
+		return fmt.Errorf("payload attestations: %w", ptcErr)
+	} else if found {
+		outcome.PayloadPresent, outcome.PayloadPTCVotes = present, votes
+		outcome.PayloadAttested, outcome.PayloadAttestedAt = true, time.Now().UTC()
+	}
+
 	waitUntil(ctx, windowEnd)
 	if ctx.Err() != nil {
 		return ctx.Err()

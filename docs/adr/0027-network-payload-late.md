@@ -116,6 +116,34 @@ whether it arrived afterwards. Shipping the distinction would be a confident
 guess, which is the failure I-8 exists to prevent, so `network.payload_late` has
 no sub-causes until an observation exists that separates them.
 
+## The cause's natural subject is a proposer, not an attester
+
+Measured 2026-08-30 by watching 64 validators on the public Glamsterdam network
+for an hour: **52 duties tracked, every one of them clean.** Not one attester lost
+a reward flag, while over the same period the payload-timeliness committee was
+reporting the payload absent on roughly half of all slots it voted on (21 of 41 in
+one window, 0 of 12 in another — the rate swings).
+
+That is consistent with what ePBS is *for*. The consensus block and the execution
+payload are decoupled: the block arrives on time and the attester votes on it,
+whatever the builder does afterwards. So a late payload appears not to cost an
+attester anything, and R-120 is gated on the duty having actually lost something —
+correctly, because a verdict handed to a duty that lost nothing is worse than no
+verdict.
+
+The duty a late payload does cost is the **proposer's**: its block exists without
+the payload it sold, and the builder's payment with it. whymiss does not track
+proposer duties yet — a known issue of long standing, recorded in `CHANGELOG.md`.
+
+So the obstacle to measuring this cause is not the corpus format, which is now
+ready, and not access to a network, which exists. **It is that the duty this cause
+befalls is not one whymiss watches.** That is worth knowing before anyone spends
+more time on the record.
+
+This is stated as what the evidence supports, not as proof: 52 clean duties is
+consistent with attesters being insulated, and does not establish that a late
+payload can never cost one.
+
 ## Why the corpus record comes from a public network
 
 Measured on 2026-08-30:
@@ -158,19 +186,24 @@ before the fork. Scheduling the fork later would postpone the same behaviour, an
 starting at it is refused by the client.
 
 | `gloas_fork_epoch: 2`, two Nimbus + one Lighthouse, builder | Blocks on **32 of 90** post-fork slots |
+| `gloas_fork_epoch: 2`, 384 validators (128/node), builder | Blocks on **6 of 13** post-fork slots, and **7 Gloas blocks carried 2 payload attestations between them** |
 
-That last row was run to test the guess that the healthy public chain's client
-(Nimbus) was the difference. **It was not.** Three client combinations degrade
-post-Gloas on a local devnet while the public network does not, so the variable
-is not the client.
+Two guesses were tested and both were wrong. The third row tested the client — the
+healthy public chain runs Nimbus — and Nimbus degrades locally too. The fourth
+tested scale, on the reasoning that a payload-timeliness committee sampled from 96
+validators split three ways is thin; quadrupling to 384 changed nothing.
 
-What is left is scale. The local devnet carries 96 validators across three nodes;
-the public Glamsterdam network carries thousands. ePBS adds a payload-timeliness
-committee per slot, and a committee sampled from 96 validators split three ways is
-thin. That is a hypothesis, not a measurement, and it is recorded as one.
+**What the fourth run did show is the mechanism.** Seven Gloas blocks carried two
+payload attestations between them, where the public network carries roughly one
+per block. The committee barely votes on a local devnet, which is consistent with
+the block loss: a payload nobody attests to in time is a payload the chain does
+not build on.
 
-It also no longer sits on the critical path, because the public network supplies
-both the observation and the condition.
+So `ethereum-package` cannot exercise ePBS properly here today, across four
+configurations. **Injecting a late payload is therefore not available**, and the
+`payload-late` recipe in `tools/faultinjector/scenarios/` is committed against a
+devnet that cannot yet run it. The observation and the condition both have to
+come from a public network instead.
 
 Every record taken from a chain losing half its slots carries the chain's own
 sickness as well as the injected fault, which is how fourteen corpus records were

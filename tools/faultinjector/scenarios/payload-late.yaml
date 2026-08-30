@@ -1,0 +1,46 @@
+id: payload-late
+description: >
+  The ePBS builder's traffic is delayed so its execution payload misses
+  PAYLOAD_DUE_BPS, while the consensus block for the slot is produced normally.
+  The payload-timeliness committee then votes payload_present=false, and R-120
+  attributes network.payload_late — the operator's own layers were working and
+  the failure was the builder's.
+
+  Post-Gloas only, by construction. On any pre-ePBS chain the schedule carries no
+  payload-reveal deadline, no block carries payload_attestations, and both the
+  collector and the rule stay silent. The devnet must therefore run with
+  gloas_fork_epoch scheduled and mev_type buildoor with epbs_builder enabled: a
+  Glamsterdam devnet without a builder produces blocks on roughly a quarter of
+  its slots and measures nothing (ADR-0027).
+
+  Why netem on the builder rather than a CPU cap. The cause is about *when the
+  payload was revealed*, which is a delivery deadline, so the fault that matches
+  it is added latency on the builder's own path. A cgroup CPU cap makes the
+  builder slow to *construct* a payload, which lands in the same place but for a
+  different reason and with far less control over how late "late" is. Try the cap
+  only if latency alone will not push the reveal past the deadline.
+
+  Bisection log (delay / PTC verdict / result):
+    (no runs yet — first attempt is the value below)
+
+  Two ways this can fail to earn its label, both worth recording here rather than
+  relabelling the record. If the delay is so large that the builder's payload
+  never lands at all, the chain may skip the slot instead, which is
+  network.proposer_missed and R-120 correctly declines. And if the watched duty
+  still earns every reward flag despite the late payload, R-120 declines by
+  design: on the public Glamsterdam network 32 of 51 committee votes reported the
+  payload absent while attestations were still being included on time, so a
+  verdict there would be a cause attached to a duty that lost nothing.
+target: buildoor
+timing_target: cl-1-lighthouse-geth
+baseline_target: cl-2-prysm-geth
+validator_candidates: [0, 63]
+avoid_proposer_validators: [0, 63]
+duration: 30s
+fault:
+  kind: netem
+  netem:
+    delay: 4000ms
+expect:
+  cause: network.payload_late
+  confidence: high

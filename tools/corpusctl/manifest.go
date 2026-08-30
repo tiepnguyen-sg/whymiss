@@ -15,12 +15,44 @@ type manifest struct {
 	GeneratorEngineVersion string `yaml:"generator_engine_version"`
 	ID                     string `yaml:"id"`
 	RecipeID               string `yaml:"recipe_id,omitempty"`
-	Description            string `yaml:"description"`
-	Expect                 struct {
+
+	// Origin says how the record's condition came about, and it changes what the
+	// record is evidence of.
+	//
+	// "injected" is the default and the stronger form: the label comes from what
+	// the harness did to the system — cap the execution client's CPU, expect
+	// local.el_slow — which is independent of anything whymiss observed. That is
+	// what makes it a test of attribution.
+	//
+	// "observed" records a condition the network produced on its own. It is
+	// weaker evidence of attribution, because the label and the rule read the
+	// same on-chain fact, and it is admitted anyway because some causes cannot be
+	// injected at all: network.payload_late needs a late ePBS payload, which no
+	// tooling here can create and which must never be inflicted on a shared
+	// public testnet (ADR-0027). What it does test is real: the collection path
+	// and the rule's gates against data nobody staged.
+	//
+	// Empty means "injected", so every record written before this field existed
+	// keeps its meaning.
+	Origin      string `yaml:"origin,omitempty"`
+	Description string `yaml:"description"`
+	Expect      struct {
 		Cause      string `yaml:"cause"`
 		SubCause   string `yaml:"sub_cause,omitempty"`
 		Confidence string `yaml:"confidence"`
 	} `yaml:"expect"`
+
+	// Schedule is the slot timing the record was collected under. Omitted means
+	// domain.MainnetPreEPBS(), which is what every pre-Glamsterdam record ran on.
+	// A post-ePBS record must state it, because the deadlines a verdict was
+	// measured against are part of what the record is evidence of (ADR-0026).
+	Schedule *struct {
+		SecondsPerSlot        string `yaml:"seconds_per_slot"`
+		AttestationDeadline   string `yaml:"attestation_deadline"`
+		AggregationDeadline   string `yaml:"aggregation_deadline"`
+		PayloadRevealDeadline string `yaml:"payload_reveal_deadline,omitempty"`
+		PTCDeadline           string `yaml:"ptc_deadline,omitempty"`
+	} `yaml:"schedule,omitempty"`
 
 	Slot           uint64 `yaml:"slot"`
 	ValidatorIndex uint64 `yaml:"validator_index"`

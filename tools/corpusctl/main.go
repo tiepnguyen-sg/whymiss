@@ -26,10 +26,20 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) != 2 || args[0] != "validate" {
-		return fmt.Errorf("usage: corpusctl validate <corpus-dir>")
+	if len(args) == 0 {
+		return fmt.Errorf("usage: corpusctl validate <corpus-dir> | corpusctl export --db <path> --slot <n> --out <dir>")
 	}
-	return validateCorpus(args[1])
+	switch args[0] {
+	case "validate":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: corpusctl validate <corpus-dir>")
+		}
+		return validateCorpus(args[1])
+	case "export":
+		return exportObserved(args[1:])
+	default:
+		return fmt.Errorf("usage: corpusctl validate <corpus-dir> | corpusctl export --db <path> --slot <n> --out <dir>")
+	}
 }
 
 // validateCorpus checks every scenario directory under root and reports every
@@ -162,8 +172,22 @@ func validateManifest(m manifest, wantID string) error {
 	if m.Description == "" {
 		return fmt.Errorf("manifest.yaml: description is required")
 	}
-	if m.FaultKind == "" || m.FaultTarget == "" || m.Duration <= 0 || m.GeneratedAt.IsZero() {
-		return fmt.Errorf("manifest.yaml: fault_kind, fault_target, positive duration, and generated_at are required")
+	switch m.Origin {
+	case "", "injected":
+		if m.FaultKind == "" || m.FaultTarget == "" || m.Duration <= 0 {
+			return fmt.Errorf("manifest.yaml: an injected record needs fault_kind, fault_target and a positive duration")
+		}
+	case "observed":
+		// No fault to name. Requiring one would mean inventing it, and an
+		// invented fault_kind is worse than an absent one.
+		if m.FaultKind != "" || m.FaultTarget != "" || m.Duration > 0 {
+			return fmt.Errorf("manifest.yaml: an observed record must not claim a fault it did not inject")
+		}
+	default:
+		return fmt.Errorf("manifest.yaml: origin %q must be \"injected\" or \"observed\"", m.Origin)
+	}
+	if m.GeneratedAt.IsZero() {
+		return fmt.Errorf("manifest.yaml: generated_at is required")
 	}
 	if len(m.ClockSamples) == 0 {
 		return fmt.Errorf("manifest.yaml: complete clock provenance with a positive round_trip is required")

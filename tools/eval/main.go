@@ -16,11 +16,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/tiepnguyen-sg/whymiss/internal/domain"
 	"github.com/tiepnguyen-sg/whymiss/internal/rca"
+
 	"github.com/tiepnguyen-sg/whymiss/internal/timeline"
 )
 
@@ -28,7 +30,15 @@ import (
 // this is duplicated rather than imported (two independent package main
 // binaries).
 type manifest struct {
-	ID     string `yaml:"id"`
+	ID       string `yaml:"id"`
+	Origin   string `yaml:"origin,omitempty"`
+	Schedule *struct {
+		SecondsPerSlot        string `yaml:"seconds_per_slot"`
+		AttestationDeadline   string `yaml:"attestation_deadline"`
+		AggregationDeadline   string `yaml:"aggregation_deadline"`
+		PayloadRevealDeadline string `yaml:"payload_reveal_deadline,omitempty"`
+		PTCDeadline           string `yaml:"ptc_deadline,omitempty"`
+	} `yaml:"schedule,omitempty"`
 	Expect struct {
 		Cause      string `yaml:"cause"`
 		SubCause   string `yaml:"sub_cause,omitempty"`
@@ -42,6 +52,12 @@ type result struct {
 	wantConfidence, gotConfidence string
 	correct                       bool
 	falseHigh                     bool
+	// observed marks a record of a condition the network produced on its own
+	// rather than one the harness injected. Reported separately and never folded
+	// into the headline, because the two are evidence of different things: an
+	// injected record's label is independent of what whymiss saw, an observed
+	// record's is not (see tools/corpusctl's Origin doc comment).
+	observed bool
 }
 
 const (
@@ -141,7 +157,11 @@ func evalScenario(dir string) (result, error) {
 	if err != nil {
 		return result{}, fmt.Errorf("load samples: %w", err)
 	}
-	tl, err := timeline.ReplayWithSamples(obs, samples, domain.MainnetPreEPBS())
+	schedule, err := scheduleFrom(m)
+	if err != nil {
+		return result{}, err
+	}
+	tl, err := timeline.ReplayWithSamples(obs, samples, schedule)
 	if err != nil {
 		return result{}, fmt.Errorf("replay: %w", err)
 	}
@@ -162,7 +182,47 @@ func evalScenario(dir string) (result, error) {
 		gotConfidence:  string(v.Confidence),
 		correct:        want == got,
 		falseHigh:      want != got && v.Confidence == domain.ConfidenceHigh,
+		observed:       m.Origin == "observed",
 	}, nil
+}
+
+// scheduleFrom returns the timing a record was collected under. A record with no
+// schedule block ran on mainnet timing, which is every record written before the
+// field existed.
+func scheduleFrom(m manifest) (domain.SlotSchedule, error) {
+	if m.Schedule == nil {
+		return domain.MainnetPreEPBS(), nil
+	}
+	s := domain.MainnetPreEPBS()
+	for _, field := range []struct {
+		name  string
+		raw   string
+		dst   *time.Duration
+		empty bool
+	}{
+		{"seconds_per_slot", m.Schedule.SecondsPerSlot, &s.SecondsPerSlot, false},
+		{"attestation_deadline", m.Schedule.AttestationDeadline, &s.AttestationDeadline, false},
+		{"aggregation_deadline", m.Schedule.AggregationDeadline, &s.AggregationDeadline, false},
+		{"payload_reveal_deadline", m.Schedule.PayloadRevealDeadline, &s.PayloadRevealDeadline, true},
+		{"ptc_deadline", m.Schedule.PTCDeadline, &s.PTCDeadline, true},
+	} {
+		if field.raw == "" {
+			if field.empty {
+				*field.dst = 0
+				continue
+			}
+			return domain.SlotSchedule{}, fmt.Errorf("manifest schedule: %s is required", field.name)
+		}
+		parsed, err := time.ParseDuration(field.raw)
+		if err != nil {
+			return domain.SlotSchedule{}, fmt.Errorf("manifest schedule: %s: %w", field.name, err)
+		}
+		*field.dst = parsed
+	}
+	if err := s.Validate(); err != nil {
+		return domain.SlotSchedule{}, fmt.Errorf("manifest schedule: %w", err)
+	}
+	return s, nil
 }
 
 // percentOf returns part as a percentage of whole, and 0 for an empty corpus
@@ -200,8 +260,14 @@ func buildReport(results []result) string {
 		return l
 	}
 
-	ambiguous := 0
+	ambiguous, observedTotal, observedCorrect := 0, 0, 0
 	for _, r := range results {
+		if r.observed {
+			observedTotal++
+			if r.correct {
+				observedCorrect++
+			}
+		}
 		if r.correct {
 			correct++
 			labelOf(r.want).tp++
@@ -217,7 +283,12 @@ func buildReport(results []result) string {
 		}
 	}
 
-	total := len(results)
+	// The headline counts injected records only. An observed record's label and
+	// the rule under test read the same on-chain fact, so folding it in would
+	// inflate a number that is supposed to mean "attribution was right when the
+	// ground truth was known independently".
+	total := len(results) - observedTotal
+	correct -= observedCorrect
 	accuracy := percentOf(correct, total)
 
 	fmt.Fprintln(&b, "## Summary")
@@ -233,7 +304,11 @@ func buildReport(results []result) string {
 	// distinguish the two. State the split so the headline cannot be read as
 	// "the engine names the right cause this often".
 	fmt.Fprintf(&b, "- **Expecting `unknown.*`:** %d of %d (%.1f%%) — these assert that attribution is correctly refused, not that a cause was identified\n",
-		ambiguous, total, percentOf(ambiguous, total))
+		ambiguous, len(results), percentOf(ambiguous, len(results)))
+	if observedTotal > 0 {
+		fmt.Fprintf(&b, "- **Observed records:** %d/%d correct, reported separately and excluded from the accuracy above — their condition was produced by the network rather than injected, so the label and the rule read the same fact and they test collection and gating rather than attribution\n",
+			observedCorrect, observedTotal)
+	}
 	fmt.Fprintln(&b)
 	// Read the accuracy figure honestly. The corpus only holds scenarios whose
 	// labelled phenomenon the fault harness actually reproduced; where a fault

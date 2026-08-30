@@ -564,8 +564,53 @@ type beaconBlock struct {
 		ProposerIndex string `json:"proposer_index"`
 		Body          struct {
 			Attestations []blockAttestation `json:"attestations"`
+			// Post-ePBS only: the payload-timeliness committee's votes on the
+			// *previous* slot's payload. Absent on every pre-Gloas block, which
+			// decodes to an empty slice rather than an error.
+			PayloadAttestations []payloadAttestation `json:"payload_attestations"`
 		} `json:"body"`
 	} `json:"message"`
+}
+
+// payloadAttestation is one PTC vote as the Beacon API serves it.
+type payloadAttestation struct {
+	Data struct {
+		Slot           string `json:"slot"`
+		PayloadPresent bool   `json:"payload_present"`
+	} `json:"data"`
+}
+
+// PayloadAttested reports the payload-timeliness committee's verdict for
+// dutySlot, read from the following block.
+//
+// Mirrors internal/source/beaconapi.Client.PayloadAttested deliberately: the
+// generator and the daemon must record the same fact the same way, or a corpus
+// record would not represent what an operator's node would have seen. found is
+// false on a pre-ePBS chain, a skipped following slot, or a block carrying no
+// vote for this slot — none of which is an error.
+func (o *Observer) PayloadAttested(ctx context.Context, dutySlot uint64) (present bool, votes int, found bool, err error) {
+	block, ok, err := o.fetchBlock(ctx, dutySlot+1)
+	if err != nil {
+		return false, 0, false, fmt.Errorf("fetch block %d for payload attestations: %w", dutySlot+1, err)
+	}
+	if !ok {
+		return false, 0, false, nil
+	}
+	counted, seen := 0, 0
+	for _, vote := range block.Message.Body.PayloadAttestations {
+		voteSlot, parseErr := strconv.ParseUint(vote.Data.Slot, 10, 64)
+		if parseErr != nil || voteSlot != dutySlot {
+			continue
+		}
+		counted++
+		if vote.Data.PayloadPresent {
+			seen++
+		}
+	}
+	if counted == 0 {
+		return false, 0, false, nil
+	}
+	return seen*2 > counted, counted, true, nil
 }
 
 // fetchBlock fetches slot's block, treating "not found" (slot empty or not yet
@@ -716,6 +761,11 @@ type dutyOutcome struct {
 	PublishedAt   time.Time
 	PublishedRoot string
 
+	PayloadPresent    bool
+	PayloadPTCVotes   int
+	PayloadAttested   bool
+	PayloadAttestedAt time.Time
+
 	Included       bool
 	IncludedInSlot uint64
 	IncludedAt     time.Time
@@ -831,6 +881,17 @@ func buildObservations(s Scenario, slot uint64, slotStart, dutyAt time.Time, o d
 			Attrs: attrs,
 		})
 	}
+	if o.PayloadAttested {
+		drafts = append(drafts, domain.Observation{
+			Slot: domain.Slot(slot), Kind: domain.ObsPayloadAttested,
+			At: o.PayloadAttestedAt, Source: domain.SourceBeaconAPI,
+			Attrs: map[domain.AttrKey]string{
+				domain.AttrPayloadPresent: strconv.FormatBool(o.PayloadPresent),
+				domain.AttrPTCVotes:       strconv.Itoa(o.PayloadPTCVotes),
+			},
+		})
+	}
+
 	if !o.CollectionCompletedAt.IsZero() {
 		drafts = append(drafts, domain.Observation{
 			Slot: domain.Slot(slot), Kind: domain.ObsCollectionCompleted,

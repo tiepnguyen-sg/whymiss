@@ -8,6 +8,23 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **The corpus can hold records of conditions nobody injected, reported
+  separately.** `manifest.yaml` gains `origin: injected | observed` — empty means
+  injected, so every existing record keeps its meaning — and `corpusctl` requires
+  fault fields only for injected records while refusing an observed record that
+  claims a fault it did not inject. `corpusctl export --db --slot --out` writes a
+  record from a running collector's own store. Manifests may also now carry the
+  `schedule` a record was collected under, because a post-ePBS record's verdict
+  depends on deadlines mainnet does not have.
+
+  **`make eval` reports the two classes separately and never folds them
+  together.** An injected record's label comes from what the harness did — cap the
+  execution client, expect `local.el_slow` — and is independent of anything whymiss
+  observed, which is what makes it a test of attribution. An observed record's
+  label and the rule under test read the same on-chain fact, so it tests the
+  collection path and the rule's gates instead. Both are worth having; conflating
+  them would have quietly changed what the headline accuracy figure means.
+
 - **`network.payload_late`: whymiss can name a builder's failure under ePBS
   (ADR-0027).** A new cause, a new observation kind `payload_attested`, and rule
   R-120. Under EIP-7732 the payload-timeliness committee votes on whether a
@@ -33,11 +50,24 @@ version stays at `v0.x` until the API is stable.
   distinction would be the confident guess I-8 exists to prevent.
 
   **The cause has no corpus scenario yet, so it is unmeasured** — which this
-  project does not treat as passing. The corpus manifest requires `fault_kind`,
-  `fault_target` and a duration, so it admits only injected faults, while this
-  condition occurs naturally on the public network and cannot be injected into a
-  shared testnet. Whether the corpus should admit observed records is a decision
-  about what the corpus means, and it is left open rather than taken quietly.
+  project does not treat as passing. Chasing that record produced two findings
+  worth more than the record would have been.
+
+  First, **no local ePBS devnet can produce it.** Four `ethereum-package`
+  configurations were tried and all degrade post-Gloas; the fourth showed why —
+  seven Gloas blocks carried two payload attestations between them, where the
+  public network carries about one per block. The committee barely votes locally,
+  so the fault cannot be injected here. `tools/faultinjector/scenarios/payload-late.yaml`
+  is committed against a devnet that cannot yet run it.
+
+  Second, and more useful: **the duty this cause befalls is not one whymiss
+  watches.** Watching 64 validators on the public Glamsterdam network for an hour
+  produced 52 duties, every one clean, while the committee was reporting the
+  payload absent on roughly half the slots it voted on. That is what ePBS is for —
+  the consensus block and the payload are decoupled, so the attester votes on a
+  block that arrived on time regardless. The duty a late payload costs is the
+  **proposer's**, and proposer duty tracking is a long-standing known issue. The
+  obstacle is not the corpus format and not network access; it is the duty kind.
 
 - **A case study reproduces a public incident's root cause with whymiss's own
   output.** `docs/case-studies/2023-05-mainnet-finality.md` takes the May 2023
