@@ -72,6 +72,13 @@ const (
 	// ObsNetworkBaselineSampled records network-wide block-arrival percentiles
 	// for one slot.
 	ObsNetworkBaselineSampled ObservationKind = "network_baseline_sampled"
+
+	// ObsPayloadAttested records the payload-timeliness committee's vote on
+	// whether a slot's execution payload was revealed in time, under a fork that
+	// separates block from payload (EIP-7732). Read from the following block's
+	// payload_attestations over the standardised Beacon API, so it needs no
+	// client-specific adapter. Carries AttrPayloadPresent.
+	ObsPayloadAttested ObservationKind = "payload_attested"
 )
 
 // ObservationKinds returns the closed vocabulary in taxonomy order. The returned
@@ -93,6 +100,7 @@ func ObservationKinds() []ObservationKind {
 		ObsClockSampled,
 		ObsCollectionCompleted,
 		ObsNetworkBaselineSampled,
+		ObsPayloadAttested,
 	}
 }
 
@@ -103,7 +111,7 @@ func (k ObservationKind) Valid() bool {
 		ObsHeadUpdated, ObsAttestationPublished, ObsAttestationIncluded,
 		ObsBlockProposed, ObsReorg, ObsPeerCountSampled, ObsEngineCall,
 		ObsHostSampled, ObsClockSampled, ObsCollectionCompleted,
-		ObsNetworkBaselineSampled:
+		ObsNetworkBaselineSampled, ObsPayloadAttested:
 		return true
 	default:
 		return false
@@ -161,6 +169,13 @@ const (
 
 	// AttrSampleCount is the number of observations behind a baseline.
 	AttrSampleCount AttrKey = "sample_count"
+
+	// AttrPayloadPresent is the payload-timeliness committee's verdict for a
+	// slot, "true" or "false". The committee's own finding, not an inference.
+	AttrPayloadPresent AttrKey = "payload_present"
+
+	// AttrPTCVotes is how many payload attestations were counted for the slot.
+	AttrPTCVotes AttrKey = "ptc_votes"
 )
 
 const (
@@ -220,6 +235,8 @@ func (a AttrKey) PermittedFor(kind ObservationKind) bool {
 		return a == AttrValue
 	case ObsNetworkBaselineSampled:
 		return a == AttrBlockArrivalP50MS || a == AttrBlockArrivalP90MS || a == AttrSampleCount
+	case ObsPayloadAttested:
+		return a == AttrPayloadPresent || a == AttrPTCVotes
 	case ObsSlotStart, ObsBlockSkipped, ObsReorg:
 		return false
 	default:
@@ -321,7 +338,7 @@ func (o Observation) Validate() error {
 		if len(value) > maxObservationAttrValueBytes {
 			return fmt.Errorf("%w: %q on kind %q is %d bytes, limit is %d", ErrInvalidAttr, key, o.Kind, len(value), maxObservationAttrValueBytes)
 		}
-		if (key == AttrHeadCorrect || key == AttrTargetCorrect) && value != "true" && value != "false" {
+		if (key == AttrHeadCorrect || key == AttrTargetCorrect || key == AttrPayloadPresent) && value != "true" && value != "false" {
 			return fmt.Errorf("%w: %q must be true or false, got %q", ErrInvalidAttr, key, value)
 		}
 		if err := validateObservationAttr(key, value); err != nil {
@@ -337,7 +354,7 @@ func validateObservationAttr(key AttrKey, value string) error {
 		if _, err := strconv.ParseUint(value, 10, 64); err != nil {
 			return fmt.Errorf("must be an unsigned integer, got %q", value)
 		}
-	case AttrInclusionDelay, AttrSampleCount:
+	case AttrInclusionDelay, AttrSampleCount, AttrPTCVotes:
 		parsed, err := strconv.ParseUint(value, 10, 64)
 		if err != nil || parsed == 0 {
 			return fmt.Errorf("must be a positive integer, got %q", value)
@@ -379,6 +396,11 @@ func sourcePermittedFor(source SourceID, kind ObservationKind) bool {
 		return source == SourceDerived
 	case ObsDutyAssigned, ObsBlockSkipped, ObsHeadUpdated, ObsAttestationPublished,
 		ObsAttestationIncluded, ObsBlockProposed, ObsReorg:
+		return source == SourceBeaconAPI
+	case ObsPayloadAttested:
+		// Only beaconapi, and that is the point: the payload-timeliness
+		// committee's vote is a standardised Beacon API field inside the next
+		// block, so this cause needs no client-specific adapter (ADR-0027).
 		return source == SourceBeaconAPI
 	case ObsBlockSeen:
 		return source == SourceBeaconAPI || source == SourcePromScrape

@@ -15,6 +15,7 @@ func Order() []Rule {
 		DataCompleteness{},
 		ClockTrust{},
 		ProposerMissed{},
+		PayloadLate{},
 		NetworkLateBlock{},
 		P2PDegraded{},
 		ELSlow{},

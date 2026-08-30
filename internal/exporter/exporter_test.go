@@ -101,11 +101,12 @@ func scrape(t *testing.T, e *exporter.Exporter) string {
 func TestVerdictSeriesCardinalityIsBounded(t *testing.T) {
 	t.Parallel()
 
-	// 18 cause IDs plus "none", times the four outcomes. Spelled out rather than
+	// 19 cause IDs plus "none", times the four outcomes. Spelled out rather than
 	// recomputed from the same expressions the code uses, so changing the
 	// taxonomy forces a deliberate decision here instead of silently moving the
-	// number this test claims to pin.
-	const wantCauseValues, wantOutcomes, wantBound = 19, 4, 76
+	// number this test claims to pin. It did exactly that when
+	// network.payload_late was added: 19 -> 20 values, 76 -> 80 series.
+	const wantCauseValues, wantOutcomes, wantBound = 20, 4, 80
 
 	if got := len(domain.CauseIDs()) + 1; got != wantCauseValues {
 		t.Fatalf("cause label can take %d values, ADR-0009 documents %d — update the ADR and this test together", got, wantCauseValues)

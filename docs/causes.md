@@ -267,6 +267,50 @@ community reporting.
 
 ---
 
+### `network.payload_late`
+
+**Definition.** Under ePBS (EIP-7732) the payload-timeliness committee found that
+the slot's execution payload was not present in time, for a slot whose consensus
+block exists. A builder failure: the operator has no part in it and nothing on
+their machine to fix.
+
+**Rule (R-120).** The schedule carries a payload-reveal deadline
+(`SlotSchedule.IsPostEPBS`), a `payload_attested` observation reports
+`payload_present=false`, the slot was not skipped, **and the duty actually lost
+something**. That last condition is not a formality: on the public Glamsterdam
+network 32 of 51 committee votes reported the payload absent while attestations
+were still being included on time, so without it every healthy duty on that chain
+would be handed a cause.
+
+**Only on a post-ePBS network.** The deadline comes from the node's own spec
+(`PAYLOAD_DUE_BPS`, ADR-0026) and the vote from the following block's
+`payload_attestations` over the standardised Beacon API — so no client-specific
+adapter is involved. On every pre-Glamsterdam chain this rule declines: there is
+no separate payload to be late.
+
+**Requires the consensus block to exist.** A slot with no block at all is
+`network.proposer_missed`, not this. Reporting a late payload for a skipped slot
+would name the wrong party.
+
+**No sub-causes, deliberately.** `payload_present` says the payload was not there
+in time; it does not distinguish a payload that arrived late from one that never
+arrived. ADR-0027 sketched `revealed_late` and `never_revealed`, and they are not
+implemented because nothing whymiss observes can yet tell them apart. Claiming
+the distinction would be a confident guess (I-8).
+
+**Required evidence.** The payload-reveal deadline in force; the committee's
+verdict and how many votes stood behind it (`ptc_votes`); the consensus block's
+existence.
+
+**Confidence.** `high` when the committee's finding is the majority of a
+multi-vote sample; `medium` on a single vote, which one committee member's view
+does not settle.
+
+**Remediation.** None for the operator. The verdict's value is stating that the
+local validator, beacon node, and host were all working.
+
+---
+
 ### `network.inclusion_failure`
 
 **Definition.** The attestation was published before the deadline but never appeared
@@ -587,6 +631,7 @@ Closed set. Adding a kind is a taxonomy change (minor bump + ADR).
 | `clock_sampled` | clock | NTP offset measurement |
 | `collection_completed` | derived | Every required query completed and the final valid Deneb inclusion slot ended |
 | `network_baseline_sampled` | beaconapi (REST) / xatu / promscrape | Network block-arrival p50, p90, and sample count for one slot |
+| `payload_attested` | beaconapi (REST) | The payload-timeliness committee's vote on whether a slot's execution payload was revealed in time (post-ePBS only) |
 
 ### 8.1 Attribute keys
 
@@ -608,6 +653,8 @@ Closed set. Adding a kind is a taxonomy change (minor bump + ADR).
 | `block_arrival_p50_ms` | `network_baseline_sampled` | `850.5` |
 | `block_arrival_p90_ms` | `network_baseline_sampled` | `1300` |
 | `sample_count` | `engine_call`, `network_baseline_sampled` | `2` |
+| `payload_present` | `payload_attested` | `false` |
+| `ptc_votes` | `payload_attested` | `3` |
 
 ---
 

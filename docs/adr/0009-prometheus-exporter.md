@@ -32,12 +32,12 @@ label value is legal but confusing to alert on, so it's spelled out).
 
 **Cardinality bound**, per BUILD_PROMPT §12.3's DoD ("Prometheus `cause`
 label cardinality is bounded and documented"): `cause` has exactly
-`len(domain.CauseIDs())` + 1 = 19 possible values (`domain.CauseIDs()` is
+`len(domain.CauseIDs())` + 1 = 20 possible values (`domain.CauseIDs()` is
 a closed, compile-time-fixed slice — see `internal/domain/verdict.go`);
-`outcome` has exactly 4 (`domain.Outcome`'s closed set). 19 × 4 = 76
+`outcome` has exactly 4 (`domain.Outcome`'s closed set). 20 × 4 = 80
 label combinations at most, and most of those never actually occur (e.g.
 `outcome="no_duty"` only ever pairs with `cause="none"`) — one whymiss
-process watching any number of validators still emits at most 76 time
+process watching any number of validators still emits at most 80 time
 series for this metric, never growing with validator count or wall-clock
 time.
 

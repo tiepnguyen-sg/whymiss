@@ -125,6 +125,11 @@ const (
 	// CauseLateBlock means the block was late for the network as a whole.
 	CauseLateBlock CauseID = "network.late_block"
 
+	// CausePayloadLate means the ePBS payload-timeliness committee found the
+	// execution payload was not present in time for a slot whose consensus block
+	// exists. A builder failure: the operator has no part in it (ADR-0027).
+	CausePayloadLate CauseID = "network.payload_late"
+
 	// CauseInclusionFailure means the attestation was published on time and never
 	// appeared on chain.
 	CauseInclusionFailure CauseID = "network.inclusion_failure"
@@ -190,6 +195,7 @@ func CauseIDs() []CauseID {
 	return []CauseID{
 		CauseProposerMissed,
 		CauseLateBlock,
+		CausePayloadLate,
 		CauseInclusionFailure,
 		CauseP2PDegraded,
 		CauseCLSlow,
@@ -212,7 +218,7 @@ func CauseIDs() []CauseID {
 // Valid reports whether the cause is in the taxonomy.
 func (c CauseID) Valid() bool {
 	switch c {
-	case CauseProposerMissed, CauseLateBlock, CauseInclusionFailure,
+	case CauseProposerMissed, CauseLateBlock, CausePayloadLate, CauseInclusionFailure,
 		CauseP2PDegraded, CauseCLSlow, CauseELSlow, CauseELSlowSyncing,
 		CauseELSlowSnapshot, CauseELSlowPruning, CauseELSlowDiskSaturation,
 		CauseVCDisconnected, CauseVCSlow, CauseHostDiskIO, CauseHostCPUSteal,

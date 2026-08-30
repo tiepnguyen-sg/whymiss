@@ -192,6 +192,22 @@ func trackDuty(ctx context.Context, st *store.Store, client *beaconapi.Client, d
 		}
 	}
 
+	// Post-ePBS only: the payload-timeliness committee's verdict on this slot,
+	// carried in the next block. Absence is not a collection failure — a
+	// pre-ePBS chain has no such vote, and a skipped following slot carries
+	// none, neither of which says anything went wrong here.
+	if schedule.IsPostEPBS() {
+		ptc, ptcFound, ptcErr := client.PayloadAttested(ctx, d.Slot, time.Now().UTC())
+		switch {
+		case ptcErr != nil:
+			collectionError(ctx, logger, &collectionFailed, "poll payload_attested", ptcErr, d.Slot)
+		case ptcFound:
+			if err := st.WriteObservation(ctx, stampClock(clk, clockMaxAge, ptc)); err != nil {
+				collectionError(ctx, logger, &collectionFailed, "write payload_attested", err, d.Slot)
+			}
+		}
+	}
+
 	waitUntil(ctx, collectionDeadline)
 	if ctx.Err() != nil {
 		return

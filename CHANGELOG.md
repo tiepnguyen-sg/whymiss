@@ -8,6 +8,37 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **`network.payload_late`: whymiss can name a builder's failure under ePBS
+  (ADR-0027).** A new cause, a new observation kind `payload_attested`, and rule
+  R-120. Under EIP-7732 the payload-timeliness committee votes on whether a
+  slot's execution payload arrived in time, and that vote is carried in the next
+  block's `payload_attestations` — a **standardised Beacon API field**, so this
+  needs no client-specific adapter, the same conclusion ADR-0023 reached for peer
+  count and ADR-0025 for the baseline. An earlier reading assumed the timing had
+  to come from a client gauge and would have meant an adapter per client.
+
+  Validated against the live public Glamsterdam network: the daemon adopted the
+  post-ePBS schedule from the node's own spec, tracked duties, and recorded
+  `payload_attested {payload_present: true, ptc_votes: 2}` from real blocks.
+
+  **Running it live also caught a defect the unit tests did not.** R-120 first
+  fired on the committee's vote alone. On that network 32 of 51 votes reported
+  the payload absent while attestations were still being included on time, so
+  every healthy duty would have been handed a cause. The rule is now gated on
+  `dutyHasObservableLoss`, with a test for it. A verdict for a duty that lost
+  nothing is worse than no verdict.
+
+  **No sub-causes, deliberately.** ADR-0027 sketched `revealed_late` and
+  `never_revealed`; `payload_present` cannot tell them apart, and claiming the
+  distinction would be the confident guess I-8 exists to prevent.
+
+  **The cause has no corpus scenario yet, so it is unmeasured** — which this
+  project does not treat as passing. The corpus manifest requires `fault_kind`,
+  `fault_target` and a duration, so it admits only injected faults, while this
+  condition occurs naturally on the public network and cannot be injected into a
+  shared testnet. Whether the corpus should admit observed records is a decision
+  about what the corpus means, and it is left open rather than taken quietly.
+
 - **A case study reproduces a public incident's root cause with whymiss's own
   output.** `docs/case-studies/2023-05-mainnet-finality.md` takes the May 2023
   mainnet finality incidents — finality lost twice in 24 hours, participation down
@@ -124,8 +155,15 @@ version stays at `v0.x` until the API is stable.
   `no observations recorded`. EIP-7732 repurposes that field to signal payload
   availability, so a non-zero index there is correct data.
 
-  Measured on a Glamsterdam devnet on 2026-08-30, on one chain across its own
-  fork boundary: **23 of 32 attestations in 13 post-fork blocks carried index 1,
+  Verified afterwards on a **public, healthy** Glamsterdam network
+  (`beacon.glamsterdam-devnet-8.ethpandaops.io`, 41 blocks in 41 slots, head at
+  wall clock): whymiss adopted the schedule from its spec, tracked four attester
+  duties and recorded `attestation_included` and `collection_completed` with zero
+  errors — against Nimbus, a client this project has no adapter for. The same
+  binary before this fix recorded no inclusion on any Gloas chain.
+
+  Measured on a local Glamsterdam devnet on 2026-08-30, on one chain across its
+  own fork boundary: **23 of 32 attestations in 13 post-fork blocks carried index 1,
   against 0 of 32 in the 32 blocks before it.** The check is now scoped to the
   forks that specify it — Electra and Fulu — using the version the node itself
   reports on the same response. An unrecognised fork is accepted rather than
