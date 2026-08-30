@@ -153,6 +153,17 @@ uncollected. Record which of them were enabled alongside the summary, and record
 `sha256` of the exact binary the run used — a soak whose binary predates a
 collection fix measures code that is not being released.
 
+Read that log by level, not top to bottom. Against a gateway answering `/eth/v1/events`
+with `501` the reconnect backoff logs one identical `WARN` per attempt, roughly every
+15 seconds for as long as the run lasts: the 72-hour release soak produced 17,275 of
+them out of 18,006 lines — 96% of the file, 2.79 MB, about 0.93 MB per day. That is
+the backoff working as designed rather than a fault (`internal/source/beaconapi`
+retries indefinitely so a node that gains the endpoint later is picked up without
+operator action), but it will bury the lines that matter, so filter with
+`grep '"level":"ERROR"'` first and only then read around what it finds. The daemon
+logs to stdout, so rotation is journald's or the container runtime's job, not
+whymiss's.
+
 ## Publishing a release
 
 Do not create or push the release tag until every item below is complete:

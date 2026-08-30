@@ -8,6 +8,21 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **A test proves the rules read their deadlines from `SlotSchedule` rather than
+  from literals.** `TestAnalyze_TimingFollowsTheScheduleNotTheCode` replays the
+  real `p2p-degraded-prysm-r06` record twice with no code change between the
+  runs: under mainnet's 4s attestation deadline the verdict is
+  `local.p2p_degraded`, and under a widened schedule (8s attestation, 10s
+  aggregation) the same observations become `unknown.no_rule_matched`. Nothing
+  tested this before — every other test in the repository analyses with mainnet
+  timing, so a rule hard-coding `4 * time.Second` would have passed all of them,
+  and the Phase 5 claim that a fork is a config change rested on reading the code
+  rather than on a failing test if it stopped being true.
+
+  Slot duration is held at 12s on purpose. Widening it too pushes the inclusion
+  window past the record's own `collection_completed`, and `Replay` then rejects
+  the fixture — which is the harness being right, not an obstacle to work around.
+
 - **`local.el_slow` has evidence for the first time.** `test/corpus/el-slow-cpu`
   is the eighth cause covered and the first record to carry a `samples.jsonl`,
   pinned by `samples_sha256` like the observations beside it. The numbers are not
@@ -1534,10 +1549,69 @@ version stays at `v0.x` until the API is stable.
   so healthy duties scrape as `{cause="none",outcome="ok"}` with no change to
   the documented cardinality bound.
 
+### Verified
+
+- **The 72-hour Hoodi soak passed, and the binary it ran is the binary being
+  released.** It ran 2026-08-27T01:44:21Z to 2026-08-30T01:45:18Z on
+  `1d0bdd6d5660219b73f7bb10196222f6e67cfb0b5c7750d8bd60853f6421d08d` and
+  `test/soak/run.sh` wrote `result=PASS` itself — the script exits non-zero the
+  instant RSS crosses 262144 KiB or the database crosses 104857600 bytes, so the
+  result is an assertion rather than a reading. Over 4321 one-minute samples:
+  `max_rss_kib=34688` (13.2% of the ceiling), `max_database_bytes=25447600`
+  (24.3% of the cap), 674 verdicts recorded. The run directory is archived under
+  a gitignored `soak-results/`.
+
+  The identity claim is the part worth stating precisely, because the sha does
+  not match a fresh build and that looks alarming until it is chased down. The
+  soaked binary was built at `0c0a94b` with a dirty tree; HEAD has moved since.
+  Rebuilding HEAD for `linux/amd64` with the soaked binary's own version string
+  produces the same size, 17019042 bytes, differing in **201 bytes across five
+  regions, every one of them build metadata** — the Go and GNU build IDs (120 B),
+  the module pseudo-version (2 x 20 B), and `vcs.revision` with `vcs.time`
+  (2 x 75 B). No instruction byte and no string constant differs. Nothing under
+  `cmd/` or `internal/` was touched while closing the item, precisely so this
+  stays true.
+
+  All 55 `ERROR` lines in the run were read and attributed, none of them to
+  whymiss: 49 are `cannot confirm slot <n> as seen or skipped: node is not fully
+  synced, execution-valid, and past the slot after waiting 1m30s` — the node
+  behind the public gateway lagging — 5 are `unexpected status 500: dialing ...
+  timed out` from the gateway itself, and 1 is the `context canceled` raised when
+  the soak stopped the daemon at the end. Note that the helper watcher on the
+  soak host reported `errors : 0` for this run: it greps `level=ERROR` in logfmt
+  while the daemon emits JSON. The script was fixed; the number to trust is 55.
+
 ### Known issues
 
-- **Resident memory's shape is warm-up, not drift — but only one run has shown
-  the plateau.** An earlier reading of this taken at the three-hour mark reported
+- **A gateway without `/eth/v1/events` fills the log with one repeated warning.**
+  The public Hoodi gateway answers that endpoint with `501`, and
+  `internal/source/beaconapi`'s `Stream` retries indefinitely by design — a node
+  that gains the endpoint after an upgrade is then picked up with no operator
+  action. Every attempt logs `event stream error, reconnecting`. Measured over
+  the release soak: **17,275 of 18,006 log lines, 96% of the file**, 2.79 MB in
+  72 hours or about 0.93 MB per day, one line roughly every 15 seconds.
+
+  The backoff itself is correct and is not what is being reported here. It is
+  exponential with full jitter, base 1s and cap 30s (`backoff.go`), and the
+  measured intervals match: p50 16.0s, max 29.7s, so the node sees at most two
+  connection attempts a minute in the worst case. I-5 is respected.
+
+  What is wrong is the signal-to-noise: 55 real `ERROR` lines sat inside 17,275
+  identical warnings. Throttling repeats belongs in the `onError` callback in
+  `internal/app/watch.go`, which is a change to the daemon binary, and the
+  release binary is the one that just passed a 72-hour soak — so this is recorded
+  for after v0.1.0 rather than fixed now. Until then `docs/runbook.md` says to
+  filter the log by level instead of reading it top to bottom. The daemon writes
+  to stdout, so rotation is journald's or the container runtime's job.
+
+- **Resident memory's shape is warm-up, not drift — settled by the full 72-hour
+  run.** The release soak ended 2026-08-30 with `max_rss_kib=34688` across 4321
+  samples, 13.2% of the 262144 KiB ceiling, so the plateau held for three days
+  and the alternative this entry was worried about (a pause before retention
+  makes the SQLite page cache grow again) did not happen. The rest of this entry
+  is the reasoning from when it was still open, kept because the shape it
+  describes is what the long run confirmed. An earlier reading taken at the
+  three-hour mark reported
   a steady +1407 KiB/h climb and treated it as possible unbounded growth. More
   samples corrected that. Quarter-by-quarter least-squares slopes on the release
   run's own `samples.csv` (266 samples, 4.42h):
@@ -1557,7 +1631,9 @@ version stays at `v0.x` until the API is stable.
   Two runs, two shapes. The plateau here may be the real steady state, or it may
   be a pause before the database reaches its retention threshold and the SQLite
   page cache grows again. The 72-hour soak is the measurement that settles it,
-  and `test/soak/run.sh` fails on its own if RSS ever crosses 262144 KiB.
+  and `test/soak/run.sh` fails on its own if RSS ever crosses 262144 KiB. It ran
+  and it passed: peak 34688 KiB, roughly 7 MiB above the 4.4-hour plateau this
+  entry described and nowhere near the ceiling.
 
   It still cannot be attributed from outside the process: the exporter registers
   only `whymiss_*` collectors — no `go_memstats_*`, no `process_*` — so nothing
