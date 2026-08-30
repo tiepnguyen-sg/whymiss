@@ -780,6 +780,17 @@ version stays at `v0.x` until the API is stable.
   setting one workflow back to 1.25.14 makes it exit non-zero naming the file and
   line, and restoring the value makes it pass.
 
+  Clearing that failure exposed a second one of the same shape underneath it,
+  which only became visible once CI got far enough to run `make ci` at all: the
+  pinned `gofumpt@v0.10.0` flagged 23 files that the developer machine's v0.11.0
+  called clean. The two versions disagree about whether a multiline call's
+  closing paren goes on its own line. `gofmt` from the same Go release considers
+  the tree clean either way, so the code was never unformatted — the pin was
+  simply older than the tool people run. Bumped to `v0.11.0` in both workflows,
+  and `check.format` now prints the gofumpt version when it fails, so the next
+  person sees a version mismatch instead of reformatting 23 files to satisfy a
+  binary nobody has.
+
   A guard is warranted rather than a note, because the failure was invisible in
   both directions: `make ci` was green on every developer machine for three days
   while the runner never executed a single check, and the version that would have

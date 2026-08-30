@@ -167,8 +167,19 @@ fmt:
 	gofumpt -l -w .
 
 ## check.format: verify formatting without changing the worktree
+#
+# Prints the gofumpt version on failure. gofumpt v0.10.0 and v0.11.0 disagree
+# about closing parens on multiline calls, so a green local run and a red CI run
+# once meant nothing more than two different binaries on two different machines —
+# `gofmt` from the same Go release considered the tree clean throughout. If this
+# fails on a tree you did not touch, compare the version below against the pin in
+# .github/workflows/ci.yml before running `make fmt` and reformatting 23 files.
 check.format:
-	@test -z "$$(gofumpt -l .)" || (gofumpt -l .; echo "run: make fmt"; exit 1)
+	@test -z "$$(gofumpt -l .)" || ( \
+		gofumpt -l .; \
+		echo "gofumpt: $$(gofumpt --version 2>&1) — CI pins the version in .github/workflows/ci.yml"; \
+		echo "run: make fmt"; \
+		exit 1)
 
 ## check.tidy: verify go.mod/go.sum without changing the worktree
 check.tidy:
