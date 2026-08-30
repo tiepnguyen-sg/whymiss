@@ -84,13 +84,25 @@ observation.
 The decision above is approved; the code is not written, and the reason is
 evidence rather than effort. Measured on 2026-08-30:
 
-**No ePBS devnet available here is healthy enough to record against.** A
-Glamsterdam devnet with `mev_type: null` produced blocks on 10 of 41 slots. Adding
-`mev_type: buildoor` with `buildoor_params.epbs_builder` improved it to 7 of 13
-post-fork, with the head running 7 slots behind wall clock — still losing about
-half of all slots. Every record taken from a chain in that state carries the
-chain's own sickness as well as the injected fault, which is how fourteen corpus
-records were once generated and thrown away.
+**No ePBS devnet available here is healthy enough to record against.** Three
+configurations were tried on 2026-08-30, each with one supernode, one Lighthouse
+node and two Prysm nodes:
+
+| Configuration | Result |
+|---|---|
+| `gloas_fork_epoch: 2`, `mev_type: null` | Chain runs; blocks on **10 of 41** post-fork slots |
+| `gloas_fork_epoch: 2`, `mev_type: buildoor` + `epbs_builder` | Blocks on **7 of 13** post-fork slots, head 7 slots behind wall clock |
+| `gloas_fork_epoch: 0` (genesis at Gloas) | Lighthouse refuses to start: `Built-in genesis state SSZ bytes are invalid: OffsetsAreDecreasing(0)` |
+
+A builder helps and is plainly required, but does not make the chain healthy. The
+degradation is not transition shock that settles: the first run's 10 of 41 spans
+slots 64 to 105, while the same chain produced 32 of 32 blocks in the two epochs
+before the fork. Scheduling the fork later would postpone the same behaviour, and
+starting at it is refused by the client.
+
+Every record taken from a chain losing half its slots carries the chain's own
+sickness as well as the injected fault, which is how fourteen corpus records were
+once generated and thrown away.
 
 **whymiss cannot yet observe a payload reveal at all.** There is no
 `payload_revealed` observation kind and no collector for one. The Beacon API
