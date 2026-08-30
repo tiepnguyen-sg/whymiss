@@ -6,6 +6,8 @@ version stays at `v0.x` until the API is stable.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-30
+
 ### Added
 
 - **A test proves the rules read their deadlines from `SlotSchedule` rather than
@@ -748,6 +750,29 @@ version stays at `v0.x` until the API is stable.
   produces trustworthy timing verdicts.
 
 ### Fixed
+
+- **CI has been red since 2026-08-27, and the reason would have shipped a binary
+  the soak never measured.** `go.mod` declared `go 1.25.14` while `ci.yml` pins
+  `goreleaser/v2@v2.17.1`, which requires Go >= 1.26.5. With `GOTOOLCHAIN=local`
+  the tool install failed outright — exactly the loud failure that setting is
+  there to produce — so the `invariant gate` job never reached a single check.
+  `make ci` passed locally throughout, because the local toolchain is go1.26.6
+  and the `go` directive is only a minimum.
+
+  The disagreement mattered for more than a red badge. `setup-go` reads
+  `go-version-file: go.mod` in both `ci.yml` and `release.yml`, so a release
+  built on GitHub would have used Go 1.25.14 while the binary that ran the
+  72-hour soak was built by go1.26.6 — and those are not close: same source,
+  same flags, 14258360 bytes against 17019042, with 13.25 million bytes
+  differing. The soak evidence would have described a compiler the release
+  artifact was never produced by.
+
+  Fixed by adding an explicit `toolchain go1.26.6` line beside the unchanged
+  `go 1.25.14`: the language minimum for anyone building from source stays where
+  it was, while CI installs and builds with the compiler the soak actually
+  exercised. Verified by rebuilding after the change and diffing against the
+  soaked binary again — still identical but for build IDs, the module
+  pseudo-version, and `vcs.revision`/`vcs.time`.
 
 - **`docs/causes.md`'s observation vocabulary listed sources the domain model had
   stopped agreeing with.** `peer_count_sampled` was documented as `promscrape`

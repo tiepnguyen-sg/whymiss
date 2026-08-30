@@ -9,6 +9,18 @@ module github.com/tiepnguyen-sg/whymiss
 // Bump this line and the pinned tools deliberately, not independently.
 go 1.25.14
 
+// The toolchain CI builds with, kept separate from the language minimum above on
+// purpose: `go` is the oldest release that can compile this module, `toolchain`
+// is the exact compiler the release artifact is produced by. setup-go reads this
+// line, so CI installs it and GOTOOLCHAIN=local then has nothing to switch to.
+//
+// It is not cosmetic. The release soak ran a binary built by go1.26.6; the same
+// source built by go1.25.14 is a different 14258360-byte binary rather than the
+// 17019042-byte one that was measured for 72 hours. Building the release with a
+// compiler the soak never exercised would make the soak evidence describe
+// something other than the artifact. Bump this together with the pinned CI tools.
+toolchain go1.26.6
+
 // New dependencies require an ADR (I-14: fewer than 15 direct dependencies at
 // v1.0). The locked choices in BUILD_PROMPT §3 — cobra, koanf,
 // modernc.org/sqlite, client_golang — land in the phase that first needs them,
