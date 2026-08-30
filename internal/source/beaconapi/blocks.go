@@ -62,15 +62,19 @@ func (c *Client) fetchBlockBody(ctx context.Context, slot domain.Slot) (atts []b
 	}
 	if len(c.blockCache) >= maxBlockFetches {
 		c.blockMu.Unlock()
-		return c.fetchBlockBodyUncached(ctx, slot)
+		atts, version, found, err := c.fetchBlockBodyUncached(ctx, slot)
+		if err == nil && found {
+			err = validateBlockAttestations(atts, version)
+		}
+		return atts, found, err
 	}
 	entry := &blockCacheEntry{ready: make(chan struct{})}
 	c.blockCache[key] = entry
 	c.blockMu.Unlock()
 
-	atts, found, err = c.fetchBlockBodyUncached(ctx, slot)
+	atts, version, found, err := c.fetchBlockBodyUncached(ctx, slot)
 	if err == nil && found {
-		err = validateBlockAttestations(atts)
+		err = validateBlockAttestations(atts, version)
 	}
 	c.blockMu.Lock()
 	entry.atts, entry.found, entry.err, entry.complete, entry.fetched = atts, found, err, true, time.Now()
@@ -84,7 +88,35 @@ func (c *Client) fetchBlockBody(ctx context.Context, slot domain.Slot) (atts []b
 	return atts, found, err
 }
 
-func validateBlockAttestations(atts []blockAttestation) error {
+// forksRequiringZeroAttestationIndex are the fork versions in which
+// AttestationData.index is specified to be zero, its committee having moved to
+// committee_bits (EIP-7549).
+//
+// Gloas is deliberately absent. EIP-7732 repurposes the field to signal payload
+// availability, so a non-zero index there is correct data rather than a
+// malformed response — measured on a Glamsterdam devnet 2026-08-30, where 23 of
+// 32 attestations across 13 post-fork blocks carried index 1 while every one of
+// the 32 attestations in the 32 blocks before the fork carried 0.
+//
+// A closed set, not a version comparison, and unknown forks are accepted rather
+// than rejected. The two failures are not symmetric: this check refusing a block
+// stops CheckInclusion outright, so no attestation_included is ever recorded and
+// every duty on that chain resolves to "no observations" — which is exactly what
+// whymiss did against Gloas before this. A missing sanity check costs one
+// assertion; a wrong rejection costs the whole product on that network.
+func forkRequiresZeroAttestationIndex(version string) bool {
+	switch strings.ToLower(version) {
+	case "electra", "fulu":
+		return true
+	default:
+		return false
+	}
+}
+
+// validateBlockAttestations checks a block's attestations against the rules of
+// the fork the node itself reported. An empty version means the node did not say
+// (or a fixture predates the field), and the fork-specific rules are skipped.
+func validateBlockAttestations(atts []blockAttestation, version string) error {
 	electra := false
 	for _, att := range atts {
 		if att.CommitteeBits != "" {
@@ -128,8 +160,8 @@ func validateBlockAttestations(atts []blockAttestation) error {
 			return fmt.Errorf("block attestation %d: %w", i, err)
 		}
 		if electra {
-			if att.Data.Index != "0" {
-				return fmt.Errorf("block attestation %d Electra data index is %q, want 0", i, att.Data.Index)
+			if forkRequiresZeroAttestationIndex(version) && att.Data.Index != "0" {
+				return fmt.Errorf("block attestation %d %s data index is %q, want 0", i, version, att.Data.Index)
 			}
 			if len(att.CommitteeBits) != 18 {
 				return fmt.Errorf("block attestation %d committee_bits is %d characters, want 18", i, len(att.CommitteeBits))
@@ -194,45 +226,52 @@ func (c *Client) trimBlockCacheLocked() {
 // fetchBlockBodyUncached prefers the standard attestations-only endpoint. It
 // falls back to the legacy full-block response for Lighthouse/Prysm versions
 // that predate Beacon API v3, then remembers endpoint support for the process.
-func (c *Client) fetchBlockBodyUncached(ctx context.Context, slot domain.Slot) (atts []blockAttestation, found bool, err error) {
+func (c *Client) fetchBlockBodyUncached(ctx context.Context, slot domain.Slot) (atts []blockAttestation, version string, found bool, err error) {
 	if c.blockEndpointSupport() != endpointUnsupported {
-		found, err = c.get(ctx, fmt.Sprintf("/eth/v2/beacon/blocks/%d/attestations", slot), &atts)
+		var envelope struct {
+			Version string             `json:"version"`
+			Data    []blockAttestation `json:"data"`
+		}
+		found, err = c.getEnvelope(ctx, fmt.Sprintf("/eth/v2/beacon/blocks/%d/attestations", slot), &envelope)
 		if err == nil && found {
 			c.setBlockEndpointSupport(endpointSupported)
-			return atts, true, nil
+			return envelope.Data, envelope.Version, true, nil
 		}
 		if err != nil && !unsupportedEndpointError(err) {
-			return nil, false, fmt.Errorf("fetch block %d attestations: %w", slot, err)
+			return nil, "", false, fmt.Errorf("fetch block %d attestations: %w", slot, err)
 		}
 		if err != nil {
 			c.setBlockEndpointSupport(endpointUnsupported)
 		} else if c.blockEndpointSupport() == endpointSupported {
-			return nil, false, nil
+			return nil, "", false, nil
 		}
 	}
 
 	return c.fetchLegacyBlockBody(ctx, slot)
 }
 
-func (c *Client) fetchLegacyBlockBody(ctx context.Context, slot domain.Slot) (atts []blockAttestation, found bool, err error) {
+func (c *Client) fetchLegacyBlockBody(ctx context.Context, slot domain.Slot) (atts []blockAttestation, version string, found bool, err error) {
 	var envelope struct {
-		Message struct {
-			Body struct {
-				Attestations []blockAttestation `json:"attestations"`
-			} `json:"body"`
-		} `json:"message"`
+		Version string `json:"version"`
+		Data    struct {
+			Message struct {
+				Body struct {
+					Attestations []blockAttestation `json:"attestations"`
+				} `json:"body"`
+			} `json:"message"`
+		} `json:"data"`
 	}
-	found, err = c.get(ctx, fmt.Sprintf("/eth/v2/beacon/blocks/%d", slot), &envelope)
+	found, err = c.getEnvelope(ctx, fmt.Sprintf("/eth/v2/beacon/blocks/%d", slot), &envelope)
 	if err != nil {
-		return nil, false, fmt.Errorf("fetch block %d: %w", slot, err)
+		return nil, "", false, fmt.Errorf("fetch block %d: %w", slot, err)
 	}
 	if !found {
-		return nil, false, nil
+		return nil, "", false, nil
 	}
 	if c.blockEndpointSupport() == endpointUnknown {
 		c.setBlockEndpointSupport(endpointUnsupported)
 	}
-	return envelope.Message.Body.Attestations, true, nil
+	return envelope.Data.Message.Body.Attestations, envelope.Version, true, nil
 }
 
 func (c *Client) blockEndpointSupport() endpointSupport {

@@ -225,10 +225,10 @@ func TestValidateBlockAttestations(t *testing.T) {
 		pre := validBlockAttestation()
 		electra := validBlockAttestation()
 		electra.CommitteeBits = "0x0100000000000000"
-		if err := validateBlockAttestations([]blockAttestation{pre}); err != nil {
+		if err := validateBlockAttestations([]blockAttestation{pre}, "deneb"); err != nil {
 			t.Fatalf("pre-Electra: %v", err)
 		}
-		if err := validateBlockAttestations([]blockAttestation{electra}); err != nil {
+		if err := validateBlockAttestations([]blockAttestation{electra}, "electra"); err != nil {
 			t.Fatalf("Electra: %v", err)
 		}
 	})
@@ -284,7 +284,7 @@ func TestValidateBlockAttestations(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if err := validateBlockAttestations(tc.atts()); err == nil {
+			if err := validateBlockAttestations(tc.atts(), "electra"); err == nil {
 				t.Fatal("validateBlockAttestations accepted malformed input")
 			}
 		})
@@ -309,5 +309,71 @@ func TestFetchBlockBody_LegacyFallback(t *testing.T) {
 	atts, found, err := c.fetchBlockBody(context.Background(), 3631)
 	if err != nil || !found || len(atts) == 0 {
 		t.Fatalf("fetchBlockBody: attestations=%d found=%t err=%v", len(atts), found, err)
+	}
+}
+
+// TestFetchBlockBodyAcceptsGloasAttestationIndex uses a response recorded from a
+// Glamsterdam devnet on 2026-08-30, where whymiss found this defect: five of the
+// block's six attestations carry data.index 1.
+//
+// Before the fix the Electra-era assertion "index must be 0" rejected the whole
+// block, CheckInclusion returned an error for every duty, no
+// attestation_included was ever written, and every slot on that chain resolved
+// to "no observations recorded". EIP-7732 repurposes the field to signal payload
+// availability, so a non-zero index there is correct data.
+func TestFetchBlockBodyAcceptsGloasAttestationIndex(t *testing.T) {
+	srv := serveTestdata(t, map[string]string{
+		"/eth/v2/beacon/blocks/73/attestations": "block_attestations_gloas.json",
+	})
+	defer srv.Close()
+
+	atts, found, err := NewClient(srv.URL, 0).fetchBlockBody(context.Background(), 73)
+	if err != nil {
+		t.Fatalf("fetchBlockBody on a Gloas block: %v", err)
+	}
+	if !found {
+		t.Fatal("fetchBlockBody: want found, got false")
+	}
+	if len(atts) != 6 {
+		t.Fatalf("got %d attestations, want the 6 in the recorded block", len(atts))
+	}
+	nonZero := 0
+	for _, att := range atts {
+		if att.Data.Index != "0" {
+			nonZero++
+		}
+	}
+	if nonZero != 5 {
+		t.Errorf("got %d attestations with a non-zero index, want the 5 the devnet produced", nonZero)
+	}
+}
+
+// The same shape under Electra is still a malformed response, and must still be
+// refused: the fix narrowed the rule to the forks it belongs to, it did not
+// delete it.
+func TestValidateBlockAttestationsStillRejectsANonZeroElectraIndex(t *testing.T) {
+	t.Parallel()
+
+	att := validBlockAttestation()
+	att.CommitteeBits = "0x0100000000000000"
+	att.Data.Index = "1"
+
+	if err := validateBlockAttestations([]blockAttestation{att}, "electra"); err == nil {
+		t.Error("Electra: accepted a non-zero data index")
+	}
+	if err := validateBlockAttestations([]blockAttestation{att}, "fulu"); err == nil {
+		t.Error("Fulu: accepted a non-zero data index")
+	}
+	if err := validateBlockAttestations([]blockAttestation{att}, "gloas"); err != nil {
+		t.Errorf("Gloas: rejected a non-zero data index: %v", err)
+	}
+	// A fork this build has never heard of is accepted rather than refused: a
+	// wrong rejection costs the whole product on that network, a missing check
+	// costs one assertion.
+	if err := validateBlockAttestations([]blockAttestation{att}, "someunknownfork"); err != nil {
+		t.Errorf("unknown fork: rejected a non-zero data index: %v", err)
+	}
+	if err := validateBlockAttestations([]blockAttestation{att}, ""); err != nil {
+		t.Errorf("no version reported: rejected a non-zero data index: %v", err)
 	}
 }

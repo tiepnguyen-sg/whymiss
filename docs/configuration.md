@@ -101,8 +101,15 @@ matching `beacon_head_slot`; stale or cross-slot latest-value gauges are discard
 
 ## Slot schedule
 
-These values are data, not hard-coded RCA constants. Change them only to match the
-active consensus specification.
+These values are data, not hard-coded RCA constants.
+
+**They are normally read from the node, not configured.** At start-up whymiss
+reads `GET /eth/v1/config/spec` and adopts the timing model the node reports, so
+a fork that moves the deadlines needs no action (ADR-0026). Setting any of them
+to something other than the mainnet defaults below overrides that entirely — the
+schedule you configure is the schedule used, and `whymiss watch` logs which of
+the two it is running with. Configure them to pin a schedule deliberately, or
+when the node is too old to publish its own.
 
 | YAML key | Environment | Default | Constraint |
 |---|---|---:|---|

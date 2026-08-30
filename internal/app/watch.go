@@ -308,6 +308,11 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 		return fmt.Errorf("fetch genesis: %w", err)
 	}
 	logger.Info("connected to beacon node", "beacon_api", cfg.BeaconAPI, "genesis_time", genesis.GenesisTime)
+	schedule := cfg.Schedule
+	if schedule == (domain.SlotSchedule{}) {
+		schedule = domain.MainnetPreEPBS()
+	}
+	schedule = adoptNodeSchedule(ctx, client, genesis, schedule, logger)
 
 	streamState := newStreamHealth(func() time.Time { return time.Now().UTC() })
 	events := client.Stream(ctx, func(streamErr error) {
@@ -426,10 +431,6 @@ func Watch(ctx context.Context, cfg WatchConfig) (retErr error) {
 	start(func() { runSlotClock(ctx, st, genesis, clk, clockMaxAge, logger) })
 
 	if len(cfg.ValidatorIndices) > 0 {
-		schedule := cfg.Schedule
-		if schedule == (domain.SlotSchedule{}) {
-			schedule = domain.MainnetPreEPBS()
-		}
 		exp := exporter.New()
 		start(func() {
 			runDutyTracking(ctx, st, client, cfg.ValidatorIndices, cfg.DBPath, schedule, rcaConfig, exp, genesis, &heads, clk, clockMaxAge, logger)

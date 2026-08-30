@@ -67,9 +67,11 @@ func newRootCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			schedule := app.ResolveSchedule(cmd.Context(), flags.beaconAPI,
+				flags.loaded.Watch.MinRequestInterval, flags.schedule, nil)
 			var v domain.Verdict
 			if validator == nil {
-				v, err = app.Explain(cmd.Context(), flags.dbPath, domain.Slot(slotArg), flags.schedule, flags.rcaConfig)
+				v, err = app.Explain(cmd.Context(), flags.dbPath, domain.Slot(slotArg), schedule, flags.rcaConfig)
 			} else {
 				v, err = app.ExplainForValidator(cmd.Context(), flags.dbPath, domain.Slot(slotArg), *validator, flags.schedule, flags.rcaConfig)
 			}

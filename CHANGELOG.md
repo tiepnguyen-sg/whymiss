@@ -8,6 +8,37 @@ version stays at `v0.x` until the API is stable.
 
 ### Added
 
+- **The slot schedule is read from the node instead of typed by an operator
+  (ADR-0026).** `GET /eth/v1/config/spec` publishes the whole timing model —
+  `SECONDS_PER_SLOT` plus the deadlines as basis points — so `whymiss watch` now
+  adopts it at start-up and logs which schedule it is running with. A schedule
+  the operator configured to anything other than the mainnet defaults still wins,
+  and every failure path keeps the configured one and carries on.
+
+  On existing networks this is a no-op, verified rather than asserted: the
+  recorded Hoodi spec yields exactly `domain.MainnetPreEPBS()`. On a Glamsterdam
+  devnet, measured live on 2026-08-30, the daemon logs
+
+      slot schedule adopted from the node's own spec
+      attestation_deadline=3s aggregation_deadline=8s
+      payload_reveal_deadline=6s ptc_deadline=9s post_epbs=true
+
+  with no configuration at all — which is BUILD_PROMPT task 5.4's "a fork is a
+  config change" reduced to no change whatsoever.
+
+  **A post-ePBS network is decided by `GLOAS_FORK_EPOCH`, never by the presence
+  of the ePBS keys**, and that distinction is the reason this needed an ADR. The
+  public Hoodi gateway publishes `PAYLOAD_DUE_BPS` and `ATTESTATION_DUE_BPS_GLOAS`
+  while having Gloas unscheduled, and its `PAYLOAD_DUE_BPS` was 7500 where the
+  Glamsterdam devnet's was 5000. Inferring the fork from key presence would have
+  produced a confident, wrong payload deadline on every pre-fork node, differing
+  by client build.
+
+  Basis points are converted rounded to the nearest millisecond, because they are
+  a fixed-point approximation: 3333 bps of a 12s slot is 3.9996s, and carrying
+  that 0.4ms would move every timing verdict off the boundary `docs/causes.md`
+  documents.
+
 - **`SlotSchedule` carries the two post-ePBS deadlines, so a fork that moves the
   timing model is a configuration change.** `PayloadRevealDeadline` and
   `PTCDeadline` join the schedule additively, exactly as that type's doc comment
@@ -60,6 +91,31 @@ version stays at `v0.x` until the API is stable.
   status file that once lied is more useful shown than quietly corrected.
 
 ### Fixed
+
+- **whymiss produced no verdict at all on a post-ePBS chain.** Its Electra-era
+  check that `attestation.data.index` must be 0 rejected the whole block on
+  Glamsterdam, so `CheckInclusion` failed for every duty, no
+  `attestation_included` was ever written, and every slot resolved to
+  `no observations recorded`. EIP-7732 repurposes that field to signal payload
+  availability, so a non-zero index there is correct data.
+
+  Measured on a Glamsterdam devnet on 2026-08-30, on one chain across its own
+  fork boundary: **23 of 32 attestations in 13 post-fork blocks carried index 1,
+  against 0 of 32 in the 32 blocks before it.** The check is now scoped to the
+  forks that specify it — Electra and Fulu — using the version the node itself
+  reports on the same response. An unrecognised fork is accepted rather than
+  refused: the failures are not symmetric, since a wrong rejection costs the
+  entire product on that network while a missing assertion costs one check.
+  `testdata/block_attestations_gloas.json` is the recorded block, and the test
+  built on it fails against the old logic.
+
+- **The spec response could not be decoded at all against a real node.** The
+  first version of the schedule reader decoded `data` into `map[string]string`,
+  which a live response breaks: `BLOB_SCHEDULE` is an array. The fixtures had
+  been trimmed to the keys of interest and so hid it — the exact failure
+  `AGENTS.md` forbids hand-written node responses to prevent. Both fixtures are
+  now the untouched recordings, and values are decoded individually so an
+  unfamiliar shape is skipped rather than discarding the document.
 
 - **A clean shutdown was logged as a collection failure.** Every in-flight
   collector reaching a cancelled context wrote `logger.Error` — the release soak

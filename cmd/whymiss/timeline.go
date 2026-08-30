@@ -29,11 +29,13 @@ func newTimelineCmd(flags *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			schedule := app.ResolveSchedule(cmd.Context(), flags.beaconAPI,
+				flags.loaded.Watch.MinRequestInterval, flags.schedule, nil)
 			var tl domain.Timeline
 			if validator == nil {
-				tl, err = app.GetTimeline(cmd.Context(), flags.dbPath, domain.Slot(slotArg), flags.schedule)
+				tl, err = app.GetTimeline(cmd.Context(), flags.dbPath, domain.Slot(slotArg), schedule)
 			} else {
-				tl, err = app.GetTimelineForValidator(cmd.Context(), flags.dbPath, domain.Slot(slotArg), *validator, flags.schedule)
+				tl, err = app.GetTimelineForValidator(cmd.Context(), flags.dbPath, domain.Slot(slotArg), *validator, schedule)
 			}
 			if err != nil {
 				return err
