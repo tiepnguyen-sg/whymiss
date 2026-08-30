@@ -6,6 +6,17 @@ version stays at `v0.x` until the API is stable.
 
 ## [Unreleased]
 
+### Changed
+
+- **The install instructions named a tag that has no release.** README and the
+  Compose file pointed at `v0.2.1`'s predecessor throughout — the archive
+  download, both `cosign verify` identities, `WHYMISS_IMAGE`, and the
+  `docker-compose.yml` error message. That tag exists in the repository but its
+  release never published and no GHCR image was ever pushed for it, so every one
+  of those instructions would have failed for a reader following them literally.
+  All now name `v0.2.1`, which is the first tag with a published release behind
+  it.
+
 ## [0.2.1] - 2026-08-30
 
 Everything in 0.2.0, which was tagged but never published. Its release workflow
