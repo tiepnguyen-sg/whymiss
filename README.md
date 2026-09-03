@@ -21,13 +21,13 @@ cp deploy/docker/.env.example deploy/docker/.env   # set the exact image tag and
 cd deploy/docker
 docker compose pull
 cosign verify \
-    --certificate-identity "https://github.com/tiepnguyen-sg/whymiss/.github/workflows/release.yml@refs/tags/v0.2.1" \
+    --certificate-identity "https://github.com/tiepnguyen-sg/whymiss/.github/workflows/release.yml@refs/tags/v0.3.0" \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-    ghcr.io/tiepnguyen-sg/whymiss:v0.2.1
+    ghcr.io/tiepnguyen-sg/whymiss:v0.3.0
 docker compose up -d
 ```
 
-Set `WHYMISS_IMAGE=ghcr.io/tiepnguyen-sg/whymiss:v0.2.1` in `.env` for this
+Set `WHYMISS_IMAGE=ghcr.io/tiepnguyen-sg/whymiss:v0.3.0` in `.env` for this
 release. The verified reference above must match it exactly.
 
 Open `http://127.0.0.1:3000` and log in as `admin` with the password you set
@@ -57,7 +57,7 @@ release's GitHub page, then verify it before running anything from it:
 sha256sum -c --ignore-missing checksums.txt
 
 # 2. Set this to the exact release tag you downloaded.
-RELEASE=v0.2.1
+RELEASE=v0.3.0
 
 # checksums.txt itself is genuinely signed by this project's release workflow —
 #    not a stored key, a keyless Sigstore identity bound to the exact GitHub Actions
@@ -83,7 +83,7 @@ The same release is published as a signed multi-arch OCI image. Use the exact ta
 never an implicit floating version:
 
 ```sh
-RELEASE=v0.2.1
+RELEASE=v0.3.0
 docker pull ghcr.io/tiepnguyen-sg/whymiss:${RELEASE}
 cosign verify \
     --certificate-identity "https://github.com/tiepnguyen-sg/whymiss/.github/workflows/release.yml@refs/tags/${RELEASE}" \

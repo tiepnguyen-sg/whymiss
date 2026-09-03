@@ -1,0 +1,8 @@
+SOAK v0.3.0: CLOSED
+soak result : PASS
+binary sha  : 99210b69c79b73f2245066db9afe0102804e832c5a62dd98429a40787967cf6d
+peak rss    : 34076 KiB / 262144
+final db    : 22798336 bytes / 104857600
+errors      : 55
+verdicts    : 673
+ended       : 2026-09-02T10:37:38Z

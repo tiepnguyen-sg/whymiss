@@ -6,6 +6,20 @@ version stays at `v0.x` until the API is stable.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-02
+
+Signed off by a 72-hour soak that finished 2026-09-02T10:32:57Z with
+`result=PASS`: peak RSS **34076 KiB** against the 262144 KiB ceiling (13.0%), a
+database peaking at **25361656 bytes** against the 104857600 byte cap (24.2%),
+and 673 verdicts over 4321 one-minute samples. All 55 error lines belong to the
+public gateway it ran against, none to whymiss, and no `context canceled` appears
+at shutdown any more. Evidence and the commands to recompute every figure are in
+[`test/soak/evidence/20260830T103211Z/`](test/soak/evidence/20260830T103211Z/README.md).
+
+The binary that ran it is machine-code-identical to this tag: rebuilding it with
+its own version string differs in 190 bytes across five regions, all build
+metadata, and `git diff` over `cmd/` and `internal/` excluding tests is empty.
+
 ### Added
 
 - **The corpus can hold records of conditions nobody injected, reported

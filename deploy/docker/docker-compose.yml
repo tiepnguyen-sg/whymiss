@@ -19,7 +19,7 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: ${WHYMISS_IMAGE:?set WHYMISS_IMAGE to an exact release tag, e.g. ghcr.io/tiepnguyen-sg/whymiss:v0.2.1}
+    image: ${WHYMISS_IMAGE:?set WHYMISS_IMAGE to an exact release tag, e.g. ghcr.io/tiepnguyen-sg/whymiss:v0.3.0}
     restart: unless-stopped
     read_only: true
     user: "65532:65532"

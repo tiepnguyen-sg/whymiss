@@ -1,0 +1,11 @@
+started_at_utc=2026-08-30T10:32:11Z
+duration_seconds=259200
+sample_seconds=60
+rss_limit_kib=262144
+db_limit_bytes=104857600
+pid=8330
+completed_at_utc=2026-09-02T10:32:57Z
+samples=4321
+max_rss_kib=34076
+max_database_bytes=25361656
+result=PASS
